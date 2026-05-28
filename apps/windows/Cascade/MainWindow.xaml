@@ -1,0 +1,113 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Window
+    x:Class="Cascade.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    xmlns:local="using:Cascade"
+    xmlns:vm="using:Cascade.ViewModels"
+    Title="Cascade"
+    mc:Ignorable="d">
+    <Grid Padding="32" RowSpacing="20">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+
+        <!-- Header -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
+            <TextBlock Text="Cascade" Style="{ThemeResource TitleTextBlockStyle}" />
+            <TextBlock
+                Text="{x:Bind ViewModel.Snapshot.Subtitle, Mode=OneWay}"
+                Style="{ThemeResource CaptionTextBlockStyle}"
+                VerticalAlignment="Bottom"
+                Opacity="0.6" />
+        </StackPanel>
+
+        <!-- Timer readout -->
+        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Spacing="6">
+            <TextBlock
+                Text="{x:Bind ViewModel.Snapshot.Timer.RemainingLabel, Mode=OneWay}"
+                FontSize="40"
+                FontWeight="Light"
+                HorizontalAlignment="Center" />
+            <ProgressBar
+                Value="{x:Bind ViewModel.Snapshot.Timer.Progress, Mode=OneWay}"
+                Minimum="0"
+                Maximum="1"
+                Width="220"
+                Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+        </StackPanel>
+
+        <!-- Play / Pause -->
+        <Button
+            Grid.Row="2"
+            Command="{x:Bind ViewModel.TogglePlaybackCommand}"
+            Content="{x:Bind ViewModel.Snapshot.PrimaryButtonLabel, Mode=OneWay}"
+            HorizontalAlignment="Stretch"
+            HorizontalContentAlignment="Center"
+            Style="{ThemeResource AccentButtonStyle}"
+            Padding="16,12"
+            FontSize="18" />
+
+        <!-- Volume -->
+        <Grid Grid.Row="3" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <FontIcon Grid.Column="0" Glyph="&#xE767;" VerticalAlignment="Center" />
+            <Slider
+                Grid.Column="1"
+                Value="{x:Bind ViewModel.Snapshot.VolumePercent, Mode=OneWay}"
+                Minimum="0"
+                Maximum="100"
+                ValueChanged="OnVolumeChanged"
+                Header="Volume" />
+            <TextBlock
+                Grid.Column="2"
+                Text="{x:Bind local:Converters.PercentLabel(ViewModel.Snapshot.VolumePercent), Mode=OneWay}"
+                VerticalAlignment="Center"
+                FontFamily="Consolas" />
+        </Grid>
+
+        <!-- Focus session -->
+        <StackPanel Grid.Row="4" Spacing="8">
+            <TextBlock Text="FOCUS SESSION" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="30 min" Command="{x:Bind ViewModel.StartThirtyCommand}" />
+                <Button Content="60 min" Command="{x:Bind ViewModel.StartSixtyCommand}" />
+                <Button Content="8 hr" Command="{x:Bind ViewModel.StartEightHoursCommand}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Sleep timer -->
+        <StackPanel Grid.Row="5" Spacing="8">
+            <TextBlock Text="SLEEP TIMER" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <Button Content="15 min" Command="{x:Bind ViewModel.StartSleepFifteenCommand}" />
+                <Button Content="30 min" Command="{x:Bind ViewModel.StartSleepThirtyCommand}" />
+                <Button Content="1 hr" Command="{x:Bind ViewModel.StartSleepSixtyCommand}" />
+                <HyperlinkButton
+                    Content="Cancel timer"
+                    Command="{x:Bind ViewModel.CancelTimerCommand}"
+                    Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+            </StackPanel>
+        </StackPanel>
+
+        <!-- Error -->
+        <InfoBar
+            Grid.Row="6"
+            VerticalAlignment="Bottom"
+            IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
+            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+            Severity="Error" />
+    </Grid>
+</Window>
