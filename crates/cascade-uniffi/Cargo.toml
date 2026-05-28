@@ -1,0 +1,24 @@
+[package]
+name = "cascade-uniffi"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[lib]
+# `cdylib` is what gets packaged into the Android APK as `libcascade_uniffi.so`.
+# `staticlib` lets the uniffi-bindgen binary link against the same crate to
+# generate Kotlin scaffolding from the proc-macro metadata at build time.
+crate-type = ["cdylib", "staticlib"]
+name = "cascade_uniffi"
+
+[dependencies]
+cascade-core = { path = "../cascade-core" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+uniffi = { version = "0.29", features = ["cli"] }
+
+[[bin]]
+name = "uniffi-bindgen"
+path = "src/bin/uniffi-bindgen.rs"
