@@ -1,11 +1,12 @@
 //! Thin `wasm-bindgen` wrapper around `cascade-core`.
 //!
-//! Every value crosses the boundary as JSON. That's deliberate — it forces the
-//! Rust API to stay coarse-grained (the discipline we want to validate before
-//! we build Clave), and it keeps the TypeScript side honest about what shapes
-//! the core actually returns.
+//! Every value crosses the boundary as a JSON string and is parsed on the JS
+//! side. That gives us deterministic serde semantics (in particular,
+//! `#[serde(rename_all = "camelCase")]` always wins) instead of negotiating
+//! with `serde-wasm-bindgen`'s edge cases for tagged enums. It also matches
+//! the architecture brief's "JSON across the boundary" recommendation.
 
-use cascade_core::{Command, Core, Snapshot, Update};
+use cascade_core::{Command, Core};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen(start)]
@@ -36,20 +37,20 @@ impl CascadeCore {
             .map_err(|e| JsError::new(&e.to_string()))
     }
 
-    /// Render the current snapshot without dispatching anything.
+    /// Render the current snapshot as JSON.
     #[wasm_bindgen]
-    pub fn snapshot(&self) -> Result<JsValue, JsValue> {
-        snapshot_to_js(&self.inner.snapshot())
+    pub fn snapshot(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.inner.snapshot())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
-    /// Dispatch a [`Command`] (encoded as JSON because typed bindings make
-    /// the boundary chatty). Returns the [`Update`] as a plain JS object.
+    /// Dispatch a [`Command`] (JSON in, JSON-encoded `Update` out).
     #[wasm_bindgen]
-    pub fn dispatch(&mut self, command_json: &str) -> Result<JsValue, JsValue> {
+    pub fn dispatch(&mut self, command_json: &str) -> Result<String, JsValue> {
         let command: Command = serde_json::from_str(command_json)
             .map_err(|e| JsValue::from_str(&format!("bad command JSON: {e}")))?;
         let update = self.inner.dispatch(command);
-        update_to_js(&update)
+        serde_json::to_string(&update).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 }
 
@@ -57,12 +58,4 @@ impl Default for CascadeCore {
     fn default() -> Self {
         Self::new()
     }
-}
-
-fn snapshot_to_js(snap: &Snapshot) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(snap).map_err(|e| JsValue::from_str(&e.to_string()))
-}
-
-fn update_to_js(update: &Update) -> Result<JsValue, JsValue> {
-    serde_wasm_bindgen::to_value(update).map_err(|e| JsValue::from_str(&e.to_string()))
 }
