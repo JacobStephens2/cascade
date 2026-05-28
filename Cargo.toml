@@ -1,0 +1,18 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cascade-core",
+    "crates/cascade-wasm",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["Jacob Stephens <jstephens@vagabondtours.com>"]
+license = "MIT"
+repository = "https://github.com/JacobStephens2/cascade"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "1"

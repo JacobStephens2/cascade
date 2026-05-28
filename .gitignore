@@ -1,0 +1,35 @@
+# Rust
+/target/
+**/target/
+Cargo.lock.bak
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+*.local
+.vite/
+.cache/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+
+# Env
+.env
+.env.*
+!.env.example
+
+# WASM build output (regenerated)
+crates/cascade-wasm/pkg/
+
+# Android (when added)
+.gradle/
+local.properties
+build/
+*.iml
+
+# Large source audio (WAV is the working master; OGG/MP3 are committed)
+assets/*.wav
