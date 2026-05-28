@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Water-drop silhouette -->
+    <path
+        android:fillColor="#7CC7D6"
+        android:pathData="M54 12 C 70 36 80 56 80 70 C 80 88 68 96 54 96 C 40 96 28 88 28 70 C 28 56 38 36 54 12 Z" />
+</vector>
