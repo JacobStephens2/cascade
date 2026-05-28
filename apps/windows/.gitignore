@@ -1,0 +1,17 @@
+# Visual Studio / MSBuild
+bin/
+obj/
+*.user
+*.suo
+.vs/
+
+# Generated assets (rebuilt from canonical sources)
+Cascade/Assets/waterfall.mp3
+Cascade/Native/x64/cascade_uniffi.dll
+Cascade/Native/arm64/cascade_uniffi.dll
+Cascade/Native/x64/cascade_uniffi.pdb
+Cascade/Native/arm64/cascade_uniffi.pdb
+
+# NuGet caches
+packages/
+*.nupkg
