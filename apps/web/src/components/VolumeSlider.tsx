@@ -17,6 +17,8 @@ export function VolumeSlider({ percent, onChange }: VolumeSliderProps) {
         max={100}
         step={1}
         value={percent}
+        // The CSS uses --pct to position the filled-track gradient stop.
+        style={{ ["--pct" as string]: `${percent}%` }}
         onChange={(e) => onChange(Number(e.target.value))}
       />
     </div>
