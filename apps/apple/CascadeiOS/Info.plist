@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <key>CFBundleDisplayName</key>
+    <string>Cascade</string>
+    <key>CFBundleName</key>
+    <string>Cascade</string>
+    <key>UIRequiresFullScreen</key>
+    <false/>
+    <key>UILaunchScreen</key>
+    <dict>
+        <key>UIColorName</key>
+        <string>LaunchBackground</string>
+    </dict>
+    <key>UISupportedInterfaceOrientations</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+    </array>
+    <key>UISupportedInterfaceOrientations~ipad</key>
+    <array>
+        <string>UIInterfaceOrientationPortrait</string>
+        <string>UIInterfaceOrientationLandscapeLeft</string>
+        <string>UIInterfaceOrientationLandscapeRight</string>
+        <string>UIInterfaceOrientationPortraitUpsideDown</string>
+    </array>
+    <!-- Allow the audio engine to keep running when the screen locks or the
+         user backgrounds the app — non-negotiable for an 8-hour focus session
+         player. -->
+    <key>UIBackgroundModes</key>
+    <array>
+        <string>audio</string>
+    </array>
+    <!-- Required so MPNowPlayingInfoCenter shows up on the lock screen and
+         Control Center for AirPods / headphone button control. -->
+    <key>MPNowPlayingInfoPropertyMediaType</key>
+    <integer>1</integer>
+    <key>NSHumanReadableCopyright</key>
+    <string>© 2026 Jacob Stephens</string>
+</dict>
+</plist>

@@ -3,7 +3,7 @@
 Step-by-step guide to going from a fresh `git clone` to a running app.
 
 The architecture is in [macos-app-architecture.md](./macos-app-architecture.md);
-the project layout is in [apps/macos/README.md](../apps/macos/README.md). This
+the project layout is in [apps/apple/README.md](../apps/apple/README.md). This
 doc is just the runbook.
 
 ---
@@ -35,7 +35,7 @@ command-line tools point at it.
 
 ```bash
 git clone git@github.com:JacobStephens2/cascade.git    # if you don't already have it
-cd cascade/apps/macos
+cd cascade/apps/apple
 ./scripts/build.sh
 ```
 
@@ -46,8 +46,11 @@ What that script does, in order:
    newer than the OGG it's a no-op.
 2. `build-rust.sh` — `cargo build --release` for `aarch64-apple-darwin` and
    `x86_64-apple-darwin`, `lipo`s them into a universal
-   `apps/macos/build/rust/libcascade_uniffi.a`, then regenerates the Swift
-   bindings into `CascadeMac/Generated/`. Subsequent runs hit cargo's cache.
+   `apps/apple/build/rust/macos/libcascade_uniffi.a`, also builds the iOS
+   device + simulator slices under `apps/apple/build/rust/ios-*/`, then
+   regenerates the Swift bindings into `CascadeShared/Generated/`. Pass
+   `macos` or `ios` as an argument to limit to one platform; subsequent
+   runs hit cargo's cache.
 3. `xcodegen generate` — rebuilds `Cascade.xcodeproj` from `project.yml`.
 
 First build takes ~3–5 minutes (most of that is cargo compiling the Rust
@@ -61,7 +64,9 @@ open Cascade.xcodeproj
 
 Before you hit ⌘R the first time:
 
-1. Select the **Cascade** target in the file navigator.
+1. Select the **CascadeMac** target in the file navigator. (The same
+   project also contains a **CascadeiOS** target — pick whichever you're
+   running.)
 2. **Signing & Capabilities** tab.
 3. Pick a Team from the dropdown. Your personal Apple-ID team is fine — the
    sandbox + hardened-runtime entitlements just need *some* signing identity.
@@ -101,13 +106,13 @@ For a one-Mac-only install (no notarization required):
 ```bash
 # In Xcode: Product ▸ Archive → Distribute App → Copy App
 # Or from CLI:
-xcodebuild -project apps/macos/Cascade.xcodeproj \
+xcodebuild -project apps/apple/Cascade.xcodeproj \
     -scheme Cascade \
     -configuration Release \
     -archivePath /tmp/Cascade.xcarchive archive
 xcodebuild -exportArchive \
     -archivePath /tmp/Cascade.xcarchive \
-    -exportOptionsPlist apps/macos/export-options.plist \
+    -exportOptionsPlist apps/apple/export-options.plist \
     -exportPath /tmp/Cascade-export
 
 cp -R /tmp/Cascade-export/Cascade.app /Applications/
@@ -131,17 +136,19 @@ Same fix.
 
 **`No such module 'cascade_uniffiFFI'`** at Swift compile time
 The modulemap isn't on Swift's include path. Check that
-`CascadeMac/Generated/cascade_uniffiFFI.modulemap` exists and that
+`CascadeShared/Generated/cascade_uniffiFFI.modulemap` exists and that
 `SWIFT_INCLUDE_PATHS` in `project.yml` still points at
 `$(SRCROOT)/CascadeMac/Generated`. If you renamed anything, regenerate
 with `xcodegen generate`.
 
 **`Undefined symbol: _uniffi_cascade_uniffi_fn_...`** at link time
 `libcascade_uniffi.a` didn't get linked. Check:
-- `apps/macos/build/rust/libcascade_uniffi.a` exists and is non-empty
-  (`file` should report it as a Mach-O universal archive).
-- `OTHER_LDFLAGS` in `project.yml` still has `-L$(SRCROOT)/build/rust
-  -lcascade_uniffi`.
+- The right per-platform archive exists and is non-empty (`file` should
+  report it as a Mach-O universal archive):
+  - macOS: `apps/apple/build/rust/macos/libcascade_uniffi.a`
+  - iOS device: `apps/apple/build/rust/ios-device/libcascade_uniffi.a`
+  - iOS simulator: `apps/apple/build/rust/ios-sim/libcascade_uniffi.a`
+- `OTHER_LDFLAGS` in `project.yml` still has the right `-L` for that SDK.
 
 **`Cascade.app is damaged and can't be opened`** at launch
 The bundle is unsigned or the signature is broken. Re-run from Xcode (it
