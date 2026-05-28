@@ -94,18 +94,21 @@ export class WebAudioEngine {
 
   private rampGain(target: number, fadeMs: number): void {
     if (!this.ctx || !this.gain) return;
+    const safeTarget = Number.isFinite(target) ? target : 0;
     const now = this.ctx.currentTime;
     const param = this.gain.gain;
+    const startValue = Number.isFinite(param.value) ? param.value : 0;
     // cancelScheduledValues + setValueAtTime guards against overlapping ramps.
     param.cancelScheduledValues(now);
-    param.setValueAtTime(param.value, now);
-    param.linearRampToValueAtTime(target, now + fadeMs / 1000);
+    param.setValueAtTime(startValue, now);
+    param.linearRampToValueAtTime(safeTarget, now + fadeMs / 1000);
   }
 
   private percentToGain(percent: number): number {
     // Perceptually log-ish curve — a slider at 50 should sound roughly half
     // as loud, not "almost full volume". Square law is a decent cheap proxy.
-    const clamped = Math.max(0, Math.min(100, percent)) / 100;
+    const safe = Number.isFinite(percent) ? percent : 60;
+    const clamped = Math.max(0, Math.min(100, safe)) / 100;
     return clamped * clamped;
   }
 }
