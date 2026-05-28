@@ -2,7 +2,6 @@
 resolver = "2"
 members = [
     "crates/cascade-core",
-    "crates/cascade-wasm",
 ]
 
 [workspace.package]
