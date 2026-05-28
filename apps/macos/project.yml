@@ -1,0 +1,50 @@
+# XcodeGen project spec for Cascade macOS.
+# Regenerate `Cascade.xcodeproj` with:  brew install xcodegen && xcodegen generate
+name: Cascade
+options:
+  bundleIdPrefix: page.stephens
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+  generateEmptyDirectories: true
+
+settings:
+  base:
+    DEVELOPMENT_TEAM: ""           # fill in your Apple Team ID before signing
+    SWIFT_VERSION: "5.10"
+    CODE_SIGN_STYLE: Automatic
+    ENABLE_HARDENED_RUNTIME: YES
+    PRODUCT_NAME: Cascade
+    MARKETING_VERSION: "0.1.0"
+    CURRENT_PROJECT_VERSION: "1"
+    GENERATE_INFOPLIST_FILE: NO    # we ship our own Info.plist
+    INFOPLIST_FILE: CascadeMac/Info.plist
+    OTHER_SWIFT_FLAGS: "-warnings-as-errors"
+
+targets:
+  Cascade:
+    type: application
+    platform: macOS
+    sources:
+      - path: CascadeMac
+        excludes:
+          - "Resources/.gitkeep"
+    resources:
+      - path: CascadeMac/Resources
+        optional: true
+    info:
+      path: CascadeMac/Info.plist
+    entitlements:
+      path: CascadeMac/Cascade.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
+        CODE_SIGN_ENTITLEMENTS: CascadeMac/Cascade.entitlements
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+        SWIFT_OBJC_INTERFACE_HEADER_NAME: ""
+        # Embed the Rust static lib + bridging headers.
+        SWIFT_OBJC_BRIDGING_HEADER: ""
+        OTHER_LDFLAGS: "$(inherited) -L$(SRCROOT)/build/rust -lcascade_uniffi"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/CascadeMac/Generated"
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/build/rust"
+    dependencies: []

@@ -1,0 +1,16 @@
+# XcodeGen regenerates this from project.yml
+Cascade.xcodeproj/
+
+# Build outputs
+build/
+
+# The converted audio is regenerated from apps/web/public/sounds/waterfall.ogg
+CascadeMac/Resources/waterfall.m4a
+CascadeMac/Resources/waterfall.caf
+CascadeMac/Resources/waterfall.wav
+
+# Xcode/derived-data crumbs
+*.xcuserstate
+DerivedData/
+xcuserdata/
+*.xcworkspace/xcuserdata/
