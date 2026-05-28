@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 /// Everything that can happen to the core. User actions, platform reports,
 /// and wall-clock ticks all funnel through here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
 pub enum Command {
     /// User asked to start playback.
     Play,
@@ -37,4 +37,18 @@ pub enum Command {
     PlatformPlaybackPaused,
     /// Platform reports a playback error that the user should know about.
     PlatformPlaybackError { message: String },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn tick_round_trips_camel_case() {
+        // The JS hook dispatches `{ type: "tick", elapsedMs: 250 }`. Make sure
+        // the Rust side actually accepts that shape (it's the only command with
+        // a multi-word field, so it's the easy one to break).
+        let cmd: Command = serde_json::from_str(r#"{"type":"tick","elapsedMs":250}"#).unwrap();
+        assert_eq!(cmd, Command::Tick { elapsed_ms: 250 });
+    }
 }
