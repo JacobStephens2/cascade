@@ -1,0 +1,28 @@
+{
+  "name": "cascade-web",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Cascade — the React + WASM PWA shell driving the cascade-core state machine and Web Audio playback engine.",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview --host",
+    "wasm": "wasm-pack build ../../crates/cascade-wasm --target web --out-dir ../../apps/web/src/wasm --release",
+    "wasm:dev": "wasm-pack build ../../crates/cascade-wasm --target web --out-dir ../../apps/web/src/wasm --dev"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "typescript": "^5.6.3",
+    "vite": "^5.4.11",
+    "vite-plugin-pwa": "^0.21.1",
+    "vite-plugin-top-level-await": "^1.4.4",
+    "vite-plugin-wasm": "^3.4.1"
+  }
+}
