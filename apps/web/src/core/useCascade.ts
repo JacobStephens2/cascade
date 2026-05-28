@@ -48,7 +48,7 @@ export function useCascade(): UseCascadeResult {
         }
         coreRef.current = core;
         audioRef.current = new WebAudioEngine(WATERFALL_URL);
-        setSnapshot(core.snapshot() as Snapshot);
+        setSnapshot(JSON.parse(core.snapshot()) as Snapshot);
         setReady(true);
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : String(err));
@@ -102,7 +102,8 @@ export function useCascade(): UseCascadeResult {
     (command: Command) => {
       const core = coreRef.current;
       if (!core) return;
-      const update = core.dispatch(JSON.stringify(command)) as {
+      const updateJson = core.dispatch(JSON.stringify(command));
+      const update = JSON.parse(updateJson) as {
         snapshot: Snapshot;
         effects: Effect[];
       };
