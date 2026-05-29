@@ -1,18 +1,32 @@
 import Foundation
+#if os(macOS)
 import IOKit.pwr_mgt
+#elseif os(iOS)
+import UIKit
+#endif
 
-/// Prevents the Mac from going to sleep mid-session.
+/// Keeps the device from sleeping during a focus / sleep-timer session.
 ///
-/// `PreventUserIdleSystemSleep` is the right level for a focus / 8-hour
-/// session: the display can still dim or sleep, but the kernel won't pull the
-/// rug out from under our audio engine. Released as soon as playback stops.
+/// Two implementations behind one tiny API:
+///
+/// - **macOS:** `IOPMAssertionCreateWithName(kIOPMAssertPreventUserIdleSystemSleep, …)`.
+///   The display can still dim or sleep, but the kernel won't pull the rug
+///   out from under our audio engine.
+/// - **iOS:** `UIApplication.shared.isIdleTimerDisabled = true`. Together
+///   with the `UIBackgroundModes: audio` Info.plist key, this is enough for
+///   an 8-hour session to survive the screen locking.
+///
+/// Acquired on `Effect.startPlayback`; released on `Effect.pausePlayback`.
 @MainActor
 final class PowerAssertion {
-    private var assertionID: IOPMAssertionID = 0
     private var held = false
+    #if os(macOS)
+    private var assertionID: IOPMAssertionID = 0
+    #endif
 
     func acquire(reason: String = "Cascade focus session in progress") {
         guard !held else { return }
+        #if os(macOS)
         let result = IOPMAssertionCreateWithName(
             kIOPMAssertPreventUserIdleSystemSleep as CFString,
             IOPMAssertionLevel(kIOPMAssertionLevelOn),
@@ -20,18 +34,29 @@ final class PowerAssertion {
             &assertionID
         )
         if result == kIOReturnSuccess { held = true }
+        #elseif os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = true
+        held = true
+        #endif
     }
 
     func release() {
         guard held else { return }
+        #if os(macOS)
         IOPMAssertionRelease(assertionID)
         assertionID = 0
+        #elseif os(iOS)
+        UIApplication.shared.isIdleTimerDisabled = false
+        #endif
         held = false
     }
 
     deinit {
-        if held {
-            IOPMAssertionRelease(assertionID)
-        }
+        guard held else { return }
+        #if os(macOS)
+        IOPMAssertionRelease(assertionID)
+        #endif
+        // iOS: the system clears isIdleTimerDisabled when the app terminates;
+        // touching UIApplication from `deinit` (non-isolated) isn't safe.
     }
 }
