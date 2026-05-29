@@ -31,8 +31,14 @@ fi
 
 # Decode once, then copy to each output. Keeps the two bundled assets
 # bit-identical.
-TMP="$(mktemp -t cascade.XXXXXX.m4a)"
-trap 'rm -f "$TMP"' EXIT
+#
+# Use a temp *directory* with a fixed filename rather than `mktemp -t
+# <tmpl>.m4a`: BSD/macOS mktemp appends the random suffix AFTER the template,
+# producing `cascade.XXXXXX.m4a.abc123`, which leaves ffmpeg unable to infer
+# the muxer from the extension. A dir keeps the `.m4a` ending on every OS.
+TMP_DIR="$(mktemp -d)"
+TMP="$TMP_DIR/waterfall.m4a"
+trap 'rm -rf "$TMP_DIR"' EXIT
 
 echo "→ converting $SOURCE → AAC m4a"
 ffmpeg -y -i "$SOURCE" -c:a aac -b:a 128k -movflags +faststart "$TMP"
