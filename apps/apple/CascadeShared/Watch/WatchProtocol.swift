@@ -41,6 +41,8 @@ public enum WatchToPhoneCommand: Codable, Sendable, Equatable {
     /// User-entered duration. `sleep` picks the timer flavor (sleep timer vs
     /// focus session); the iPhone maps it to the matching core command.
     case startCustom(minutes: Int, sleep: Bool)
+    /// Start the count-up stopwatch.
+    case startStopwatch
     case cancelTimer
 }
 

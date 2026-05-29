@@ -88,6 +88,7 @@ final class PhoneConnectivityService: NSObject {
             let clamped = max(1, min(1440, minutes))
             dispatch?(sleep ? .startSleepTimer(minutes: clamped)
                             : .startPomodoro(minutes: clamped))
+        case .startStopwatch: dispatch?(.startStopwatch)
         case .cancelTimer:    dispatch?(.cancelTimer)
         }
     }

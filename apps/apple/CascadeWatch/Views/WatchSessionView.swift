@@ -22,6 +22,20 @@ struct WatchSessionView: View {
 
                 Divider().padding(.vertical, 4)
 
+                Button {
+                    WatchHaptics.start()
+                    conn.send(.startStopwatch)
+                } label: {
+                    HStack {
+                        Text("Stopwatch")
+                        Spacer()
+                        Image(systemName: "stopwatch").font(.caption)
+                    }
+                }
+                .buttonStyle(.bordered)
+
+                Divider().padding(.vertical, 4)
+
                 Text("CUSTOM")
                     .font(.caption2)
                     .tracking(2)
