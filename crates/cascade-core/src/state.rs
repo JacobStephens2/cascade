@@ -38,6 +38,9 @@ pub struct State {
     /// `None` means "use [`DEFAULT_VOLUME_PERCENT`]". After the first user
     /// adjustment this is always `Some`.
     pub volume_percent: Option<u8>,
+    /// Audio silenced without pausing the session. Transient — never persisted,
+    /// and always cleared when playback starts or stops.
+    pub muted: bool,
     pub active_timer: Option<ActiveTimer>,
     /// Set on the tick that an active timer hit zero, cleared on the next
     /// dispatch. Surfaces in snapshots as
@@ -53,6 +56,7 @@ impl Default for State {
         Self {
             intent: PlaybackIntent::Paused,
             volume_percent: None,
+            muted: false,
             active_timer: None,
             timer_just_completed: None,
             default_sleep_minutes: Some(30),
@@ -67,6 +71,7 @@ impl State {
         Self {
             intent: PlaybackIntent::Paused,
             volume_percent: Some(clamp_volume(s.volume_percent)),
+            muted: false,
             active_timer: None,
             timer_just_completed: None,
             default_sleep_minutes: s.default_sleep_minutes,
@@ -86,6 +91,16 @@ impl State {
 
     pub fn effective_volume(&self) -> u8 {
         self.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT)
+    }
+
+    /// The volume the platform should actually output right now: zero while
+    /// muted, otherwise the user's chosen level.
+    pub fn output_volume(&self) -> u8 {
+        if self.muted {
+            0
+        } else {
+            self.effective_volume()
+        }
     }
 }
 
@@ -118,8 +133,16 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
         Command::SetVolume { percent } => {
             let v = clamp_volume(percent);
             state.volume_percent = Some(v);
+            // Adjusting the slider unmutes — the intuitive behavior.
+            state.muted = false;
             effects.push(Effect::SetPlatformVolume { volume_percent: v });
             push_persist(state, effects);
+        }
+        Command::ToggleMute => {
+            state.muted = !state.muted;
+            effects.push(Effect::SetPlatformVolume {
+                volume_percent: state.output_volume(),
+            });
         }
         Command::StartSleepTimer { minutes } => {
             if minutes == 0 {
@@ -180,6 +203,8 @@ fn start_playback(state: &mut State, effects: &mut Vec<Effect>) {
         return;
     }
     state.intent = PlaybackIntent::Playing;
+    // Never start muted — a fresh play is always audible.
+    state.muted = false;
     effects.push(Effect::StartPlayback {
         volume_percent: state.effective_volume(),
     });
@@ -191,6 +216,8 @@ fn stop_playback(state: &mut State, effects: &mut Vec<Effect>) {
         return;
     }
     state.intent = PlaybackIntent::Paused;
+    // Mute is a live-playback concern; clear it so the next play isn't silent.
+    state.muted = false;
     effects.push(Effect::PausePlayback);
     push_persist(state, effects);
 }
@@ -223,6 +250,52 @@ mod tests {
         dispatch(&mut s, Command::Play);
         let again = dispatch(&mut s, Command::Play);
         assert!(again.is_empty(), "redundant play should not emit effects");
+    }
+
+    #[test]
+    fn mute_silences_output_without_pausing_and_keeps_timer() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::SetVolume { percent: 80 });
+        dispatch(&mut s, Command::StartPomodoro { minutes: 30 }); // auto-plays
+
+        // Mute → output 0, still playing, timer untouched.
+        let muted = dispatch(&mut s, Command::ToggleMute);
+        assert!(s.muted);
+        assert!(s.intent.is_playing(), "mute must not pause playback");
+        assert!(s.active_timer.is_some(), "mute must not cancel the timer");
+        assert!(muted
+            .iter()
+            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 })));
+
+        // Timer keeps counting while muted.
+        dispatch(&mut s, Command::Tick { elapsed_ms: 60_000 });
+        assert!(s.active_timer.is_some());
+
+        // Unmute → output restored to the stored volume.
+        let unmuted = dispatch(&mut s, Command::ToggleMute);
+        assert!(!s.muted);
+        assert!(unmuted
+            .iter()
+            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 80 })));
+    }
+
+    #[test]
+    fn set_volume_unmutes() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::ToggleMute);
+        assert!(s.muted);
+        dispatch(&mut s, Command::SetVolume { percent: 50 });
+        assert!(!s.muted, "adjusting volume should unmute");
+    }
+
+    #[test]
+    fn stopping_playback_clears_mute() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::ToggleMute);
+        dispatch(&mut s, Command::Pause);
+        assert!(!s.muted, "pausing should clear mute so the next play is audible");
     }
 
     #[test]

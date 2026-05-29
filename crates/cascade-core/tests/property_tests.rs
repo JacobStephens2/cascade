@@ -19,6 +19,7 @@ fn command_strategy() -> impl Strategy<Value = Command> {
         Just(Command::Pause),
         Just(Command::TogglePlayback),
         any::<u8>().prop_map(|percent| Command::SetVolume { percent }),
+        Just(Command::ToggleMute),
         (0u32..=2_000).prop_map(|minutes| Command::StartSleepTimer { minutes }),
         (0u32..=2_000).prop_map(|minutes| Command::StartPomodoro { minutes }),
         Just(Command::CancelTimer),
@@ -138,6 +139,30 @@ proptest! {
             }
             prop_assert!(!s.primary_button_label.is_empty());
         }
+    }
+
+    /// Muting while playing never pauses or cancels the timer, and silences
+    /// output; a second toggle restores the chosen volume.
+    #[test]
+    fn mute_keeps_session_and_round_trips(volume in 0u8..=100, minutes in 1u32..=600) {
+        let mut core = Core::new();
+        core.dispatch(Command::SetVolume { percent: volume });
+        core.dispatch(Command::StartPomodoro { minutes }); // auto-plays
+        let timer_kind = core.snapshot().timer.kind;
+
+        let muted = core.dispatch(Command::ToggleMute);
+        prop_assert!(muted.snapshot.is_muted);
+        prop_assert!(muted.snapshot.is_playing, "mute must not pause");
+        prop_assert_eq!(muted.snapshot.timer.kind, timer_kind, "mute must not end the timer");
+        let zeroed = muted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 }));
+        prop_assert!(zeroed);
+        // No pause effect was emitted.
+        prop_assert!(!muted.effects.iter().any(|e| matches!(e, Effect::PausePlayback)));
+
+        let unmuted = core.dispatch(Command::ToggleMute);
+        prop_assert!(!unmuted.snapshot.is_muted);
+        let restored = unmuted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent } if *volume_percent == volume));
+        prop_assert!(restored);
     }
 
     /// Pausing — after any history — never starts playback and always lands paused.
