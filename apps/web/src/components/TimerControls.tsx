@@ -31,6 +31,7 @@ export function TimerControls({
   onCancel,
 }: TimerControlsProps) {
   const [customMinutes, setCustomMinutes] = useState("45");
+  const [customMode, setCustomMode] = useState<"focus" | "sleep">("focus");
 
   const timerRunning = activeKind === "sleep" || activeKind === "pomodoro";
 
@@ -70,13 +71,6 @@ export function TimerControls({
               {p.label}
             </button>
           ))}
-          <button
-            type="button"
-            className={`chip chip--ghost ${showCustom ? "is-active" : ""}`}
-            onClick={onToggleCustom}
-          >
-            Custom…
-          </button>
         </div>
       </div>
 
@@ -96,6 +90,20 @@ export function TimerControls({
         </div>
       </div>
 
+      <div className="timer-controls__section">
+        <h2 className="timer-controls__heading">Custom</h2>
+        <div className="timer-controls__row">
+          <button
+            type="button"
+            className={`chip chip--ghost ${showCustom ? "is-active" : ""}`}
+            onClick={onToggleCustom}
+            aria-expanded={showCustom}
+          >
+            Custom…
+          </button>
+        </div>
+      </div>
+
       {showCustom && (
         <form
           className="timer-controls__custom"
@@ -103,10 +111,36 @@ export function TimerControls({
             e.preventDefault();
             const n = Number(customMinutes);
             if (Number.isFinite(n) && n > 0 && n <= 24 * 60) {
-              onStartPomodoro(Math.round(n));
+              const minutes = Math.round(n);
+              if (customMode === "focus") onStartPomodoro(minutes);
+              else onStartSleep(minutes);
             }
           }}
         >
+          <div
+            className="timer-controls__mode"
+            role="radiogroup"
+            aria-label="Custom timer mode"
+          >
+            <button
+              type="button"
+              role="radio"
+              aria-checked={customMode === "focus"}
+              className={`chip chip--ghost ${customMode === "focus" ? "is-active" : ""}`}
+              onClick={() => setCustomMode("focus")}
+            >
+              Focus
+            </button>
+            <button
+              type="button"
+              role="radio"
+              aria-checked={customMode === "sleep"}
+              className={`chip chip--ghost ${customMode === "sleep" ? "is-active" : ""}`}
+              onClick={() => setCustomMode("sleep")}
+            >
+              Sleep
+            </button>
+          </div>
           <label htmlFor="custom-minutes">
             Minutes
             <input
@@ -120,7 +154,7 @@ export function TimerControls({
             />
           </label>
           <button type="submit" className="chip chip--primary">
-            Start session
+            {customMode === "focus" ? "Start session" : "Start sleep timer"}
           </button>
         </form>
       )}
