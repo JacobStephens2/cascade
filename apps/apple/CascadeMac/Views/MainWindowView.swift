@@ -16,9 +16,12 @@ struct MainWindowView: View {
                 PlayButton(isPlaying: snapshot.isPlaying, label: snapshot.primaryButtonLabel) {
                     store.dispatch(.togglePlayback)
                 }
-                VolumeSlider(percent: snapshot.volumePercent) { newPercent in
-                    store.dispatch(.setVolume(percent: newPercent))
-                }
+                VolumeSlider(
+                    percent: snapshot.volumePercent,
+                    isMuted: snapshot.isMuted,
+                    onChange: { store.dispatch(.setVolume(percent: $0)) },
+                    onToggleMute: { store.dispatch(.toggleMute) }
+                )
                 .padding(.horizontal, 4)
                 TimerControls()
                 Spacer(minLength: 0)
@@ -103,17 +106,25 @@ private struct PlayButton: View {
 
 private struct VolumeSlider: View {
     let percent: Int
+    let isMuted: Bool
     let onChange: (Int) -> Void
+    let onToggleMute: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                Button(action: onToggleMute) {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                }
+                .buttonStyle(.borderless)
+                .foregroundStyle(isMuted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .accessibilityLabel(isMuted ? "Unmute" : "Mute")
                 Text("Volume")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .tracking(2)
                 Spacer()
-                Text("\(percent)%")
+                Text(isMuted ? "Muted" : "\(percent)%")
                     .font(.caption.monospacedDigit())
             }
             Slider(

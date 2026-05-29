@@ -23,9 +23,12 @@ struct CascadeScreen: View {
                     store.dispatch(.togglePlayback)
                 }
                 Spacer(minLength: 8)
-                VolumeSlider(percent: snapshot.volumePercent) { newPercent in
-                    store.dispatch(.setVolume(percent: newPercent))
-                }
+                VolumeSlider(
+                    percent: snapshot.volumePercent,
+                    isMuted: snapshot.isMuted,
+                    onChange: { store.dispatch(.setVolume(percent: $0)) },
+                    onToggleMute: { store.dispatch(.toggleMute) }
+                )
                 TimerControls()
                 if let message = snapshot.errorMessage ?? store.lastError {
                     Text(message)
@@ -108,16 +111,24 @@ private struct PlayButton: View {
 
 private struct VolumeSlider: View {
     let percent: Int
+    let isMuted: Bool
     let onChange: (Int) -> Void
+    let onToggleMute: () -> Void
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                Button(action: onToggleMute) {
+                    Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(isMuted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .accessibilityLabel(isMuted ? "Unmute" : "Mute")
                 Text("Volume")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .tracking(2)
                 Spacer()
-                Text("\(percent)%")
+                Text(isMuted ? "Muted" : "\(percent)%")
                     .font(.caption.monospacedDigit())
             }
             Slider(

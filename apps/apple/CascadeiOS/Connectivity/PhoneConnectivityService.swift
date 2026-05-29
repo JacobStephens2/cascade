@@ -80,6 +80,8 @@ final class PhoneConnectivityService: NSObject {
         case .pause:          dispatch?(.pause)
         case .setVolume(let percent):
             dispatch?(.setVolume(percent: percent))
+        case .toggleMute:
+            dispatch?(.toggleMute)
         case .startSession(let preset):
             dispatch?(.startPomodoro(minutes: preset.minutes))
         case .startCustom(let minutes, let sleep):

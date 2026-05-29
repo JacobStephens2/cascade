@@ -147,6 +147,7 @@ extension Snapshot {
         subtitle: "Loading…",
         isPlaying: false,
         volumePercent: 60,
+        isMuted: false,
         primaryButtonLabel: "Play",
         timer: TimerSnapshot(kind: .off, remainingLabel: "", remainingMs: 0, totalMs: 0, progress: 0),
         errorMessage: nil
