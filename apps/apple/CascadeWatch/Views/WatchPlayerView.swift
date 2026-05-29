@@ -29,12 +29,19 @@ struct WatchPlayerView: View {
             .clipShape(Circle())
 
             HStack(spacing: 4) {
-                Image(systemName: "speaker.fill")
-                    .font(.caption2)
-                    .foregroundStyle(.secondary)
+                Button {
+                    WatchHaptics.tap()
+                    conn.send(.toggleMute)
+                } label: {
+                    Image(systemName: conn.snapshot.isMuted ? "speaker.slash.fill" : "speaker.fill")
+                        .font(.caption2)
+                }
+                .buttonStyle(.plain)
+                .foregroundStyle(conn.snapshot.isMuted ? .cyan : .secondary)
+                .accessibilityLabel(conn.snapshot.isMuted ? "Unmute" : "Mute")
                 ProgressView(value: Double(conn.snapshot.volumePercent), total: 100)
                     .tint(.cyan)
-                Text("\(conn.snapshot.volumePercent)%")
+                Text(conn.snapshot.isMuted ? "Muted" : "\(conn.snapshot.volumePercent)%")
                     .font(.caption2.monospacedDigit())
                     .foregroundStyle(.secondary)
             }

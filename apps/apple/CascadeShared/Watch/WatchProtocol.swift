@@ -35,6 +35,8 @@ public enum WatchToPhoneCommand: Codable, Sendable, Equatable {
     case play
     case pause
     case setVolume(percent: Int)
+    /// Silence audio without pausing the session (timer keeps running).
+    case toggleMute
     case startSession(WatchSessionPreset)
     /// User-entered duration. `sleep` picks the timer flavor (sleep timer vs
     /// focus session); the iPhone maps it to the matching core command.
@@ -49,6 +51,8 @@ public struct PhoneSnapshotForWatch: Codable, Sendable, Equatable {
     public let version: Int
     public let isPlaying: Bool
     public let volumePercent: Int
+    /// Audio silenced while the session keeps running.
+    public let isMuted: Bool
     /// "Playing · 42:17 left" / "Paused" / "Playing on iPhone" — already
     /// formatted for a wrist-sized label.
     public let statusLine: String
@@ -61,6 +65,7 @@ public struct PhoneSnapshotForWatch: Codable, Sendable, Equatable {
         version: Int = watchProtocolVersion,
         isPlaying: Bool,
         volumePercent: Int,
+        isMuted: Bool = false,
         statusLine: String,
         timerProgress: Float,
         timerRemainingLabel: String
@@ -68,6 +73,7 @@ public struct PhoneSnapshotForWatch: Codable, Sendable, Equatable {
         self.version = version
         self.isPlaying = isPlaying
         self.volumePercent = volumePercent
+        self.isMuted = isMuted
         self.statusLine = statusLine
         self.timerProgress = timerProgress
         self.timerRemainingLabel = timerRemainingLabel
@@ -78,6 +84,7 @@ public struct PhoneSnapshotForWatch: Codable, Sendable, Equatable {
     public static let placeholder = PhoneSnapshotForWatch(
         isPlaying: false,
         volumePercent: 60,
+        isMuted: false,
         statusLine: "Connecting…",
         timerProgress: 0,
         timerRemainingLabel: ""

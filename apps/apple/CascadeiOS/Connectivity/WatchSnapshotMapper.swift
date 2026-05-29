@@ -7,9 +7,10 @@ enum WatchSnapshotMapper {
         let statusLine: String
         switch snapshot.timer.kind {
         case .off:
-            statusLine = snapshot.isPlaying ? "Playing · no timer" : "Paused"
+            statusLine = snapshot.isMuted ? "Muted · no timer"
+                : (snapshot.isPlaying ? "Playing · no timer" : "Paused")
         case .sleep, .pomodoro:
-            let verb = snapshot.isPlaying ? "Playing" : "Paused"
+            let verb = snapshot.isMuted ? "Muted" : (snapshot.isPlaying ? "Playing" : "Paused")
             statusLine = "\(verb) · \(snapshot.timer.remainingLabel) left"
         case .justCompleted:
             statusLine = snapshot.timer.remainingLabel
@@ -17,6 +18,7 @@ enum WatchSnapshotMapper {
         return PhoneSnapshotForWatch(
             isPlaying: snapshot.isPlaying,
             volumePercent: snapshot.volumePercent,
+            isMuted: snapshot.isMuted,
             statusLine: statusLine,
             timerProgress: max(0, min(1, snapshot.timer.progress)),
             timerRemainingLabel: snapshot.timer.remainingLabel

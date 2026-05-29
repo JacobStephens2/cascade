@@ -9,6 +9,7 @@ enum Command: Codable {
     case pause
     case togglePlayback
     case setVolume(percent: Int)
+    case toggleMute
     case startSleepTimer(minutes: Int)
     case startPomodoro(minutes: Int)
     case cancelTimer
@@ -28,6 +29,7 @@ enum Command: Codable {
         case .setVolume(let percent):
             try c.encode("setVolume", forKey: .type)
             try c.encode(percent, forKey: .percent)
+        case .toggleMute: try c.encode("toggleMute", forKey: .type)
         case .startSleepTimer(let minutes):
             try c.encode("startSleepTimer", forKey: .type)
             try c.encode(minutes, forKey: .minutes)
@@ -55,6 +57,7 @@ enum Command: Codable {
         case "pause": self = .pause
         case "togglePlayback": self = .togglePlayback
         case "setVolume": self = .setVolume(percent: try c.decode(Int.self, forKey: .percent))
+        case "toggleMute": self = .toggleMute
         case "startSleepTimer": self = .startSleepTimer(minutes: try c.decode(Int.self, forKey: .minutes))
         case "startPomodoro": self = .startPomodoro(minutes: try c.decode(Int.self, forKey: .minutes))
         case "cancelTimer": self = .cancelTimer
@@ -111,6 +114,7 @@ struct Snapshot: Decodable, Equatable {
     let subtitle: String
     let isPlaying: Bool
     let volumePercent: Int
+    let isMuted: Bool
     let primaryButtonLabel: String
     let timer: TimerSnapshot
     let errorMessage: String?
