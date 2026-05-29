@@ -22,6 +22,7 @@ fn command_strategy() -> impl Strategy<Value = Command> {
         Just(Command::ToggleMute),
         (0u32..=2_000).prop_map(|minutes| Command::StartSleepTimer { minutes }),
         (0u32..=2_000).prop_map(|minutes| Command::StartPomodoro { minutes }),
+        Just(Command::StartStopwatch),
         Just(Command::CancelTimer),
         (0u64..=3_600_000).prop_map(|elapsed_ms| Command::Tick { elapsed_ms }),
         Just(Command::PlatformPlaybackStarted),
@@ -138,6 +139,25 @@ proptest! {
                 prop_assert!(s.timer.remaining_ms <= s.timer.total_ms);
             }
             prop_assert!(!s.primary_button_label.is_empty());
+        }
+    }
+
+    /// The stopwatch counts up by exactly the ticked time, never expires, and
+    /// never pauses playback no matter how long it runs.
+    #[test]
+    fn stopwatch_accumulates_and_never_ends(
+        ticks in prop::collection::vec(0u64..=600_000, 1..30),
+    ) {
+        let mut core = Core::new();
+        core.dispatch(Command::Play);
+        core.dispatch(Command::StartStopwatch);
+        let mut expected: u64 = 0;
+        for delta in ticks {
+            let s = core.dispatch(Command::Tick { elapsed_ms: delta }).snapshot;
+            expected += delta;
+            prop_assert_eq!(s.timer.kind, TimerSnapshotKind::Stopwatch);
+            prop_assert_eq!(s.timer.remaining_ms, expected); // elapsed lives here
+            prop_assert!(s.is_playing, "stopwatch must never pause playback");
         }
     }
 
