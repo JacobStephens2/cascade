@@ -145,5 +145,37 @@ export function useCascade(): UseCascadeResult {
     return () => window.clearTimeout(frame);
   }, [ready, snapshot?.timer.kind, dispatchInternal]);
 
+  // Media Session: lets macOS route the keyboard's play/pause media key (and
+  // Control Center / Now Playing) to the app. The OS decides whether to send
+  // "play" or "pause" based on the playbackState we report below.
+  useEffect(() => {
+    if (!ready || !("mediaSession" in navigator)) return;
+    const ms = navigator.mediaSession;
+    ms.metadata = new MediaMetadata({
+      title: "Cascade",
+      artist: "Waterfall loop",
+      artwork: [
+        { src: "/icon-192.png", sizes: "192x192", type: "image/png" },
+        { src: "/icon-512.png", sizes: "512x512", type: "image/png" },
+      ],
+    });
+    ms.setActionHandler("play", () => dispatchInternal({ type: "play" }));
+    ms.setActionHandler("pause", () => dispatchInternal({ type: "pause" }));
+    ms.setActionHandler("stop", () => dispatchInternal({ type: "pause" }));
+    return () => {
+      ms.setActionHandler("play", null);
+      ms.setActionHandler("pause", null);
+      ms.setActionHandler("stop", null);
+    };
+  }, [ready, dispatchInternal]);
+
+  // Keep the OS Now Playing state in sync so the media key toggles correctly.
+  useEffect(() => {
+    if (!ready || !("mediaSession" in navigator)) return;
+    navigator.mediaSession.playbackState = snapshot?.isPlaying
+      ? "playing"
+      : "paused";
+  }, [ready, snapshot?.isPlaying]);
+
   return { ready, snapshot, loadError, dispatch };
 }
