@@ -20,6 +20,31 @@ struct CascadeiOSApp: App {
         WindowGroup {
             CascadeScreen()
                 .environment(store)
+                .onAppear {
+                    wireWatchConnectivity()
+                }
+        }
+    }
+
+    /// Hook the iPhone-side WatchConnectivity bridge to the live AppStore.
+    /// Commands from the watch run through `store.dispatch`; every snapshot
+    /// update (set by `AppStore.apply`) is pushed back to the watch.
+    @MainActor
+    private func wireWatchConnectivity() {
+        let svc = PhoneConnectivityService.shared
+        svc.activate(
+            dispatch: { [weak store] command in
+                store?.dispatch(command)
+            },
+            snapshotProvider: { [weak store] in
+                guard let store else { return .placeholder }
+                return WatchSnapshotMapper.map(store.snapshot)
+            }
+        )
+        store.onSnapshotChanged = { snapshot in
+            PhoneConnectivityService.shared.pushSnapshot(
+                WatchSnapshotMapper.map(snapshot)
+            )
         }
     }
 }

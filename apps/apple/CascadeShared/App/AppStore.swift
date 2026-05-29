@@ -16,6 +16,11 @@ final class AppStore {
     private(set) var snapshot: Snapshot
     private(set) var lastError: String?
 
+    /// Side-channel observer for non-SwiftUI consumers (the iPhone's
+    /// `PhoneConnectivityService` uses this to push every snapshot down to
+    /// the watch). SwiftUI views observe `snapshot` directly via `@Observable`.
+    var onSnapshotChanged: ((Snapshot) -> Void)?
+
     private let bridge: CoreBridge
     private let audio: AudioEngine
     private let settings: SettingsStore
@@ -75,6 +80,7 @@ final class AppStore {
         let prev = snapshot
         snapshot = update.snapshot
         lastError = update.snapshot.errorMessage
+        onSnapshotChanged?(update.snapshot)
 
         for effect in update.effects {
             switch effect {

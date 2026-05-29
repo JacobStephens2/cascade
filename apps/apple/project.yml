@@ -1,10 +1,18 @@
-# XcodeGen project spec for Cascade macOS.
-# Regenerate `Cascade.xcodeproj` with:  brew install xcodegen && xcodegen generate
+# XcodeGen project spec for Cascade Apple (macOS + iOS).
+#
+# Regenerate `Cascade.xcodeproj`:
+#   brew install xcodegen && xcodegen generate
+#
+# Both targets share every file under CascadeShared/ — Swift sources,
+# UniFFI-generated bindings + modulemap, audio engine, persisted-settings
+# store, Now Playing publisher. Each target adds its own scene + lifecycle.
 name: Cascade
 options:
   bundleIdPrefix: page.stephens
   deploymentTarget:
     macOS: "14.0"
+    iOS: "17.0"
+    watchOS: "10.0"
   createIntermediateGroups: true
   generateEmptyDirectories: true
 
@@ -13,19 +21,18 @@ settings:
     DEVELOPMENT_TEAM: ""           # fill in your Apple Team ID before signing
     SWIFT_VERSION: "5.10"
     CODE_SIGN_STYLE: Automatic
-    ENABLE_HARDENED_RUNTIME: YES
     PRODUCT_NAME: Cascade
     MARKETING_VERSION: "0.1.0"
     CURRENT_PROJECT_VERSION: "1"
-    GENERATE_INFOPLIST_FILE: NO    # we ship our own Info.plist
-    INFOPLIST_FILE: CascadeMac/Info.plist
     OTHER_SWIFT_FLAGS: "-warnings-as-errors"
 
 targets:
-  Cascade:
+  # -------------------------------- macOS ----------------------------------
+  CascadeMac:
     type: application
     platform: macOS
     sources:
+      - path: CascadeShared
       - path: CascadeMac
         excludes:
           - "Resources/.gitkeep"
@@ -40,11 +47,76 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
         CODE_SIGN_ENTITLEMENTS: CascadeMac/Cascade.entitlements
+        ENABLE_HARDENED_RUNTIME: YES
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
-        SWIFT_OBJC_INTERFACE_HEADER_NAME: ""
-        # Embed the Rust static lib + bridging headers.
-        SWIFT_OBJC_BRIDGING_HEADER: ""
-        OTHER_LDFLAGS: "$(inherited) -L$(SRCROOT)/build/rust -lcascade_uniffi"
-        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/CascadeMac/Generated"
-        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/build/rust"
+        OTHER_LDFLAGS: "$(inherited) -L$(SRCROOT)/build/rust/macos -lcascade_uniffi"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/CascadeShared/Generated"
+        FRAMEWORK_SEARCH_PATHS: "$(SRCROOT)/build/rust/macos"
+    dependencies: []
+
+  # -------------------------------- iOS ------------------------------------
+  CascadeiOS:
+    type: application
+    platform: iOS
+    sources:
+      - path: CascadeShared
+      - path: CascadeiOS
+        excludes:
+          - "Resources/.gitkeep"
+    resources:
+      - path: CascadeiOS/Resources
+        optional: true
+    info:
+      path: CascadeiOS/Info.plist
+    entitlements:
+      path: CascadeiOS/Cascade.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
+        CODE_SIGN_ENTITLEMENTS: CascadeiOS/Cascade.entitlements
+        TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
+        # Per-SDK lookup so the same xcodeproj builds for both on-device and
+        # the simulator (which on Apple Silicon is an arm64 simulator slice).
+        "OTHER_LDFLAGS[sdk=iphoneos*]": "$(inherited) -L$(SRCROOT)/build/rust/ios-device -lcascade_uniffi"
+        "OTHER_LDFLAGS[sdk=iphonesimulator*]": "$(inherited) -L$(SRCROOT)/build/rust/ios-sim -lcascade_uniffi"
+        "FRAMEWORK_SEARCH_PATHS[sdk=iphoneos*]": "$(SRCROOT)/build/rust/ios-device"
+        "FRAMEWORK_SEARCH_PATHS[sdk=iphonesimulator*]": "$(SRCROOT)/build/rust/ios-sim"
+        SWIFT_INCLUDE_PATHS: "$(SRCROOT)/CascadeShared/Generated"
+    # Embed the watchOS companion. Xcode handles the bundle-inside-a-bundle
+    # packaging once the dependency is declared.
+    dependencies:
+      - target: CascadeWatch
+        embed: true
+
+  # -------------------------------- watchOS --------------------------------
+  # Mode A — thin remote. The watch sends commands to the iPhone via
+  # WatchConnectivity (WCSession) and renders whatever snapshot the iPhone
+  # pushes back. No Rust, no audio engine, no timer math on the watch.
+  CascadeWatch:
+    type: application
+    platform: watchOS
+    sources:
+      # The whole CascadeShared/ tree is on the include path, but only the
+      # Watch/WatchProtocol.swift file is actually needed on the watch — the
+      # rest pulls in AVFoundation / IOKit headers that aren't available here.
+      - path: CascadeShared/Watch
+      - path: CascadeWatch
+        excludes:
+          - "Resources/.gitkeep"
+    resources:
+      - path: CascadeWatch/Resources
+        optional: true
+    info:
+      path: CascadeWatch/Info.plist
+    entitlements:
+      path: CascadeWatch/Cascade.entitlements
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade.watchkitapp
+        CODE_SIGN_ENTITLEMENTS: CascadeWatch/Cascade.entitlements
+        TARGETED_DEVICE_FAMILY: "4"            # watchOS
+        WATCHOS_DEPLOYMENT_TARGET: "10.0"
+        # The watch is paired to the iPhone app via shared bundle ID prefix +
+        # the WKCompanionAppBundleIdentifier in Info.plist (Xcode wires this
+        # automatically because we embed via the iOS target's dependency).
     dependencies: []
