@@ -128,10 +128,17 @@ private struct VolumeSlider: View {
     }
 }
 
+private enum CustomMode: String, CaseIterable, Identifiable {
+    case focus = "Focus"
+    case sleep = "Sleep"
+    var id: String { rawValue }
+}
+
 private struct TimerControls: View {
     @Environment(AppStore.self) private var store
     @State private var customMinutesText: String = "45"
     @State private var showCustom = false
+    @State private var customMode: CustomMode = .focus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -152,17 +159,30 @@ private struct TimerControls: View {
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
             if showCustom {
-                HStack {
-                    TextField("Minutes", text: $customMinutesText)
-                        .frame(maxWidth: 80)
-                        .textFieldStyle(.roundedBorder)
-                    Button("Start focus") {
-                        if let m = Int(customMinutesText), m > 0 {
-                            store.dispatch(.startPomodoro(minutes: m))
-                            showCustom = false
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("Mode", selection: $customMode) {
+                        ForEach(CustomMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
                         }
                     }
-                    Spacer()
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .frame(maxWidth: 200)
+                    HStack {
+                        TextField("Minutes", text: $customMinutesText)
+                            .frame(maxWidth: 80)
+                            .textFieldStyle(.roundedBorder)
+                        Button(customMode == .focus ? "Start focus" : "Start sleep") {
+                            if let m = Int(customMinutesText), m > 0, m <= 1440 {
+                                switch customMode {
+                                case .focus: store.dispatch(.startPomodoro(minutes: m))
+                                case .sleep: store.dispatch(.startSleepTimer(minutes: m))
+                                }
+                                showCustom = false
+                            }
+                        }
+                        Spacer()
+                    }
                 }
             }
             HStack {

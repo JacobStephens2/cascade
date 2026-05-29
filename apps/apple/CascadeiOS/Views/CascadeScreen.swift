@@ -132,8 +132,16 @@ private struct VolumeSlider: View {
     }
 }
 
+private enum CustomMode: String, CaseIterable, Identifiable {
+    case focus = "Focus"
+    case sleep = "Sleep"
+    var id: String { rawValue }
+}
+
 private struct TimerControls: View {
     @Environment(AppStore.self) private var store
+    @State private var customMinutes: Int = 45
+    @State private var customMode: CustomMode = .focus
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -153,11 +161,37 @@ private struct TimerControls: View {
                 labelFor: { "\($0) min" },
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
+            customSection
             if store.snapshot.timer.kind != .off {
                 Button("Cancel timer") { store.dispatch(.cancelTimer) }
                     .buttonStyle(.bordered)
                     .controlSize(.regular)
             }
+        }
+    }
+
+    private var customSection: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("Custom")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+                .tracking(2)
+            Picker("Mode", selection: $customMode) {
+                ForEach(CustomMode.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            // Stepper keeps numeric entry keyboard-free, which suits a
+            // one-handed "set it and forget it" interaction.
+            Stepper(value: $customMinutes, in: 1 ... 1440, step: 5) {
+                Text("\(customMinutes) min").monospacedDigit()
+            }
+            Button(customMode == .focus ? "Start focus" : "Start sleep") {
+                switch customMode {
+                case .focus: store.dispatch(.startPomodoro(minutes: customMinutes))
+                case .sleep: store.dispatch(.startSleepTimer(minutes: customMinutes))
+                }
+            }
+            .buttonStyle(.borderedProminent)
         }
     }
 
