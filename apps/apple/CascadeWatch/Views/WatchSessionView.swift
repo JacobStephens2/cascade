@@ -5,6 +5,9 @@ import SwiftUI
 struct WatchSessionView: View {
     @Environment(WatchConnectivityClient.self) private var conn
 
+    @State private var customMinutes: Int = 45
+    @State private var customSleep = false
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 8) {
@@ -16,6 +19,29 @@ struct WatchSessionView: View {
                 preset("30 min",  .minutes30)
                 preset("60 min",  .minutes60)
                 preset("8 hours", .hours8)
+
+                Divider().padding(.vertical, 4)
+
+                Text("CUSTOM")
+                    .font(.caption2)
+                    .tracking(2)
+                    .foregroundStyle(.secondary)
+                // Stepper drives via the Digital Crown — no keyboard on the wrist.
+                Stepper(value: $customMinutes, in: 1 ... 1440, step: 5) {
+                    Text("\(customMinutes) min").monospacedDigit()
+                }
+                Toggle("Sleep timer", isOn: $customSleep)
+                Button {
+                    WatchHaptics.start()
+                    conn.send(.startCustom(minutes: customMinutes, sleep: customSleep))
+                } label: {
+                    HStack {
+                        Text(customSleep ? "Start sleep" : "Start focus")
+                        Spacer()
+                        Image(systemName: "play.fill").font(.caption)
+                    }
+                }
+                .buttonStyle(.borderedProminent)
 
                 if !conn.snapshot.timerRemainingLabel.isEmpty {
                     Divider()

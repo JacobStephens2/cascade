@@ -82,6 +82,10 @@ final class PhoneConnectivityService: NSObject {
             dispatch?(.setVolume(percent: percent))
         case .startSession(let preset):
             dispatch?(.startPomodoro(minutes: preset.minutes))
+        case .startCustom(let minutes, let sleep):
+            let clamped = max(1, min(1440, minutes))
+            dispatch?(sleep ? .startSleepTimer(minutes: clamped)
+                            : .startPomodoro(minutes: clamped))
         case .cancelTimer:    dispatch?(.cancelTimer)
         }
     }
