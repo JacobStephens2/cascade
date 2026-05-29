@@ -137,6 +137,14 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void SetVolume(double percent) => Send(new SetVolumeCommand((int)percent));
 
+    /// Start a user-entered duration. `sleep` picks the timer flavor:
+    /// sleep timer (play, then stop) vs focus session.
+    public void StartCustom(int minutes, bool sleep)
+    {
+        if (minutes < 1 || minutes > 1440) return;
+        Send(sleep ? new StartSleepTimerCommand(minutes) : new StartPomodoroCommand(minutes));
+    }
+
     public void Dispose()
     {
         _tick.Stop();
