@@ -14,7 +14,13 @@ pub enum Command {
     /// User tapped the primary button; flip between Play and Pause.
     TogglePlayback,
     /// Set volume in the range `0..=100`. Values outside the range are clamped.
+    /// Adjusting volume also clears the muted state.
     SetVolume { percent: u8 },
+    /// Toggle mute: silence audio output without pausing the session, so a
+    /// running sleep/pomodoro timer keeps counting down. Implemented as a
+    /// platform-volume change (output 0 while muted), not a pause — playback
+    /// stays live so the timer and background audio session survive.
+    ToggleMute,
 
     /// Start a plain sleep timer that pauses playback after `minutes` minutes.
     StartSleepTimer { minutes: u32 },

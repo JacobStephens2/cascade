@@ -36,6 +36,8 @@ pub struct Snapshot {
     pub subtitle: String,
     pub is_playing: bool,
     pub volume_percent: u8,
+    /// Audio is silenced but the session/timer keeps running.
+    pub is_muted: bool,
     pub primary_button_label: String,
     pub timer: TimerSnapshot,
     pub error_message: Option<String>,
@@ -88,6 +90,7 @@ impl Snapshot {
             subtitle: "Waterfall loop".to_string(),
             is_playing: state.intent.is_playing(),
             volume_percent: state.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT),
+            is_muted: state.muted,
             primary_button_label: if state.intent.is_playing() {
                 "Pause".to_string()
             } else {
