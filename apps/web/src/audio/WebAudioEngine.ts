@@ -37,6 +37,22 @@ export class WebAudioEngine {
     return this.loaded;
   }
 
+  /**
+   * Resume the AudioContext if it's suspended. On a page reload the browser's
+   * autoplay policy can leave a restored "playing" session muted until the
+   * user interacts; calling this from the first gesture starts the (already
+   * scheduled) loop sounding. Safe to call when idle.
+   */
+  async resumeContext(): Promise<void> {
+    if (this.ctx && this.ctx.state === "suspended") {
+      try {
+        await this.ctx.resume();
+      } catch {
+        // Still blocked; will retry on the next gesture.
+      }
+    }
+  }
+
   async start(volumePercent: number, fadeMs = 400): Promise<void> {
     await this.ensureLoaded();
     if (!this.ctx || !this.buffer || !this.gain) return;
