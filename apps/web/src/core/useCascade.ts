@@ -2,11 +2,22 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import init, { CascadeCore } from "../wasm/cascade_wasm.js";
 import wasmUrl from "../wasm/cascade_wasm_bg.wasm?url";
 import { WebAudioEngine } from "../audio/WebAudioEngine";
-import type { Command, Effect, Snapshot } from "./types";
+import type { Command, Effect, Snapshot, TimerKind } from "./types";
 
 const SETTINGS_STORAGE_KEY = "cascade.settings.v1";
+// Live session (play state + running timer/stopwatch) so a page reload picks
+// up where it left off. Separate from settings, which the Rust core owns.
+const SESSION_STORAGE_KEY = "cascade.session.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
 const TICK_INTERVAL_MS = 250;
+
+interface SessionState {
+  isPlaying: boolean;
+  timerKind: TimerKind;
+  totalMs: number;
+  elapsedMs: number;
+  savedAt: number;
+}
 
 interface UseCascadeResult {
   ready: boolean;
@@ -23,6 +34,10 @@ interface UseCascadeResult {
 export function useCascade(): UseCascadeResult {
   const coreRef = useRef<CascadeCore | null>(null);
   const audioRef = useRef<WebAudioEngine | null>(null);
+  // Session captured from localStorage at boot (before any dispatch can
+  // overwrite it), replayed once the core is ready.
+  const pendingRestoreRef = useRef<SessionState | null>(null);
+  const restoredRef = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -33,6 +48,16 @@ export function useCascade(): UseCascadeResult {
       try {
         await init({ module_or_path: wasmUrl });
         if (cancelled) return;
+
+        // Capture the live session now, before the persist effect can rewrite it.
+        try {
+          const sessionJson = localStorage.getItem(SESSION_STORAGE_KEY);
+          pendingRestoreRef.current = sessionJson
+            ? (JSON.parse(sessionJson) as SessionState)
+            : null;
+        } catch {
+          pendingRestoreRef.current = null;
+        }
 
         const savedJson = localStorage.getItem(SETTINGS_STORAGE_KEY);
         let core: CascadeCore;
@@ -176,6 +201,69 @@ export function useCascade(): UseCascadeResult {
       ? "playing"
       : "paused";
   }, [ready, snapshot?.isPlaying]);
+
+  // Restore the session (running timer/stopwatch + play state) once, after the
+  // core is ready. Runs exactly once; the saved blob was captured at boot.
+  useEffect(() => {
+    if (!ready || restoredRef.current) return;
+    restoredRef.current = true;
+    const r = pendingRestoreRef.current;
+    pendingRestoreRef.current = null;
+    if (!r) return;
+
+    // Catch the stopwatch/countdown up for the time the page was gone.
+    const offline = Math.max(0, Date.now() - (r.savedAt ?? Date.now()));
+    if (r.timerKind === "stopwatch") {
+      dispatchInternal({ type: "startStopwatch" });
+      dispatchInternal({ type: "tick", elapsedMs: r.elapsedMs + offline });
+    } else if (r.timerKind === "sleep" || r.timerKind === "pomodoro") {
+      const minutes = Math.max(1, Math.round(r.totalMs / 60000));
+      dispatchInternal({
+        type: r.timerKind === "sleep" ? "startSleepTimer" : "startPomodoro",
+        minutes,
+      });
+      dispatchInternal({ type: "tick", elapsedMs: r.elapsedMs + offline });
+    }
+    // Reconcile playback to what it was before the reload.
+    dispatchInternal({ type: r.isPlaying ? "play" : "pause" });
+  }, [ready, dispatchInternal]);
+
+  // Persist the live session on every change so a reload can resume it.
+  useEffect(() => {
+    if (!ready || !snapshot) return;
+    const t = snapshot.timer;
+    const elapsedMs =
+      t.kind === "stopwatch"
+        ? t.remainingMs
+        : t.kind === "sleep" || t.kind === "pomodoro"
+          ? Math.max(0, t.totalMs - t.remainingMs)
+          : 0;
+    const session: SessionState = {
+      isPlaying: snapshot.isPlaying,
+      timerKind: t.kind,
+      totalMs: t.totalMs,
+      elapsedMs,
+      savedAt: Date.now(),
+    };
+    try {
+      localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+    } catch {
+      // Storage full / unavailable — non-fatal.
+    }
+  }, [ready, snapshot]);
+
+  // Autoplay policy can leave a restored "playing" session suspended until the
+  // user interacts. Resume the audio context on the first gesture.
+  useEffect(() => {
+    if (!ready) return;
+    const resume = () => void audioRef.current?.resumeContext();
+    window.addEventListener("pointerdown", resume, { once: true });
+    window.addEventListener("keydown", resume, { once: true });
+    return () => {
+      window.removeEventListener("pointerdown", resume);
+      window.removeEventListener("keydown", resume);
+    };
+  }, [ready]);
 
   return { ready, snapshot, loadError, dispatch };
 }
