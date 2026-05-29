@@ -12,6 +12,7 @@ export type Command =
   | { type: "toggleMute" }
   | { type: "startSleepTimer"; minutes: number }
   | { type: "startPomodoro"; minutes: number }
+  | { type: "startStopwatch" }
   | { type: "cancelTimer" }
   | { type: "tick"; elapsedMs: number }
   | { type: "platformPlaybackStarted" }
@@ -24,7 +25,12 @@ export type Effect =
   | { type: "setPlatformVolume"; volumePercent: number }
   | { type: "persistSettings"; json: string };
 
-export type TimerKind = "off" | "sleep" | "pomodoro" | "justCompleted";
+export type TimerKind =
+  | "off"
+  | "sleep"
+  | "pomodoro"
+  | "stopwatch"
+  | "justCompleted";
 
 export interface TimerSnapshot {
   kind: TimerKind;
