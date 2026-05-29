@@ -116,5 +116,3 @@ cd ../../apps/web && npm install && npm run dev
   [watchOS](docs/watchos-architecture.md)
 - Runbooks: [macOS](docs/running-macos.md) · [iOS](docs/running-ios.md) ·
   [watchOS](docs/running-watchos.md)
-- [`docs/clave-tech-stack.md`](docs/clave-tech-stack.md) — the parent project
-  this kata rehearses

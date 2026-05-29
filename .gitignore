@@ -36,3 +36,6 @@ build/
 # Large source audio (WAV is the working master; OGG/MP3 are committed)
 assets/*.wav
 target-android/
+
+# Private: Clave game-design doc — kept locally, never tracked (game IP + personal refs)
+docs/clave-tech-stack.md
