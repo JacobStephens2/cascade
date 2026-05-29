@@ -39,7 +39,9 @@ public sealed class CoreBridge : IDisposable
     private static extern void CascadeFreeHandle(IntPtr handle);
 
     private IntPtr _handle;
-    private readonly Lock _lock = new();
+    // `System.Threading.Lock` is .NET 9+; this project targets net8.0, so use
+    // a plain object monitor lock.
+    private readonly object _lock = new();
 
     public CoreBridge(string? persistedSettingsJson)
     {
