@@ -25,7 +25,9 @@ class CascadeViewModel(
         // core never reads the system clock; it relies on these ticks.
         viewModelScope.launch {
             bridge.snapshot.collect { snap ->
-                val active = snap.timer.kind == TimerKind.SLEEP || snap.timer.kind == TimerKind.POMODORO
+                val active = snap.timer.kind == TimerKind.SLEEP ||
+                    snap.timer.kind == TimerKind.POMODORO ||
+                    snap.timer.kind == TimerKind.STOPWATCH
                 if (active && tickJob == null) startTicking()
                 if (!active && tickJob != null) stopTicking()
             }
@@ -37,6 +39,7 @@ class CascadeViewModel(
     fun toggleMute() = bridge.dispatch(Command.ToggleMute)
     fun startSleepTimer(minutes: Int) = bridge.dispatch(Command.StartSleepTimer(minutes))
     fun startPomodoro(minutes: Int) = bridge.dispatch(Command.StartPomodoro(minutes))
+    fun startStopwatch() = bridge.dispatch(Command.StartStopwatch)
     fun cancelTimer() = bridge.dispatch(Command.CancelTimer)
 
     private fun startTicking() {
