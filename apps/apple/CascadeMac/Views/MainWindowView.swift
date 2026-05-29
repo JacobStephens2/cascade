@@ -169,6 +169,14 @@ private struct TimerControls: View {
                 labelFor: { "\($0) min" },
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Stopwatch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .tracking(2)
+                Button("Start stopwatch") { store.dispatch(.startStopwatch) }
+                    .buttonStyle(.bordered)
+            }
             if showCustom {
                 VStack(alignment: .leading, spacing: 8) {
                     Picker("Mode", selection: $customMode) {

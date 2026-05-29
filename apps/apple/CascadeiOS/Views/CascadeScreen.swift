@@ -172,6 +172,14 @@ private struct TimerControls: View {
                 labelFor: { "\($0) min" },
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Stopwatch")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .tracking(2)
+                Button("Start stopwatch") { store.dispatch(.startStopwatch) }
+                    .buttonStyle(.bordered)
+            }
             customSection
             if store.snapshot.timer.kind != .off {
                 Button("Cancel timer") { store.dispatch(.cancelTimer) }

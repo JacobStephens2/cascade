@@ -12,6 +12,7 @@ enum Command: Codable {
     case toggleMute
     case startSleepTimer(minutes: Int)
     case startPomodoro(minutes: Int)
+    case startStopwatch
     case cancelTimer
     case tick(elapsedMs: UInt64)
     case platformPlaybackStarted
@@ -36,6 +37,7 @@ enum Command: Codable {
         case .startPomodoro(let minutes):
             try c.encode("startPomodoro", forKey: .type)
             try c.encode(minutes, forKey: .minutes)
+        case .startStopwatch: try c.encode("startStopwatch", forKey: .type)
         case .cancelTimer: try c.encode("cancelTimer", forKey: .type)
         case .tick(let elapsedMs):
             try c.encode("tick", forKey: .type)
@@ -60,6 +62,7 @@ enum Command: Codable {
         case "toggleMute": self = .toggleMute
         case "startSleepTimer": self = .startSleepTimer(minutes: try c.decode(Int.self, forKey: .minutes))
         case "startPomodoro": self = .startPomodoro(minutes: try c.decode(Int.self, forKey: .minutes))
+        case "startStopwatch": self = .startStopwatch
         case "cancelTimer": self = .cancelTimer
         case "tick": self = .tick(elapsedMs: try c.decode(UInt64.self, forKey: .elapsedMs))
         case "platformPlaybackStarted": self = .platformPlaybackStarted
@@ -98,7 +101,7 @@ enum Effect: Decodable {
 }
 
 enum TimerKind: String, Codable {
-    case off, sleep, pomodoro, justCompleted
+    case off, sleep, pomodoro, stopwatch, justCompleted
 }
 
 struct TimerSnapshot: Decodable, Equatable {
