@@ -25,6 +25,7 @@ sealed class Command {
     @Serializable @SerialName("pause") data object Pause : Command()
     @Serializable @SerialName("togglePlayback") data object TogglePlayback : Command()
     @Serializable @SerialName("setVolume") data class SetVolume(val percent: Int) : Command()
+    @Serializable @SerialName("toggleMute") data object ToggleMute : Command()
     @Serializable @SerialName("startSleepTimer") data class StartSleepTimer(val minutes: Int) : Command()
     @Serializable @SerialName("startPomodoro") data class StartPomodoro(val minutes: Int) : Command()
     @Serializable @SerialName("cancelTimer") data object CancelTimer : Command()
@@ -66,6 +67,7 @@ data class Snapshot(
     val subtitle: String,
     val isPlaying: Boolean,
     val volumePercent: Int,
+    val isMuted: Boolean,
     val primaryButtonLabel: String,
     val timer: TimerSnapshot,
     val errorMessage: String? = null,
