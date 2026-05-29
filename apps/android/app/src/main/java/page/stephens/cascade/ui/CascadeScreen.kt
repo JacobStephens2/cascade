@@ -87,6 +87,7 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     activeKind = snapshot.timer.kind,
                     onStartPomodoro = viewModel::startPomodoro,
                     onStartSleep = viewModel::startSleepTimer,
+                    onStartStopwatch = viewModel::startStopwatch,
                     onCancel = viewModel::cancelTimer,
                 )
                 Spacer(Modifier.height(12.dp))
@@ -226,6 +227,7 @@ private fun TimerControls(
     activeKind: TimerKind,
     onStartPomodoro: (Int) -> Unit,
     onStartSleep: (Int) -> Unit,
+    onStartStopwatch: () -> Unit,
     onCancel: () -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
@@ -257,6 +259,15 @@ private fun TimerControls(
                 )
             }
         }
+
+        Spacer(Modifier.height(16.dp))
+        Text("Stopwatch", style = MaterialTheme.typography.labelMedium)
+        Spacer(Modifier.height(8.dp))
+        FilterChip(
+            selected = activeKind == TimerKind.STOPWATCH,
+            onClick = onStartStopwatch,
+            label = { Text("Start stopwatch") },
+        )
 
         Spacer(Modifier.height(16.dp))
         CustomDurationSection(onStartPomodoro = onStartPomodoro, onStartSleep = onStartSleep)

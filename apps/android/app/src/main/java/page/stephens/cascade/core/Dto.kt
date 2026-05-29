@@ -28,6 +28,7 @@ sealed class Command {
     @Serializable @SerialName("toggleMute") data object ToggleMute : Command()
     @Serializable @SerialName("startSleepTimer") data class StartSleepTimer(val minutes: Int) : Command()
     @Serializable @SerialName("startPomodoro") data class StartPomodoro(val minutes: Int) : Command()
+    @Serializable @SerialName("startStopwatch") data object StartStopwatch : Command()
     @Serializable @SerialName("cancelTimer") data object CancelTimer : Command()
     @Serializable @SerialName("tick") data class Tick(val elapsedMs: Long) : Command()
     @Serializable @SerialName("platformPlaybackStarted") data object PlatformPlaybackStarted : Command()
@@ -49,6 +50,7 @@ enum class TimerKind {
     @SerialName("off") OFF,
     @SerialName("sleep") SLEEP,
     @SerialName("pomodoro") POMODORO,
+    @SerialName("stopwatch") STOPWATCH,
     @SerialName("justCompleted") JUST_COMPLETED,
 }
 
