@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useCascade } from "./core/useCascade";
 import { PlayButton } from "./components/PlayButton";
 import { VolumeSlider } from "./components/VolumeSlider";
@@ -9,6 +9,31 @@ import { WaterfallBackdrop } from "./components/WaterfallBackdrop";
 export function App() {
   const { ready, snapshot, loadError, dispatch } = useCascade();
   const [showCustomTimer, setShowCustomTimer] = useState(false);
+
+  // Space bar toggles play/pause anywhere — the canonical media-app gesture —
+  // except while typing in a field. We preventDefault so it doesn't also
+  // scroll the page or re-activate a focused button (which would double-toggle).
+  useEffect(() => {
+    if (!ready) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.code !== "Space" && e.key !== " ") return;
+      if (e.repeat) return;
+      const el = document.activeElement as HTMLElement | null;
+      const tag = el?.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        el?.isContentEditable
+      ) {
+        return;
+      }
+      e.preventDefault();
+      dispatch({ type: "togglePlayback" });
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [ready, dispatch]);
 
   if (loadError) {
     return (
