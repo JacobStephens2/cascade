@@ -12,6 +12,9 @@ pub enum TimerSnapshotKind {
     Off,
     Sleep,
     Pomodoro,
+    /// Count-up stopwatch. `remaining_label`/`remaining_ms` carry the elapsed
+    /// time, `total_ms` is 0, and `progress` is 0 (no end to progress toward).
+    Stopwatch,
     /// Timer just finished on the most recent tick. UIs can show a chime /
     /// toast before transitioning back to `Off` on the next snapshot.
     JustCompleted,
@@ -51,27 +54,40 @@ impl Snapshot {
                 remaining_label: match kind {
                     TimerKind::Sleep => "Sleep timer ended".to_string(),
                     TimerKind::Pomodoro => "Session complete".to_string(),
+                    // A stopwatch never expires, so this arm is unreachable in
+                    // practice; keep the match exhaustive.
+                    TimerKind::Stopwatch => String::new(),
                 },
                 remaining_ms: 0,
                 total_ms: 0,
                 progress: 1.0,
             },
+            (Some(t), None) if t.kind == TimerKind::Stopwatch => TimerSnapshot {
+                // Count-up: the time fields carry elapsed, with no total/progress.
+                kind: TimerSnapshotKind::Stopwatch,
+                remaining_label: format_remaining(t.elapsed_ms),
+                remaining_ms: t.elapsed_ms,
+                total_ms: 0,
+                progress: 0.0,
+            },
             (Some(t), None) => {
+                let remaining = t.remaining_ms();
                 let progress = if t.total_ms == 0 {
                     0.0
                 } else {
                     // Clamp: f32 division on million-ms durations can round a
                     // hair outside [0,1], and UI progress bars expect a clean
                     // fraction.
-                    (1.0 - (t.remaining_ms as f32 / t.total_ms as f32)).clamp(0.0, 1.0)
+                    (1.0 - (remaining as f32 / t.total_ms as f32)).clamp(0.0, 1.0)
                 };
                 TimerSnapshot {
                     kind: match t.kind {
                         TimerKind::Sleep => TimerSnapshotKind::Sleep,
                         TimerKind::Pomodoro => TimerSnapshotKind::Pomodoro,
+                        TimerKind::Stopwatch => unreachable!("handled above"),
                     },
-                    remaining_label: format_remaining(t.remaining_ms),
-                    remaining_ms: t.remaining_ms,
+                    remaining_label: format_remaining(remaining),
+                    remaining_ms: remaining,
                     total_ms: t.total_ms,
                     progress,
                 }

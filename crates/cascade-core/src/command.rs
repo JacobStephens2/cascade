@@ -28,7 +28,11 @@ pub enum Command {
     /// expires playback pauses; the UI can distinguish "session complete" from
     /// "sleep" via [`crate::TimerSnapshotKind`].
     StartPomodoro { minutes: u32 },
-    /// Cancel any running timer without touching playback.
+    /// Start a count-up stopwatch so the user can see how long they've been
+    /// listening. Replaces any running timer, never expires, and does not
+    /// change playback. Stop it with [`Command::CancelTimer`].
+    StartStopwatch,
+    /// Cancel any running timer (countdown or stopwatch) without touching playback.
     CancelTimer,
 
     /// Wall-clock tick from the platform. `elapsed_ms` is the delta since the

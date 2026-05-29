@@ -166,6 +166,10 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 push_persist(state, effects);
             }
         }
+        Command::StartStopwatch => {
+            // Count-up timer; replaces any countdown, leaves playback alone.
+            state.active_timer = Some(ActiveTimer::stopwatch());
+        }
         Command::CancelTimer => {
             state.active_timer = None;
         }
@@ -322,6 +326,29 @@ mod tests {
         let t = s.active_timer.as_ref().unwrap();
         assert_eq!(t.kind, TimerKind::Pomodoro);
         assert_eq!(t.total_ms, 30 * 60_000);
+    }
+
+    #[test]
+    fn stopwatch_counts_up_without_touching_playback() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        let effects = dispatch(&mut s, Command::StartStopwatch);
+        // Starting a stopwatch emits no playback effects and keeps playing.
+        assert!(effects.is_empty());
+        assert!(s.intent.is_playing());
+        let t = s.active_timer.as_ref().unwrap();
+        assert_eq!(t.kind, TimerKind::Stopwatch);
+
+        // Ticks accumulate elapsed; nothing pauses, ever.
+        dispatch(&mut s, Command::Tick { elapsed_ms: 65_000 });
+        let snap = crate::Snapshot::from_state(&s);
+        assert_eq!(snap.timer.kind, crate::TimerSnapshotKind::Stopwatch);
+        assert_eq!(snap.timer.remaining_label, "1:05");
+        assert!(s.intent.is_playing());
+
+        // Cancel stops it.
+        dispatch(&mut s, Command::CancelTimer);
+        assert!(s.active_timer.is_none());
     }
 
     #[test]

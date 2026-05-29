@@ -1,9 +1,10 @@
-//! Timer subsystem: sleep timer and pomodoro / focus sessions.
+//! Timer subsystem: sleep timer, pomodoro / focus sessions, and a stopwatch.
 //!
-//! Both are countdown timers driven by `Tick` events. A pomodoro is just a
-//! sleep timer with a different label so the UI can show "Focus session
-//! complete" vs. "Sleep". The platform never reads `SystemTime`; it computes
-//! a delta and hands it to the core.
+//! Sleep and pomodoro are countdowns; the stopwatch counts up with no end so
+//! the user can see how long they've been listening. All three are driven by
+//! `Tick` events — the platform never reads `SystemTime`; it computes a delta
+//! and hands it to the core. Internally every timer tracks `elapsed_ms`;
+//! countdowns derive their remaining time from `total_ms - elapsed_ms`.
 
 use serde::{Deserialize, Serialize};
 
@@ -12,43 +13,59 @@ use serde::{Deserialize, Serialize};
 pub enum TimerKind {
     Sleep,
     Pomodoro,
+    /// Count-up timer with no end. Never expires, never pauses playback.
+    Stopwatch,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ActiveTimer {
     pub kind: TimerKind,
+    /// Countdown length in ms. `0` means unbounded (a stopwatch).
     pub total_ms: u64,
-    pub remaining_ms: u64,
+    /// Wall-clock time elapsed since the timer started, accumulated from ticks.
+    pub elapsed_ms: u64,
 }
 
 impl ActiveTimer {
+    /// Start a countdown (sleep / pomodoro) of `minutes`.
     pub fn start(kind: TimerKind, minutes: u32) -> Self {
-        let total = (minutes as u64).saturating_mul(60_000);
         Self {
             kind,
-            total_ms: total,
-            remaining_ms: total,
+            total_ms: (minutes as u64).saturating_mul(60_000),
+            elapsed_ms: 0,
         }
     }
 
-    /// Advance by `elapsed_ms`. Returns `true` if the timer just hit zero on
-    /// this tick.
+    /// Start an open-ended stopwatch.
+    pub fn stopwatch() -> Self {
+        Self {
+            kind: TimerKind::Stopwatch,
+            total_ms: 0,
+            elapsed_ms: 0,
+        }
+    }
+
+    /// True for sleep / pomodoro (bounded); false for the stopwatch.
+    pub fn is_countdown(&self) -> bool {
+        self.total_ms > 0
+    }
+
+    /// Remaining time for a countdown; `0` for a stopwatch (no end).
+    pub fn remaining_ms(&self) -> u64 {
+        self.total_ms.saturating_sub(self.elapsed_ms)
+    }
+
+    /// Advance by `elapsed_ms`. Returns `true` only when a *countdown* crosses
+    /// zero on this tick (the stopwatch never expires).
     pub fn tick(&mut self, elapsed_ms: u64) -> bool {
-        if self.remaining_ms == 0 {
-            return false;
-        }
-        if elapsed_ms >= self.remaining_ms {
-            self.remaining_ms = 0;
-            true
-        } else {
-            self.remaining_ms -= elapsed_ms;
-            false
-        }
+        let was_remaining = self.remaining_ms();
+        self.elapsed_ms = self.elapsed_ms.saturating_add(elapsed_ms);
+        self.is_countdown() && was_remaining > 0 && self.remaining_ms() == 0
     }
 
     pub fn is_expired(&self) -> bool {
-        self.remaining_ms == 0
+        self.is_countdown() && self.remaining_ms() == 0
     }
 }
 
@@ -74,13 +91,27 @@ mod tests {
     fn tick_counts_down_and_flags_expiry() {
         let mut t = ActiveTimer::start(TimerKind::Sleep, 1); // 60_000ms
         assert!(!t.tick(30_000));
-        assert_eq!(t.remaining_ms, 30_000);
+        assert_eq!(t.remaining_ms(), 30_000);
         assert!(!t.tick(29_999));
         assert!(t.tick(2)); // crosses zero
-        assert_eq!(t.remaining_ms, 0);
+        assert_eq!(t.remaining_ms(), 0);
         assert!(t.is_expired());
-        // Subsequent ticks are no-ops.
+        // Subsequent ticks never re-fire expiry.
         assert!(!t.tick(10_000));
+    }
+
+    #[test]
+    fn stopwatch_counts_up_and_never_expires() {
+        let mut t = ActiveTimer::stopwatch();
+        assert!(!t.is_countdown());
+        assert!(!t.tick(30_000));
+        assert_eq!(t.elapsed_ms, 30_000);
+        assert!(!t.tick(90_000));
+        assert_eq!(t.elapsed_ms, 120_000);
+        assert!(!t.is_expired());
+        // Even after an hour it just keeps counting.
+        assert!(!t.tick(3_600_000));
+        assert_eq!(t.elapsed_ms, 3_720_000);
     }
 
     #[test]
