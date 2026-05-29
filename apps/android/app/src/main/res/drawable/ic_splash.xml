@@ -1,11 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!-- Water-drop, sized for the adaptive-icon safe zone. The full 108dp canvas
+     gets masked to ~66dp by launchers, so all content stays within a radius
+     of ~30 around the center (54,54) to survive circle / squircle / rounded
+     masks without clipping. Shared by the launcher foreground and the
+     Android 12+ splash icon. -->
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
     android:width="108dp"
     android:height="108dp"
     android:viewportWidth="108"
     android:viewportHeight="108">
-    <!-- Water-drop silhouette -->
     <path
         android:fillColor="#7CC7D6"
-        android:pathData="M54 12 C 70 36 80 56 80 70 C 80 88 68 96 54 96 C 40 96 28 88 28 70 C 28 56 38 36 54 12 Z" />
+        android:pathData="M54 26 C 66 44 78 56 78 66 C 78 76 67 84 54 84 C 41 84 30 76 30 66 C 30 56 42 44 54 26 Z" />
+    <!-- Soft highlight so the drop reads as glossy rather than flat. -->
+    <path
+        android:fillColor="#FFFFFF"
+        android:fillAlpha="0.28"
+        android:pathData="M47 50 C 43 56 41 62 43 67 C 38 60 41 52 47 50 Z" />
 </vector>
