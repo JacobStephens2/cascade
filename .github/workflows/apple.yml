@@ -1,0 +1,97 @@
+name: Apple build
+
+# First real compile of the three Apple shells (CascadeMac / CascadeiOS /
+# CascadeWatch). They're written on a Linux host that has no Swift compiler,
+# so — like the Windows workflow — this is both the reproducible build and
+# the only way to surface Swift errors.
+#
+# Each scheme is built unsigned (compile test only): macOS natively, iOS for
+# the iOS Simulator, watchOS for the watchOS Simulator. All three are
+# attempted even if an earlier one fails, so a single run shows every error.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/apple/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/web/public/sounds/waterfall.ogg"
+      - ".github/workflows/apple.yml"
+  pull_request:
+    paths:
+      - "apps/apple/**"
+      - "crates/**"
+      - ".github/workflows/apple.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (Apple targets)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: >-
+            aarch64-apple-darwin,
+            x86_64-apple-darwin,
+            aarch64-apple-ios,
+            aarch64-apple-ios-sim,
+            x86_64-apple-ios
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Install tooling
+        run: brew install xcodegen ffmpeg
+
+      # Asset (OGG -> M4A) + Rust libs for every Apple triple + Swift bindings
+      # + xcodegen generate. Same script developers run locally.
+      - name: Build core + generate project
+        working-directory: apps/apple
+        run: ./scripts/build.sh
+
+      # Compile test only — no signing identity on the runner. We override the
+      # project's warnings-as-errors so the first run reports genuine *errors*
+      # rather than drowning in benign warnings; tighten later if desired.
+      - name: Build CascadeMac (macOS)
+        if: ${{ !cancelled() }}
+        working-directory: apps/apple
+        run: >-
+          xcodebuild
+          -project Cascade.xcodeproj
+          -scheme CascadeMac
+          -configuration Debug
+          -destination 'platform=macOS'
+          build
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=NO
+
+      - name: Build CascadeiOS (iOS Simulator)
+        if: ${{ !cancelled() }}
+        working-directory: apps/apple
+        run: >-
+          xcodebuild
+          -project Cascade.xcodeproj
+          -scheme CascadeiOS
+          -configuration Debug
+          -destination 'generic/platform=iOS Simulator'
+          build
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=NO
+
+      - name: Build CascadeWatch (watchOS Simulator)
+        if: ${{ !cancelled() }}
+        working-directory: apps/apple
+        run: >-
+          xcodebuild
+          -project Cascade.xcodeproj
+          -scheme CascadeWatch
+          -configuration Debug
+          -destination 'generic/platform=watchOS Simulator'
+          build
+          CODE_SIGNING_ALLOWED=NO
+          SWIFT_TREAT_WARNINGS_AS_ERRORS=NO
