@@ -78,7 +78,9 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                 Spacer(Modifier.height(32.dp))
                 VolumeSlider(
                     percent = snapshot.volumePercent,
+                    isMuted = snapshot.isMuted,
                     onChange = viewModel::setVolume,
+                    onToggleMute = viewModel::toggleMute,
                 )
                 Spacer(Modifier.height(24.dp))
                 TimerControls(
@@ -180,15 +182,31 @@ private fun PlayButton(isPlaying: Boolean, label: String, onClick: () -> Unit) {
 }
 
 @Composable
-private fun VolumeSlider(percent: Int, onChange: (Int) -> Unit) {
+private fun VolumeSlider(
+    percent: Int,
+    isMuted: Boolean,
+    onChange: (Int) -> Unit,
+    onToggleMute: () -> Unit,
+) {
     Column(modifier = Modifier.fillMaxWidth()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
-            Text("Volume", style = MaterialTheme.typography.labelLarge)
-            Text("$percent%", style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TextButton(
+                    onClick = onToggleMute,
+                    contentPadding = PaddingValues(horizontal = 8.dp),
+                ) {
+                    Text(if (isMuted) "🔇" else "🔊")
+                }
+                Text("Volume", style = MaterialTheme.typography.labelLarge)
+            }
+            Text(
+                if (isMuted) "Muted" else "$percent%",
+                style = MaterialTheme.typography.labelLarge,
+            )
         }
         Slider(
             value = percent.toFloat(),
