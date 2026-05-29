@@ -9,6 +9,7 @@ export type Command =
   | { type: "pause" }
   | { type: "togglePlayback" }
   | { type: "setVolume"; percent: number }
+  | { type: "toggleMute" }
   | { type: "startSleepTimer"; minutes: number }
   | { type: "startPomodoro"; minutes: number }
   | { type: "cancelTimer" }
@@ -38,6 +39,7 @@ export interface Snapshot {
   subtitle: string;
   isPlaying: boolean;
   volumePercent: number;
+  isMuted: boolean;
   primaryButtonLabel: string;
   timer: TimerSnapshot;
   errorMessage: string | null;

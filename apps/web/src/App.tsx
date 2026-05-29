@@ -51,7 +51,9 @@ export function App() {
 
         <VolumeSlider
           percent={snapshot.volumePercent}
+          isMuted={snapshot.isMuted}
           onChange={(percent) => dispatch({ type: "setVolume", percent })}
+          onToggleMute={() => dispatch({ type: "toggleMute" })}
         />
 
         <TimerControls
