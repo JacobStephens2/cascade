@@ -12,6 +12,8 @@ enum WatchSnapshotMapper {
         case .sleep, .pomodoro:
             let verb = snapshot.isMuted ? "Muted" : (snapshot.isPlaying ? "Playing" : "Paused")
             statusLine = "\(verb) · \(snapshot.timer.remainingLabel) left"
+        case .stopwatch:
+            statusLine = "Stopwatch · \(snapshot.timer.remainingLabel)"
         case .justCompleted:
             statusLine = snapshot.timer.remainingLabel
         }

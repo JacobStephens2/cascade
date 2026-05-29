@@ -96,6 +96,8 @@ struct MenuBarRoot: View {
             return snapshot.isPlaying ? "Playing · no timer" : "Paused"
         case .sleep, .pomodoro:
             return "\(snapshot.isPlaying ? "Playing" : "Paused") · \(snapshot.timer.remainingLabel) left"
+        case .stopwatch:
+            return "Stopwatch · \(snapshot.timer.remainingLabel)"
         case .justCompleted:
             return snapshot.timer.remainingLabel
         }
