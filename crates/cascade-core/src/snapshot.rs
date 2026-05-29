@@ -58,7 +58,10 @@ impl Snapshot {
                 let progress = if t.total_ms == 0 {
                     0.0
                 } else {
-                    1.0 - (t.remaining_ms as f32 / t.total_ms as f32)
+                    // Clamp: f32 division on million-ms durations can round a
+                    // hair outside [0,1], and UI progress bars expect a clean
+                    // fraction.
+                    (1.0 - (t.remaining_ms as f32 / t.total_ms as f32)).clamp(0.0, 1.0)
                 };
                 TimerSnapshot {
                     kind: match t.kind {
