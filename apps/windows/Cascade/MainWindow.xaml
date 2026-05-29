@@ -18,6 +18,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -112,8 +113,14 @@
             </StackPanel>
         </StackPanel>
 
-        <!-- Custom duration -->
+        <!-- Stopwatch -->
         <StackPanel Grid.Row="6" Spacing="8">
+            <TextBlock Text="STOPWATCH" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            <Button Content="Start stopwatch" Command="{x:Bind ViewModel.StartStopwatchCommand}" />
+        </StackPanel>
+
+        <!-- Custom duration -->
+        <StackPanel Grid.Row="7" Spacing="8">
             <TextBlock Text="CUSTOM" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
             <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
                 <RadioButton x:Name="CustomFocusRadio" Content="Focus" GroupName="CustomMode" IsChecked="True" />
@@ -131,7 +138,7 @@
 
         <!-- Error -->
         <InfoBar
-            Grid.Row="7"
+            Grid.Row="8"
             VerticalAlignment="Bottom"
             IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
