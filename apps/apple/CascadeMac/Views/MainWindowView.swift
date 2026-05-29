@@ -201,7 +201,7 @@ private struct TimerControls: View {
     private func section(
         title: String,
         presets: [Int],
-        labelFor: (Int) -> String,
+        labelFor: @escaping (Int) -> String,
         action: @escaping (Int) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
