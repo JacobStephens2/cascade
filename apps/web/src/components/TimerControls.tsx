@@ -7,6 +7,7 @@ interface TimerControlsProps {
   onToggleCustom: () => void;
   onStartPomodoro: (minutes: number) => void;
   onStartSleep: (minutes: number) => void;
+  onStartStopwatch: () => void;
   onCancel: () => void;
 }
 
@@ -28,12 +29,16 @@ export function TimerControls({
   onToggleCustom,
   onStartPomodoro,
   onStartSleep,
+  onStartStopwatch,
   onCancel,
 }: TimerControlsProps) {
   const [customMinutes, setCustomMinutes] = useState("45");
   const [customMode, setCustomMode] = useState<"focus" | "sleep">("focus");
 
-  const timerRunning = activeKind === "sleep" || activeKind === "pomodoro";
+  const timerRunning =
+    activeKind === "sleep" ||
+    activeKind === "pomodoro" ||
+    activeKind === "stopwatch";
 
   // Collapse the custom panel automatically when a timer is running.
   useEffect(() => {
@@ -87,6 +92,19 @@ export function TimerControls({
               {p.label}
             </button>
           ))}
+        </div>
+      </div>
+
+      <div className="timer-controls__section">
+        <h2 className="timer-controls__heading">Stopwatch</h2>
+        <div className="timer-controls__row">
+          <button
+            type="button"
+            className="chip chip--ghost"
+            onClick={onStartStopwatch}
+          >
+            Start stopwatch
+          </button>
         </div>
       </div>
 

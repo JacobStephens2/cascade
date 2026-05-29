@@ -23,6 +23,16 @@ export function TimerReadout({ snapshot }: TimerReadoutProps) {
     );
   }
 
+  if (kind === "stopwatch") {
+    // Count-up: show elapsed time, no progress bar (there's no end).
+    return (
+      <div className="timer-readout timer-readout--stopwatch">
+        <span className="timer-readout__kind">Stopwatch</span>
+        <span className="timer-readout__time">{remainingLabel}</span>
+      </div>
+    );
+  }
+
   const label = kind === "pomodoro" ? "Focus session" : "Sleep timer";
   const pct = Math.round(progress * 100);
 

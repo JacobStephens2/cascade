@@ -68,6 +68,10 @@ export function App() {
             setShowCustomTimer(false);
             dispatch({ type: "startSleepTimer", minutes });
           }}
+          onStartStopwatch={() => {
+            setShowCustomTimer(false);
+            dispatch({ type: "startStopwatch" });
+          }}
           onCancel={() => dispatch({ type: "cancelTimer" })}
         />
 

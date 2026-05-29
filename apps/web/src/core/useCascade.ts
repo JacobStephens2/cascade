@@ -125,7 +125,9 @@ export function useCascade(): UseCascadeResult {
   useEffect(() => {
     if (!ready) return;
     const isTimerActive =
-      snapshot?.timer.kind === "sleep" || snapshot?.timer.kind === "pomodoro";
+      snapshot?.timer.kind === "sleep" ||
+      snapshot?.timer.kind === "pomodoro" ||
+      snapshot?.timer.kind === "stopwatch";
     if (!isTimerActive) return;
 
     let last = performance.now();
