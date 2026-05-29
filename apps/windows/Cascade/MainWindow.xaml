@@ -64,7 +64,16 @@
                 <ColumnDefinition Width="*" />
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
-            <FontIcon Grid.Column="0" Glyph="&#xE767;" VerticalAlignment="Center" />
+            <Button
+                Grid.Column="0"
+                Command="{x:Bind ViewModel.ToggleMuteCommand}"
+                VerticalAlignment="Center"
+                Padding="8"
+                Background="Transparent"
+                BorderThickness="0"
+                ToolTipService.ToolTip="Mute (keeps the timer running)">
+                <FontIcon Glyph="{x:Bind local:Converters.MuteGlyph(ViewModel.Snapshot.IsMuted), Mode=OneWay}" />
+            </Button>
             <Slider
                 Grid.Column="1"
                 Value="{x:Bind ViewModel.Snapshot.VolumePercent, Mode=OneWay}"
@@ -74,7 +83,7 @@
                 Header="Volume" />
             <TextBlock
                 Grid.Column="2"
-                Text="{x:Bind local:Converters.PercentLabel(ViewModel.Snapshot.VolumePercent), Mode=OneWay}"
+                Text="{x:Bind local:Converters.VolumeReadout(ViewModel.Snapshot.VolumePercent, ViewModel.Snapshot.IsMuted), Mode=OneWay}"
                 VerticalAlignment="Center"
                 FontFamily="Consolas" />
         </Grid>
