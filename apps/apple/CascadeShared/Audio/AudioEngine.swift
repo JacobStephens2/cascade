@@ -27,6 +27,7 @@ final class AudioEngine {
     func start(volumePercent: Int) {
         do {
             try loadAssetIfNeeded()
+            configureSessionForPlayback()
             if !engine.isRunning {
                 engine.prepare()
                 try engine.start()
@@ -115,5 +116,18 @@ final class AudioEngine {
     private func perceptualVolume(_ percent: Int) -> Float {
         let clamped = Float(min(max(percent, 0), 100)) / 100.0
         return clamped * clamped
+    }
+
+    /// iOS requires us to opt into background-capable audio playback through
+    /// `AVAudioSession.playback`; macOS has no equivalent session concept.
+    /// Called every `start()` because route changes / interruptions can quietly
+    /// deactivate the session and there's no harm in re-asserting it.
+    private func configureSessionForPlayback() {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .default,
+                                 options: [.allowAirPlay, .allowBluetoothA2DP])
+        try? session.setActive(true)
+        #endif
     }
 }

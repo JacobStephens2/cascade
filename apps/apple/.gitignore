@@ -5,9 +5,8 @@ Cascade.xcodeproj/
 build/
 
 # The converted audio is regenerated from apps/web/public/sounds/waterfall.ogg
-CascadeMac/Resources/waterfall.m4a
-CascadeMac/Resources/waterfall.caf
-CascadeMac/Resources/waterfall.wav
+CascadeMac/Resources/waterfall.*
+CascadeiOS/Resources/waterfall.*
 
 # Xcode/derived-data crumbs
 *.xcuserstate
