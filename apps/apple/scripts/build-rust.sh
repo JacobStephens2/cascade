@@ -83,4 +83,10 @@ test -f "$GEN_DIR/cascade_uniffi.swift"        || { echo "missing Swift binding"
 test -f "$GEN_DIR/cascade_uniffiFFI.h"         || { echo "missing C header"; exit 1; }
 test -f "$GEN_DIR/cascade_uniffiFFI.modulemap" || { echo "missing modulemap"; exit 1; }
 
+# Swift's `import cascade_uniffiFFI` is resolved by Clang implicit-module
+# discovery, which only looks for a map literally named `module.modulemap`
+# on the -I path (SWIFT_INCLUDE_PATHS). uniffi names it
+# `cascade_uniffiFFI.modulemap`, so mirror it under the discoverable name.
+cp -f "$GEN_DIR/cascade_uniffiFFI.modulemap" "$GEN_DIR/module.modulemap"
+
 echo "✓ Done."
