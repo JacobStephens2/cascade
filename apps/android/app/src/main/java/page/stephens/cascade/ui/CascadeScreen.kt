@@ -17,16 +17,20 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AssistChipDefaults
+import androidx.compose.material3.Button
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -235,11 +239,67 @@ private fun TimerControls(
                 )
             }
         }
+
+        Spacer(Modifier.height(16.dp))
+        CustomDurationSection(onStartPomodoro = onStartPomodoro, onStartSleep = onStartSleep)
+
         if (activeKind != TimerKind.OFF) {
             Spacer(Modifier.height(12.dp))
             TextButton(onClick = onCancel) {
                 Text("Cancel timer")
             }
+        }
+    }
+}
+
+@Composable
+private fun CustomDurationSection(
+    onStartPomodoro: (Int) -> Unit,
+    onStartSleep: (Int) -> Unit,
+) {
+    var minutesText by remember { mutableStateOf("45") }
+    // false = Focus session, true = Sleep timer.
+    var sleepMode by remember { mutableStateOf(false) }
+
+    Text("Custom", style = MaterialTheme.typography.labelMedium)
+    Spacer(Modifier.height(8.dp))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        FilterChip(
+            selected = !sleepMode,
+            onClick = { sleepMode = false },
+            label = { Text("Focus") },
+        )
+        FilterChip(
+            selected = sleepMode,
+            onClick = { sleepMode = true },
+            label = { Text("Sleep") },
+        )
+    }
+    Spacer(Modifier.height(8.dp))
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        OutlinedTextField(
+            value = minutesText,
+            onValueChange = { new -> minutesText = new.filter { it.isDigit() }.take(4) },
+            label = { Text("Minutes") },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            modifier = Modifier.size(width = 120.dp, height = 64.dp),
+        )
+        Button(
+            onClick = {
+                val m = minutesText.toIntOrNull() ?: return@Button
+                if (m in 1..1440) {
+                    if (sleepMode) onStartSleep(m) else onStartPomodoro(m)
+                }
+            },
+        ) {
+            Text(if (sleepMode) "Start sleep" else "Start focus")
         }
     }
 }
