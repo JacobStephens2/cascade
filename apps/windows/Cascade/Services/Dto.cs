@@ -25,6 +25,7 @@ public static class CascadeJson
 [JsonDerivedType(typeof(PauseCommand), "pause")]
 [JsonDerivedType(typeof(TogglePlaybackCommand), "togglePlayback")]
 [JsonDerivedType(typeof(SetVolumeCommand), "setVolume")]
+[JsonDerivedType(typeof(ToggleMuteCommand), "toggleMute")]
 [JsonDerivedType(typeof(StartSleepTimerCommand), "startSleepTimer")]
 [JsonDerivedType(typeof(StartPomodoroCommand), "startPomodoro")]
 [JsonDerivedType(typeof(CancelTimerCommand), "cancelTimer")]
@@ -38,6 +39,7 @@ public sealed record PlayCommand : CascadeCommand;
 public sealed record PauseCommand : CascadeCommand;
 public sealed record TogglePlaybackCommand : CascadeCommand;
 public sealed record SetVolumeCommand(int Percent) : CascadeCommand;
+public sealed record ToggleMuteCommand : CascadeCommand;
 public sealed record StartSleepTimerCommand(int Minutes) : CascadeCommand;
 public sealed record StartPomodoroCommand(int Minutes) : CascadeCommand;
 public sealed record CancelTimerCommand : CascadeCommand;
@@ -103,6 +105,7 @@ public sealed record CascadeSnapshot(
     string Subtitle,
     bool IsPlaying,
     int VolumePercent,
+    bool IsMuted,
     string PrimaryButtonLabel,
     TimerSnapshot Timer,
     string? ErrorMessage

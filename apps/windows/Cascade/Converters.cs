@@ -18,4 +18,10 @@ public static class Converters
     public static string PercentLabel(int percent) => $"{percent}%";
 
     public static bool HasText(string? text) => !string.IsNullOrEmpty(text);
+
+    /// Segoe MDL2 Assets glyph: Mute (E74F) when muted, Volume (E767) otherwise.
+    public static string MuteGlyph(bool muted) => muted ? "" : "";
+
+    public static string VolumeReadout(int percent, bool muted) =>
+        muted ? "Muted" : $"{percent}%";
 }
