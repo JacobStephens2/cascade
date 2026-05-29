@@ -100,8 +100,12 @@ final class AppStore {
 
         // Tick loop: run while a timer is active. We mirror the web app's
         // 250ms cadence so the countdown reads smoothly.
-        let timerActive = update.snapshot.timer.kind == .sleep || update.snapshot.timer.kind == .pomodoro
-        let wasActive = prev.timer.kind == .sleep || prev.timer.kind == .pomodoro
+        let timerActive = update.snapshot.timer.kind == .sleep
+            || update.snapshot.timer.kind == .pomodoro
+            || update.snapshot.timer.kind == .stopwatch
+        let wasActive = prev.timer.kind == .sleep
+            || prev.timer.kind == .pomodoro
+            || prev.timer.kind == .stopwatch
         if timerActive && !wasActive { startTicking() }
         if !timerActive && wasActive { stopTicking() }
 
