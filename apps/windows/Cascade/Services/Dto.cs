@@ -28,6 +28,7 @@ public static class CascadeJson
 [JsonDerivedType(typeof(ToggleMuteCommand), "toggleMute")]
 [JsonDerivedType(typeof(StartSleepTimerCommand), "startSleepTimer")]
 [JsonDerivedType(typeof(StartPomodoroCommand), "startPomodoro")]
+[JsonDerivedType(typeof(StartStopwatchCommand), "startStopwatch")]
 [JsonDerivedType(typeof(CancelTimerCommand), "cancelTimer")]
 [JsonDerivedType(typeof(TickCommand), "tick")]
 [JsonDerivedType(typeof(PlatformPlaybackStartedCommand), "platformPlaybackStarted")]
@@ -42,6 +43,7 @@ public sealed record SetVolumeCommand(int Percent) : CascadeCommand;
 public sealed record ToggleMuteCommand : CascadeCommand;
 public sealed record StartSleepTimerCommand(int Minutes) : CascadeCommand;
 public sealed record StartPomodoroCommand(int Minutes) : CascadeCommand;
+public sealed record StartStopwatchCommand : CascadeCommand;
 public sealed record CancelTimerCommand : CascadeCommand;
 public sealed record TickCommand(ulong ElapsedMs) : CascadeCommand;
 public sealed record PlatformPlaybackStartedCommand : CascadeCommand;
@@ -65,7 +67,7 @@ public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 // ---------- Snapshot ----------
 
 [JsonConverter(typeof(TimerKindConverter))]
-public enum TimerKind { Off, Sleep, Pomodoro, JustCompleted }
+public enum TimerKind { Off, Sleep, Pomodoro, Stopwatch, JustCompleted }
 
 internal sealed class TimerKindConverter : System.Text.Json.Serialization.JsonConverter<TimerKind>
 {
@@ -76,6 +78,7 @@ internal sealed class TimerKindConverter : System.Text.Json.Serialization.JsonCo
             "off" => TimerKind.Off,
             "sleep" => TimerKind.Sleep,
             "pomodoro" => TimerKind.Pomodoro,
+            "stopwatch" => TimerKind.Stopwatch,
             "justCompleted" => TimerKind.JustCompleted,
             var other => throw new System.Text.Json.JsonException($"unknown TimerKind '{other}'"),
         };
@@ -87,6 +90,7 @@ internal sealed class TimerKindConverter : System.Text.Json.Serialization.JsonCo
             TimerKind.Off => "off",
             TimerKind.Sleep => "sleep",
             TimerKind.Pomodoro => "pomodoro",
+            TimerKind.Stopwatch => "stopwatch",
             TimerKind.JustCompleted => "justCompleted",
             _ => "off",
         });

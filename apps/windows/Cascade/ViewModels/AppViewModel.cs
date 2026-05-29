@@ -98,8 +98,8 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
         // Drive the tick loop only when a timer is running.
         var nowTimer = update.Snapshot.Timer.Kind;
-        var nowActive = nowTimer == TimerKind.Sleep || nowTimer == TimerKind.Pomodoro;
-        var wasActive = prevTimer == TimerKind.Sleep || prevTimer == TimerKind.Pomodoro;
+        var nowActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
+        var wasActive = prevTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
         if (nowActive && !wasActive)
             _tick.Start(elapsedMs => Send(new TickCommand(elapsedMs)));
         if (!nowActive && wasActive)
@@ -130,6 +130,9 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void StartSleepSixty() => Send(new StartSleepTimerCommand(60));
+
+    [RelayCommand]
+    private void StartStopwatch() => Send(new StartStopwatchCommand());
 
     [RelayCommand]
     private void CancelTimer() => Send(new CancelTimerCommand());

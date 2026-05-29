@@ -11,7 +11,7 @@ namespace Cascade;
 public static class Converters
 {
     public static Visibility TimerActiveVisibility(TimerKind kind) =>
-        kind == TimerKind.Sleep || kind == TimerKind.Pomodoro
+        kind is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch
             ? Visibility.Visible
             : Visibility.Collapsed;
 
