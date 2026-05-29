@@ -12,7 +12,6 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
-    <PublishProfile>win-$(Platform).pubxml</PublishProfile>
     <!-- Set this to your unique app identifier when you turn on signing. -->
     <DefaultLanguage>en-US</DefaultLanguage>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>
