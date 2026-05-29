@@ -1,5 +1,11 @@
 # Architecture Brief 
 
+## Prompt
+
+I want to make an Android app that plays this 13 minute mp3 of waterfalls on loop as white noise to cover. I want to use it as background noise to work. Right now I'm using the local files section of Spotify, but sometimes that doesn't load. I also want to have a web app version of the app. Maybe we could even have a headless core architecture, where there is a Rust core and then native versions of the app, such as a web native version, and an Android native version, but the Rust core keeps them all unified. I sort of want to do this as a way to test out this architecture I'm planning for the Clave app I'm working on. I attached the tech stack description doc for that game which goes into this.
+
+Describe a good architecture for this simple app which lets me test out the design I'm planning for Clave.
+
 ## My Decisions
 
 This should be an app I can use daily. I've logged thousands of hours listening to this mp3 file over the past several years, and I want clean ways to listen to it.
@@ -21,12 +27,6 @@ Build a tiny repo that mirrors Clave’s shape and boundary rules:
 - waterfall-android (Compose): Media3 ExoPlayer hosted in a MediaSessionService for background playback + system controls.
 
 ## Perplexity Model Council Synthesis on Architecture
-
-### Prompt
-
-I want to make an Android app that plays this 13 minute mp3 of waterfalls on loop as white noise to cover. I want to use it as background noise to work. Right now I'm using the local files section of Spotify, but sometimes that doesn't load. I also want to have a web app version of the app. Maybe we could even have a headless core architecture, where there is a Rust core and then native versions of the app, such as a web native version, and an Android native version, but the Rust core keeps them all unified. I sort of want to do this as a way to test out this architecture I'm planning for the Clave app I'm working on. I attached the tech stack description doc for that game which goes into this.
-
-Describe a good architecture for this simple app which lets me test out the design I'm planning for Clave.
 
 ### 1. Where Models Agree
 
