@@ -1,3 +1,4 @@
+using System;
 using Cascade.Services;
 using Cascade.ViewModels;
 using Microsoft.UI.Dispatching;
@@ -29,5 +30,15 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.SetVolumeCommand.Execute(e.NewValue);
         }
+    }
+
+    private void OnStartCustom(object sender, RoutedEventArgs e)
+    {
+        // NumberBox.Value is NaN when the field is empty / invalid.
+        var raw = CustomMinutes.Value;
+        if (double.IsNaN(raw)) return;
+        var minutes = (int)Math.Round(raw);
+        if (minutes < 1 || minutes > 1440) return;
+        ViewModel.StartCustom(minutes, sleep: CustomSleepRadio.IsChecked == true);
     }
 }

@@ -17,6 +17,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -102,9 +103,26 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Custom duration -->
+        <StackPanel Grid.Row="6" Spacing="8">
+            <TextBlock Text="CUSTOM" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                <RadioButton x:Name="CustomFocusRadio" Content="Focus" GroupName="CustomMode" IsChecked="True" />
+                <RadioButton x:Name="CustomSleepRadio" Content="Sleep" GroupName="CustomMode" />
+                <NumberBox
+                    x:Name="CustomMinutes"
+                    Value="45"
+                    Minimum="1"
+                    Maximum="1440"
+                    SpinButtonPlacementMode="Inline"
+                    Width="140" />
+                <Button Content="Start" Click="OnStartCustom" />
+            </StackPanel>
+        </StackPanel>
+
         <!-- Error -->
         <InfoBar
-            Grid.Row="6"
+            Grid.Row="7"
             VerticalAlignment="Bottom"
             IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
