@@ -1,0 +1,110 @@
+name: Windows build
+
+# Builds the WinUI 3 / C# shell + the Rust core DLL on a Windows runner.
+# WinUI 3 has no cross-compile path, so this is the only way to compile the
+# Windows target without a local Windows machine — and it doubles as the
+# first real compile test for that target.
+#
+# Default build is x64 only (covers ~all consumer Windows). ARM64 is wired
+# as a commented matrix entry; enable it if you want arm64 artifacts.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "apps/windows/**"
+      - "crates/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "apps/web/public/sounds/waterfall.ogg"
+      - ".github/workflows/windows.yml"
+  pull_request:
+    paths:
+      - "apps/windows/**"
+      - "crates/**"
+      - ".github/workflows/windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: x64
+            rust_target: x86_64-pc-windows-msvc
+            native_dir: x64
+          # ARM64 is opt-in. The windows-latest image ships the MSVC ARM64
+          # toolchain, but keep the default green by leaving it commented.
+          # - platform: arm64
+          #   rust_target: aarch64-pc-windows-msvc
+          #   native_dir: arm64
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (${{ matrix.rust_target }})
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+
+      - name: Build cascade-uniffi DLL
+        run: cargo build --release --target ${{ matrix.rust_target }} -p cascade-uniffi
+
+      - name: Stage native DLL
+        shell: pwsh
+        run: |
+          $dll = "target/${{ matrix.rust_target }}/release/cascade_uniffi.dll"
+          if (-not (Test-Path $dll)) { throw "DLL not produced: $dll" }
+          $dest = "apps/windows/Cascade/Native/${{ matrix.native_dir }}"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Force $dll (Join-Path $dest 'cascade_uniffi.dll')
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+
+      - name: Convert audio asset
+        shell: pwsh
+        working-directory: apps/windows
+        run: pwsh ./scripts/build-asset.ps1
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Restore
+        working-directory: apps/windows
+        run: dotnet restore Cascade/Cascade.csproj
+
+      # Compile test — this is the hard gate. If WinUI/XAML or the P/Invoke
+      # surface is wrong, it fails here.
+      - name: Build (compile test)
+        working-directory: apps/windows
+        run: dotnet build Cascade/Cascade.csproj -c Release -p:Platform=${{ matrix.platform }} --no-restore
+
+      # Distributable self-contained folder. Best-effort: WinUI 3 unpackaged
+      # publish occasionally needs full msbuild instead of `dotnet publish`;
+      # if this step is flaky we'll switch it, but the compile gate above
+      # still protects the build.
+      - name: Publish (self-contained folder)
+        working-directory: apps/windows
+        run: >
+          dotnet publish Cascade/Cascade.csproj
+          -c Release
+          -p:Platform=${{ matrix.platform }}
+          -r win-${{ matrix.platform }}
+          --self-contained
+          -o publish/${{ matrix.platform }}
+
+      - name: Upload artifact
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cascade-windows-${{ matrix.platform }}
+          path: apps/windows/publish/${{ matrix.platform }}
+          if-no-files-found: error
