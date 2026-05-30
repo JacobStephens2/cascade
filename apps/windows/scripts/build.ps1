@@ -3,15 +3,19 @@
 # `dotnet build`).
 #
 # Run from `apps/windows/`:
-#     pwsh ./scripts/build.ps1
+#     pwsh ./scripts/build.ps1      # PowerShell 7
+#     powershell ./scripts/build.ps1  # Windows PowerShell 5.1 also works
 
 $ErrorActionPreference = 'Stop'
 Set-Location $PSScriptRoot/..
 
-& pwsh ./scripts/build-asset.ps1
+# Run the sub-scripts in the current PowerShell host rather than shelling out
+# to `pwsh`, so the build works on stock Windows (Windows PowerShell 5.1)
+# without PowerShell 7 installed.
+& "$PSScriptRoot/build-asset.ps1"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
-& pwsh ./scripts/build-rust.ps1
+& "$PSScriptRoot/build-rust.ps1"
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host ""
