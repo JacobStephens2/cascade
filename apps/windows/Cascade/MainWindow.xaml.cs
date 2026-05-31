@@ -1,4 +1,5 @@
 using System;
+using System.IO;
 using Cascade.Services;
 using Cascade.ViewModels;
 using Microsoft.UI.Dispatching;
@@ -15,8 +16,23 @@ public sealed partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
+        SetWindowIcon();
         ViewModel = new AppViewModel(DispatcherQueue.GetForCurrentThread());
         Closed += (_, _) => ViewModel.Dispose();
+    }
+
+    /// <summary>
+    /// Set the title-bar / taskbar icon for this unpackaged window. The .exe
+    /// already embeds the icon via &lt;ApplicationIcon&gt; (Explorer/Alt-Tab),
+    /// but the live window needs it set explicitly through AppWindow.
+    /// </summary>
+    private void SetWindowIcon()
+    {
+        var iconPath = Path.Combine(AppContext.BaseDirectory, "Assets", "app.ico");
+        if (!File.Exists(iconPath)) return;
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        var windowId = Microsoft.UI.Win32Interop.GetWindowIdFromWindow(hwnd);
+        Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId).SetIcon(iconPath);
     }
 
     /// <summary>
