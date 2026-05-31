@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1a24" />
+    <title>Download Cascade</title>
+    <meta
+      name="description"
+      content="Download Cascade — a free waterfall white-noise player for focus, prayer, and sleep."
+    />
+    <style>
+      :root {
+        --bg: #050b10;
+        --bg-deep: #02060a;
+        --ink: #e6f1f6;
+        --ink-dim: #8aa3b0;
+        --ink-faint: #4f6b78;
+        --accent: #6ec9e2;
+        --accent-glow: rgba(110, 201, 226, 0.45);
+        --accent-soft: rgba(110, 201, 226, 0.12);
+        --paper: rgba(255, 255, 255, 0.04);
+        --paper-strong: rgba(255, 255, 255, 0.07);
+        --radius-lg: 28px;
+        --radius-md: 14px;
+        --font: ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Inter, "Helvetica Neue", Arial, sans-serif;
+        color-scheme: dark;
+      }
+      * { box-sizing: border-box; }
+      html, body { margin: 0; }
+      body {
+        min-height: 100vh;
+        background:
+          radial-gradient(ellipse at 50% 0%, rgba(110, 201, 226, 0.08), transparent 60%),
+          linear-gradient(180deg, var(--bg) 0%, var(--bg-deep) 100%);
+        color: var(--ink);
+        font-family: var(--font);
+        font-size: 16px;
+        line-height: 1.55;
+        -webkit-font-smoothing: antialiased;
+      }
+      .wrap {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: clamp(28px, 5vw, 56px) clamp(20px, 5vw, 40px) 64px;
+      }
+      header {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: clamp(32px, 6vh, 64px);
+      }
+      .mark {
+        font-size: 18px;
+        letter-spacing: 0.18em;
+        text-transform: uppercase;
+        font-weight: 600;
+        color: var(--accent);
+        text-shadow: 0 0 24px var(--accent-glow);
+        text-decoration: none;
+      }
+      .mark:hover { color: #94dbef; }
+      .nav a {
+        color: var(--ink-dim);
+        text-decoration: none;
+        font-size: 13px;
+        letter-spacing: 0.04em;
+      }
+      .nav a:hover { color: var(--ink); }
+      h1 {
+        font-size: clamp(30px, 7vw, 44px);
+        font-weight: 300;
+        letter-spacing: 0.01em;
+        margin: 0 0 12px;
+      }
+      .lede {
+        color: var(--ink-dim);
+        margin: 0 0 40px;
+        max-width: 52ch;
+      }
+      .card {
+        background: var(--paper);
+        border: 1px solid var(--paper-strong);
+        border-radius: var(--radius-lg);
+        padding: clamp(22px, 4vw, 32px);
+        margin-bottom: 22px;
+      }
+      .card__top {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 6px;
+      }
+      .card__glyph {
+        width: 44px;
+        height: 44px;
+        flex: none;
+        display: grid;
+        place-items: center;
+        border-radius: 12px;
+        background: var(--accent-soft);
+        color: var(--accent);
+      }
+      .card__glyph svg { width: 24px; height: 24px; fill: currentColor; }
+      .card__title { font-size: 19px; font-weight: 600; margin: 0; }
+      .card__meta {
+        font-size: 12px;
+        letter-spacing: 0.14em;
+        text-transform: uppercase;
+        color: var(--ink-faint);
+      }
+      .card p { color: var(--ink-dim); margin: 14px 0 0; }
+      .btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        margin-top: 20px;
+        background: var(--accent);
+        color: #03161e;
+        font-weight: 600;
+        font-size: 15px;
+        letter-spacing: 0.02em;
+        padding: 12px 22px;
+        border-radius: 999px;
+        text-decoration: none;
+        transition: background 0.16s ease, transform 0.16s ease;
+      }
+      .btn:hover { background: #94dbef; transform: translateY(-1px); }
+      .btn svg { width: 18px; height: 18px; fill: currentColor; }
+      .note {
+        margin-top: 18px;
+        font-size: 13px;
+        line-height: 1.5;
+        color: var(--ink-faint);
+        border-left: 2px solid var(--paper-strong);
+        padding-left: 14px;
+      }
+      .others {
+        margin-top: 36px;
+      }
+      .others h2 {
+        font-size: 11px;
+        letter-spacing: 0.22em;
+        text-transform: uppercase;
+        color: var(--ink-faint);
+        font-weight: 600;
+        margin: 0 0 14px;
+      }
+      .others ul { list-style: none; margin: 0; padding: 0; }
+      .others li {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        gap: 12px;
+        padding: 12px 0;
+        border-top: 1px solid var(--paper-strong);
+        color: var(--ink-dim);
+        font-size: 15px;
+      }
+      .others a { color: var(--accent); text-decoration: none; }
+      .others a:hover { text-decoration: underline; }
+      .others .status { font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+      footer {
+        margin-top: 56px;
+        padding-top: 22px;
+        border-top: 1px solid var(--paper-strong);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 18px;
+        font-size: 13px;
+        color: var(--ink-faint);
+      }
+      footer a { color: var(--ink-dim); text-decoration: none; }
+      footer a:hover { color: var(--ink); }
+    </style>
+  </head>
+  <body>
+    <div class="wrap">
+      <header>
+        <a class="mark" href="/">Cascade</a>
+        <nav class="nav"><a href="/">&larr; Open the app</a></nav>
+      </header>
+
+      <h1>Downloads</h1>
+      <p class="lede">
+        Cascade is a free waterfall white-noise player for focus, prayer, and
+        sleep. Use it right in your browser, or install the native Windows build
+        below.
+      </p>
+
+      <section class="card">
+        <div class="card__top">
+          <span class="card__glyph" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M3 5.5 10.2 4.5v7.0H3V5.5Zm0 13 7.2 1V12.5H3v6Zm8.4 1.2L21 21V12.5h-9.6v7.2Zm0-15.4V11.5H21V3l-9.6 1.3Z"/></svg>
+          </span>
+          <div>
+            <p class="card__title">Cascade for Windows</p>
+            <p class="card__meta">Windows 10 / 11 &middot; 64-bit &middot; v0.1.0</p>
+          </div>
+        </div>
+        <p>
+          A native WinUI&nbsp;3 build with System Media Transport Controls
+          (lock-screen and media-key support) and sleep-prevention during long
+          focus sessions.
+        </p>
+        <a class="btn" href="/downloads/Cascade-Setup-x64.exe" download>
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v10.6l3.3-3.3 1.4 1.4L12 16.4 7.3 11.7l1.4-1.4L12 13.6V3h0ZM5 19h14v2H5v-2Z"/></svg>
+          Download for Windows
+        </a>
+        <p class="note">
+          This build is not yet code-signed, so Windows SmartScreen may show a
+          warning the first time you run it &mdash; choose <strong>More info
+          &rarr; Run anyway</strong>. Code signing (via SignPath) is in progress.
+        </p>
+      </section>
+
+      <div class="others">
+        <h2>Other ways to use Cascade</h2>
+        <ul>
+          <li>
+            <span><a href="/">Web app</a> &mdash; runs in any modern browser, installable as a PWA</span>
+            <span class="status">Available</span>
+          </li>
+          <li>
+            <span>Android, macOS &amp; iOS &mdash; build from <a href="https://github.com/JacobStephens2/cascade">source on GitHub</a></span>
+            <span class="status">In progress</span>
+          </li>
+        </ul>
+      </div>
+
+      <footer>
+        <a href="/">Home</a>
+        <a href="/privacy">Privacy</a>
+        <a href="https://github.com/JacobStephens2/cascade">Source on GitHub</a>
+      </footer>
+    </div>
+  </body>
+</html>

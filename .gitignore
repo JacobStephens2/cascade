@@ -37,5 +37,10 @@ build/
 assets/*.wav
 target-android/
 
+# Release binaries dropped into the downloads page (hosted, not version-tracked)
+apps/web/public/downloads/*.exe
+apps/web/public/downloads/*.msix
+apps/web/public/downloads/*.zip
+
 # Private: Clave game-design doc — kept locally, never tracked (game IP + personal refs)
 docs/clave-tech-stack.md

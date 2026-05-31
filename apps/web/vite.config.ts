@@ -44,6 +44,10 @@ export default defineConfig({
         // offline. Bump the max file size accordingly.
         maximumFileSizeToCacheInBytes: 20 * 1024 * 1024,
         globPatterns: ["**/*.{js,css,html,wasm,svg,png,ico,ogg}"],
+        // /downloads and /privacy are standalone static pages, not SPA routes.
+        // Keep the navigation fallback from serving the app shell for them so
+        // repeat (service-worker) visitors get the real pages, not the player.
+        navigateFallbackDenylist: [/^\/downloads/, /^\/privacy/],
       },
     }),
   ],
