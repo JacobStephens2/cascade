@@ -1,4 +1,6 @@
 using System;
+using System.Diagnostics;
+using System.IO;
 using Windows.Media.Core;
 using Windows.Media.Playback;
 
@@ -27,11 +29,15 @@ public sealed class AudioEngine : IDisposable
     {
         if (_loaded) return;
 
-        // ms-appx scheme resolves to the app package's install directory in
-        // packaged builds; in unpackaged builds, MediaSource.CreateFromUri
-        // also accepts ms-appx as long as the file is alongside the .exe.
-        var uri = new Uri("ms-appx:///Assets/waterfall.mp3");
-        var item = new MediaPlaybackItem(MediaSource.CreateFromUri(uri));
+        // This app ships unpackaged (WindowsPackageType=None), so the
+        // ms-appx:/// scheme has no package identity to resolve against and
+        // MediaPlayer silently fails to open the asset. Load it by its real
+        // path next to the executable instead. AppContext.BaseDirectory is the
+        // install directory in both packaged and unpackaged builds, so this
+        // works everywhere.
+        var assetPath = Path.Combine(AppContext.BaseDirectory, "Assets", "waterfall.mp3");
+        _player.MediaFailed += OnMediaFailed;
+        var item = new MediaPlaybackItem(MediaSource.CreateFromUri(new Uri(assetPath)));
         _list = new MediaPlaybackList { AutoRepeatEnabled = true };
         _list.Items.Add(item);
         _player.Source = _list;
@@ -39,6 +45,9 @@ public sealed class AudioEngine : IDisposable
         _player.IsLoopingEnabled = false; // MediaPlaybackList handles it
         _loaded = true;
     }
+
+    private static void OnMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args) =>
+        Debug.WriteLine($"[Cascade] MediaFailed: {args.Error} - {args.ErrorMessage}");
 
     public void Start(int volumePercent)
     {
