@@ -63,6 +63,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
         CODE_SIGN_ENTITLEMENTS: CascadeMac/Cascade.entitlements
         ENABLE_HARDENED_RUNTIME: YES
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
         OTHER_LDFLAGS: "$(inherited) -L$(SRCROOT)/build/rust/macos -lcascade_uniffi"
         SWIFT_INCLUDE_PATHS: "$(SRCROOT)/CascadeShared/Generated"
@@ -109,6 +110,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
         CODE_SIGN_ENTITLEMENTS: CascadeiOS/Cascade.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "1,2"          # iPhone + iPad
         # Per-SDK lookup so the same xcodeproj builds for both on-device and
         # the simulator (which on Apple Silicon is an arm64 simulator slice).
@@ -159,6 +161,7 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade.watchkitapp
         CODE_SIGN_ENTITLEMENTS: CascadeWatch/Cascade.entitlements
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "4"            # watchOS
         WATCHOS_DEPLOYMENT_TARGET: "10.0"
         # The watch is paired to the iPhone app via shared bundle ID prefix +
