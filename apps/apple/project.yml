@@ -44,8 +44,20 @@ targets:
         optional: true
     info:
       path: CascadeMac/Info.plist
+      properties:
+        CFBundleDisplayName: Cascade
+        NSHighResolutionCapable: true
+        # Required so MPNowPlayingInfoCenter shows up in Control Center.
+        MPNowPlayingInfoPropertyMediaType: 1
+        NSHumanReadableCopyright: "© 2026 Jacob Stephens"
     entitlements:
       path: CascadeMac/Cascade.entitlements
+      properties:
+        # App Sandbox: audio + Application Support writes + IOKit power
+        # assertions + MediaPlayer Now Playing all work under sandbox.
+        com.apple.security.app-sandbox: true
+        # Explicit: this app never reaches the network.
+        com.apple.security.network.client: false
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
@@ -71,6 +83,26 @@ targets:
         optional: true
     info:
       path: CascadeiOS/Info.plist
+      properties:
+        CFBundleDisplayName: Cascade
+        UIRequiresFullScreen: false
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+          - UIInterfaceOrientationPortraitUpsideDown
+        # Keep the audio engine running when the screen locks or the app is
+        # backgrounded — non-negotiable for an 8-hour focus session player.
+        UIBackgroundModes:
+          - audio
+        # Required so MPNowPlayingInfoCenter shows on the lock screen / Control
+        # Center for AirPods / headphone-button control.
+        MPNowPlayingInfoPropertyMediaType: 1
+        NSHumanReadableCopyright: "© 2026 Jacob Stephens"
     entitlements:
       path: CascadeiOS/Cascade.entitlements
     settings:
@@ -111,6 +143,16 @@ targets:
         optional: true
     info:
       path: CascadeWatch/Info.plist
+      properties:
+        CFBundleDisplayName: Cascade
+        # Marks this as a (modern, single-target) watchOS app. Without it,
+        # installd rejects the embedded watch bundle ("no WKApplication key").
+        WKApplication: true
+        WKWatchOnly: false
+        # Pairs the watch app to the iPhone app as its companion — required for
+        # the embedded watch bundle to install alongside its iOS host.
+        WKCompanionAppBundleIdentifier: page.stephens.cascade
+        NSHumanReadableCopyright: "© 2026 Jacob Stephens"
     entitlements:
       path: CascadeWatch/Cascade.entitlements
     settings:

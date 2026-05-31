@@ -2,13 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- App Sandbox lets us run inside the macOS sandbox. Audio + Application
-         Support writes + IOKit power assertions + MediaPlayer Now Playing all
-         work under sandbox without extra entitlements. -->
-    <key>com.apple.security.app-sandbox</key>
-    <true/>
-    <!-- Explicit: this app never reaches the network. -->
-    <key>com.apple.security.network.client</key>
-    <false/>
+	<key>com.apple.security.app-sandbox</key>
+	<true/>
+	<key>com.apple.security.network.client</key>
+	<false/>
 </dict>
 </plist>
