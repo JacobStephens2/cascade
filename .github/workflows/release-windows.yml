@@ -1,0 +1,110 @@
+# Build the Windows x64 app, get it Authenticode-signed by SignPath
+# (free OSS certificate), and publish a GitHub Release with the SIGNED zip.
+#
+# Trigger: pushing a tag like v0.1.0-win.
+#
+# REQUIRES (configure once SignPath OSS onboarding is complete):
+#   - repo secret    SIGNPATH_API_TOKEN   (SignPath user API token)
+#   - repo variable  SIGNPATH_ORG_ID      (SignPath organization GUID)
+#   - SignPath project slug `cascade`, signing policy `release-signing`,
+#     and artifact configuration `windows-x64-zip` (signs Cascade.exe,
+#     Cascade.dll, cascade_uniffi.dll at the artifact root).
+# Until those exist the sign-and-release job will fail; the workflow only
+# runs on a v*-win tag, so it stays dormant until then.
+name: Windows release (signed)
+
+on:
+  push:
+    tags:
+      - "v*-win"
+  workflow_dispatch:
+
+permissions:
+  contents: write          # create the GitHub Release
+  id-token: write          # OIDC provenance for the SignPath trusted build
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      artifact-id: ${{ steps.upload.outputs.artifact-id }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (x86_64-pc-windows-msvc)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Build cascade-uniffi DLL
+        run: cargo build --release --target x86_64-pc-windows-msvc -p cascade-uniffi
+
+      - name: Stage native DLL
+        shell: pwsh
+        run: |
+          $dll = "target/x86_64-pc-windows-msvc/release/cascade_uniffi.dll"
+          if (-not (Test-Path $dll)) { throw "DLL not produced: $dll" }
+          $dest = "apps/windows/Cascade/Native/x64"
+          New-Item -ItemType Directory -Force -Path $dest | Out-Null
+          Copy-Item -Force $dll (Join-Path $dest 'cascade_uniffi.dll')
+
+      - name: Install ffmpeg
+        run: choco install ffmpeg -y --no-progress
+      - name: Convert audio asset
+        shell: pwsh
+        working-directory: apps/windows
+        run: pwsh ./scripts/build-asset.ps1
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish (self-contained folder)
+        working-directory: apps/windows
+        run: >
+          dotnet publish Cascade/Cascade.csproj
+          -c Release -p:Platform=x64 -r win-x64 --self-contained
+          -o publish/x64
+
+      # SignPath signs the PE files INSIDE this uploaded artifact, per the
+      # artifact configuration `windows-x64-zip` defined in the SignPath UI
+      # (Cascade.exe, Cascade.dll, cascade_uniffi.dll at the artifact root).
+      - name: Upload unsigned artifact
+        id: upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: cascade-windows-x64
+          path: apps/windows/publish/x64
+          if-no-files-found: error
+
+  sign-and-release:
+    needs: build
+    runs-on: ubuntu-latest        # signing is remote; no Windows needed here
+    steps:
+      - name: Submit signing request to SignPath
+        id: sign
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORG_ID }}
+          project-slug: cascade
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: windows-x64-zip
+          github-artifact-id: ${{ needs.build.outputs.artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: signed
+
+      - name: Repackage signed output into a release zip
+        run: |
+          cd signed
+          zip -r "../Cascade-${GITHUB_REF_NAME}-win-x64.zip" .
+          cd ..
+          ls -la *.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Cascade ${{ github.ref_name }} (Windows x64, signed)"
+          files: Cascade-${{ github.ref_name }}-win-x64.zip
+          generate_release_notes: false
