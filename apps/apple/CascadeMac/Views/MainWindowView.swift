@@ -35,6 +35,10 @@ struct MainWindowView: View {
             .padding(.horizontal, 32)
             .padding(.vertical, 28)
         }
+        // The backdrop is always a dark gradient, so pin the window to dark
+        // mode — otherwise Light-mode label colors (.primary/.secondary)
+        // render dark-on-dark and become unreadable.
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -94,7 +98,7 @@ private struct PlayButton: View {
                     .stroke(.tint.opacity(0.5), lineWidth: 1.5)
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(isPlaying ? AnyShapeStyle(.tint) : AnyShapeStyle(.background))
+                    .foregroundStyle(isPlaying ? AnyShapeStyle(.tint) : AnyShapeStyle(.white))
             }
             .frame(width: 132, height: 132)
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
