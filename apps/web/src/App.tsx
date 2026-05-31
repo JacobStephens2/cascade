@@ -48,7 +48,7 @@ export function App() {
     return (
       <div className="cascade-shell cascade-shell--loading">
         <div className="cascade-loading-mark" aria-hidden />
-        <p>Loading the falls…</p>
+        <p>Loading Cascade…</p>
       </div>
     );
   }
@@ -108,7 +108,7 @@ export function App() {
       </main>
 
       <footer className="cascade-footer">
-        <span>The Falls v3.1 · looped</span>
+        <span>Cascade · looped</span>
       </footer>
     </div>
   );
