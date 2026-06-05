@@ -48,10 +48,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import page.stephens.cascade.core.TimerKind
+import page.stephens.cascade.sync.SyncUiState
 
 @Composable
 fun CascadeScreen(viewModel: CascadeViewModel) {
     val snapshot by viewModel.snapshot.collectAsStateWithLifecycle()
+    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
 
     Surface(modifier = Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -89,6 +91,16 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     trackingEnabled = snapshot.listening.trackingEnabled,
                     onToggleTracking = viewModel::setListeningTracking,
                 )
+                if (syncState.available) {
+                    Spacer(Modifier.height(12.dp))
+                    AccountControls(
+                        state = syncState,
+                        onSignIn = viewModel::signIn,
+                        onSignOut = viewModel::signOut,
+                        onDeleteData = viewModel::deleteListeningData,
+                        onDeleteAccount = viewModel::deleteAccount,
+                    )
+                }
                 Spacer(Modifier.height(24.dp))
                 TimerControls(
                     activeKind = snapshot.timer.kind,
@@ -363,6 +375,73 @@ private fun ListeningStats(
             )
         }
         Switch(checked = trackingEnabled, onCheckedChange = onToggleTracking)
+    }
+}
+
+@Composable
+private fun AccountControls(
+    state: SyncUiState,
+    onSignIn: (String) -> Unit,
+    onSignOut: () -> Unit,
+    onDeleteData: () -> Unit,
+    onDeleteAccount: () -> Unit,
+) {
+    var email by remember { mutableStateOf("") }
+    var showManage by remember { mutableStateOf(false) }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        val account = state.account
+        if (account != null) {
+            Text(
+                "Syncing · ${account.email}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = onSignOut) { Text("Sign out") }
+                TextButton(onClick = { showManage = !showManage }) { Text("Manage data") }
+            }
+            if (showManage) {
+                TextButton(
+                    onClick = onDeleteData,
+                    enabled = !state.busy,
+                ) { Text("Delete listening data", color = MaterialTheme.colorScheme.error) }
+                TextButton(
+                    onClick = onDeleteAccount,
+                    enabled = !state.busy,
+                ) { Text("Delete account", color = MaterialTheme.colorScheme.error) }
+            }
+        } else {
+            Text("Sync across devices", style = MaterialTheme.typography.labelMedium)
+            Spacer(Modifier.height(8.dp))
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = email,
+                    onValueChange = { email = it },
+                    label = { Text("you@example.com") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                    modifier = Modifier.size(width = 200.dp, height = 64.dp),
+                )
+                Button(
+                    onClick = { if (email.isNotBlank()) onSignIn(email.trim()) },
+                    enabled = !state.busy && email.isNotBlank(),
+                ) { Text("Sign in") }
+            }
+        }
+        state.status?.let {
+            Spacer(Modifier.height(6.dp))
+            Text(
+                it,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.7f),
+            )
+        }
     }
 }
 
