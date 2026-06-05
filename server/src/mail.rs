@@ -33,11 +33,16 @@ impl Mailer {
             return Ok(Mailer::LogOnly);
         }
         let creds = Credentials::new(username.to_string(), password.to_string());
-        let transport = AsyncSmtpTransport::<Tokio1Executor>::relay(host)
-            .context("invalid SMTP host")?
-            .port(port)
-            .credentials(creds)
-            .build();
+        // Port 465 is implicit TLS (SMTPS); 587 (submission) and anything else
+        // negotiate TLS via STARTTLS after a plaintext greeting. Using the wrong
+        // one yields "received corrupt message of type InvalidContentType".
+        let builder = if port == 465 {
+            AsyncSmtpTransport::<Tokio1Executor>::relay(host).context("invalid SMTP host")?
+        } else {
+            AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(host)
+                .context("invalid SMTP host")?
+        };
+        let transport = builder.port(port).credentials(creds).build();
         Ok(Mailer::Smtp {
             transport,
             from: from.to_string(),
