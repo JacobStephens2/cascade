@@ -27,6 +27,18 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <!-- Magic-link sign-in: open the app for https://cascade.stephens.page/auth.
+                 autoVerify needs an /.well-known/assetlinks.json on the host
+                 (a deploy step) for chooser-free opening. -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="cascade.stephens.page"
+                    android:path="/auth" />
+            </intent-filter>
         </activity>
 
         <service

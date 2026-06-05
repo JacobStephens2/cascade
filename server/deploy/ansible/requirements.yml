@@ -1,0 +1,6 @@
+---
+# Install with: ansible-galaxy collection install -r requirements.yml
+collections:
+  - name: community.postgresql
+  - name: community.general
+  - name: ansible.posix

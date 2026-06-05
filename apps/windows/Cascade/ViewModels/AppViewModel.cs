@@ -1,5 +1,6 @@
 using System;
 using System.Text.Json;
+using System.Threading.Tasks;
 using Cascade.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -33,6 +34,30 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     [ObservableProperty]
     private string? errorMessage;
 
+    // ---- account / sync ----
+    private readonly AccountStore _accountStore = new();
+    private readonly SyncApi _syncApi = new();
+    private bool _syncing;
+    private const long SyncThresholdMs = 30_000;
+
+    public bool SyncAvailable => SyncConfig.Available;
+
+    [ObservableProperty]
+    private Account? account;
+
+    [ObservableProperty]
+    private string? syncStatus;
+
+    [ObservableProperty]
+    private string emailInput = "";
+
+    [ObservableProperty]
+    private string signInLinkInput = "";
+
+    public string AccountEmail => Account?.Email ?? "";
+
+    partial void OnAccountChanged(Account? value) => OnPropertyChanged(nameof(AccountEmail));
+
     public AppViewModel(DispatcherQueue dispatcher)
     {
         _dispatcher = dispatcher;
@@ -48,6 +73,20 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
         _smtc.BindDispatch(Send);
         _smtc.Update(snapshot);
+
+        // Restore the listening ledger once at startup. The core ignores a
+        // missing/incompatible blob and never lets a restore lower the counter.
+        var listeningJson = _settings.ReadListeningSafely();
+        if (!string.IsNullOrEmpty(listeningJson))
+        {
+            Send(new RestoreListeningCommand(listeningJson));
+        }
+
+        Account = _accountStore.ReadAccount();
+        if (Account is not null)
+        {
+            _ = SyncAsync();
+        }
     }
 
     public void Send(CascadeCommand command)
@@ -68,7 +107,6 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     private void Apply(CascadeUpdate update)
     {
-        var prevTimer = Snapshot.Timer.Kind;
         Snapshot = update.Snapshot;
 
         foreach (var effect in update.Effects)
@@ -93,19 +131,34 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                 case PersistSettingsEffect persist:
                     _settings.WriteSafely(persist.Json);
                     break;
+                case PersistListeningEffect persistListening:
+                    _settings.WriteListeningSafely(persistListening.Json);
+                    break;
             }
         }
 
-        // Drive the tick loop only when a timer is running.
+        // Drive the tick loop while a timer is running (fine cadence) and also
+        // while audio is simply playing (coarse cadence, just to accrue
+        // listening time). Restart only when the cadence actually changes.
         var nowTimer = update.Snapshot.Timer.Kind;
-        var nowActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
-        var wasActive = prevTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
-        if (nowActive && !wasActive)
-            _tick.Start(elapsedMs => Send(new TickCommand(elapsedMs)));
-        if (!nowActive && wasActive)
+        var timerActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
+        var desiredInterval = timerActive ? 250 : (update.Snapshot.IsPlaying ? 1000 : 0);
+        if (desiredInterval != _tick.IntervalMs)
+        {
             _tick.Stop();
+            if (desiredInterval > 0)
+                _tick.Start(elapsedMs => Send(new TickCommand(elapsedMs)), desiredInterval);
+        }
 
         _smtc.Update(update.Snapshot);
+
+        // Sync cadence lives in the shell: push once enough unsynced time has
+        // accrued. Started on the UI thread, so the await continuation (and the
+        // ApplySyncedTotal dispatch) resume on it too.
+        if (Account is not null && update.Snapshot.Listening.UnsyncedMs >= (ulong)SyncThresholdMs)
+        {
+            _ = SyncAsync();
+        }
     }
 
     // ---- Relay commands wired into XAML ----
@@ -143,12 +196,140 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     [RelayCommand]
     private void ToggleMute() => Send(new ToggleMuteCommand());
 
+    [RelayCommand]
+    private void ToggleListeningTracking() =>
+        Send(new SetListeningTrackingCommand(!Snapshot.Listening.TrackingEnabled));
+
     /// Start a user-entered duration. `sleep` picks the timer flavor:
     /// sleep timer (play, then stop) vs focus session.
     public void StartCustom(int minutes, bool sleep)
     {
         if (minutes < 1 || minutes > 1440) return;
         Send(sleep ? new StartSleepTimerCommand(minutes) : new StartPomodoroCommand(minutes));
+    }
+
+    // ---- account / sync commands ----
+
+    private async Task SyncAsync()
+    {
+        if (_syncing || Account is null) return;
+        _syncing = true;
+        try
+        {
+            var deviceTotal = (long)Snapshot.Listening.DeviceTotalMs;
+            var res = await _syncApi.PutListeningAsync(
+                Account.SessionToken, _accountStore.DeviceId(), deviceTotal);
+            Send(new ApplySyncedTotalCommand((ulong)deviceTotal, (ulong)res.ServerTotalMs));
+        }
+        catch (SyncHttpException e) when (e.Status == 401)
+        {
+            Account = null;
+            _accountStore.ClearAccount();
+            SyncStatus = "Signed out — sign in again to sync.";
+        }
+        catch
+        {
+            // offline / transient — retry on the next trigger
+        }
+        finally
+        {
+            _syncing = false;
+        }
+    }
+
+    [RelayCommand]
+    private async Task RequestLink()
+    {
+        var email = EmailInput.Trim();
+        if (email.Length == 0) return;
+        try
+        {
+            await _syncApi.RequestLinkAsync(email);
+            SyncStatus = $"Check {email} for a sign-in link.";
+        }
+        catch
+        {
+            SyncStatus = "Couldn't send the sign-in link.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task CompleteSignIn()
+    {
+        var token = ExtractToken(SignInLinkInput);
+        if (token is null) { SyncStatus = "Paste the full sign-in link."; return; }
+        try
+        {
+            var res = await _syncApi.VerifyAsync(token);
+            Account = new Account(res.SessionToken, res.Email);
+            _accountStore.WriteAccount(Account);
+            SignInLinkInput = "";
+            SyncStatus = $"Signed in as {res.Email}.";
+            await SyncAsync();
+        }
+        catch
+        {
+            SyncStatus = "That sign-in link was invalid or expired.";
+        }
+    }
+
+    [RelayCommand]
+    private async Task SignOut()
+    {
+        var prev = Account;
+        Account = null;
+        _accountStore.ClearAccount();
+        SyncStatus = null;
+        if (prev is not null)
+        {
+            try { await _syncApi.LogoutAsync(prev.SessionToken); } catch { }
+        }
+    }
+
+    [RelayCommand]
+    private async Task DeleteListeningData()
+    {
+        if (Account is null) return;
+        try
+        {
+            await _syncApi.DeleteListeningAsync(Account.SessionToken);
+            _accountStore.RotateDeviceId();
+            Send(new ResetListeningDataCommand());
+            SyncStatus = "Listening data deleted.";
+        }
+        catch { SyncStatus = "Couldn't delete listening data."; }
+    }
+
+    [RelayCommand]
+    private async Task DeleteAccount()
+    {
+        if (Account is null) return;
+        try
+        {
+            await _syncApi.DeleteAccountAsync(Account.SessionToken);
+            _accountStore.RotateDeviceId();
+            Send(new ResetListeningDataCommand());
+            Account = null;
+            _accountStore.ClearAccount();
+            SyncStatus = "Account deleted.";
+        }
+        catch { SyncStatus = "Couldn't delete the account."; }
+    }
+
+    /// Pull the token out of a pasted sign-in URL (…/auth?token=XYZ), or accept
+    /// a raw token. Desktop protocol-activation is the on-device follow-up.
+    private static string? ExtractToken(string input)
+    {
+        var s = input.Trim();
+        if (s.Length == 0) return null;
+        var idx = s.IndexOf("token=", StringComparison.OrdinalIgnoreCase);
+        if (idx >= 0)
+        {
+            var rest = s.Substring(idx + "token=".Length);
+            var amp = rest.IndexOf('&');
+            return amp >= 0 ? rest.Substring(0, amp) : rest;
+        }
+        return s;
     }
 
     public void Dispose()

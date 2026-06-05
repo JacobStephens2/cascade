@@ -1,0 +1,90 @@
+name: Deploy sync server
+
+# Build the cascade-sync-server release binary, then deploy it to the droplet
+# via the Ansible role behind a protected `production` environment (manual
+# approval). This is the GitOps-flavored counterpart to the hand-rolled web
+# deploy script — same destination, but reviewed, gated, and reproducible.
+#
+# Manual-only (workflow_dispatch) so a deploy is always a deliberate act.
+#
+# Requires (configure once):
+#   - Environment `production` with a required reviewer (the approval gate).
+#   - Secrets (on the environment):
+#       SSH_PRIVATE_KEY        deploy key for the droplet
+#       SSH_KNOWN_HOSTS        `ssh-keyscan <droplet>` output
+#       DEPLOY_HOST            droplet IP / hostname
+#       ANSIBLE_VAULT_PASSWORD password for group_vars/all/vault.yml
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-sync
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Build release binary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Test
+        working-directory: server
+        run: cargo test --release
+      - name: Build
+        working-directory: server
+        run: cargo build --release
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cascade-sync-server
+          path: server/target/release/cascade-sync-server
+          if-no-files-found: error
+          retention-days: 7
+
+  deploy:
+    name: Deploy to production
+    needs: build
+    runs-on: ubuntu-latest
+    environment: production # approval gate lives here
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Fetch the built binary
+        uses: actions/download-artifact@v4
+        with:
+          name: cascade-sync-server
+          path: server/deploy/ansible/roles/cascade_sync/files/
+
+      - name: Make the binary executable
+        run: chmod +x server/deploy/ansible/roles/cascade_sync/files/cascade-sync-server
+
+      - name: Install Ansible + collections
+        run: |
+          pipx install --include-deps ansible
+          ansible-galaxy collection install -r server/deploy/ansible/requirements.yml
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Run the playbook
+        working-directory: server/deploy/ansible
+        env:
+          ANSIBLE_VAULT_PASSWORD: ${{ secrets.ANSIBLE_VAULT_PASSWORD }}
+        run: |
+          printf '%s' "$ANSIBLE_VAULT_PASSWORD" > .vault-pass
+          trap 'rm -f .vault-pass' EXIT
+          cat > inventory.ini <<EOF
+          [cascade_sync]
+          droplet ansible_host=${{ secrets.DEPLOY_HOST }} ansible_user=jacob
+          EOF
+          ansible-playbook -i inventory.ini playbook.yml \
+            --vault-password-file .vault-pass \
+            --become

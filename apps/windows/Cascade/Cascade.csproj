@@ -14,6 +14,12 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <LangVersion>latest</LangVersion>
+    <!-- MVVMTK0045: CommunityToolkit.Mvvm 8.4 deprecates [ObservableProperty] on
+         fields in favor of partial properties, which require C# 13 / the .NET 9
+         SDK. CI builds with the .NET 8 SDK (C# 12), where partial properties
+         don't compile, so keep the field syntax and silence the forward-compat
+         nudge until this target moves to .NET 9. -->
+    <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
     <!-- Set this to your unique app identifier when you turn on signing. -->
     <DefaultLanguage>en-US</DefaultLanguage>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>

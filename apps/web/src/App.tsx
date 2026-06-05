@@ -4,10 +4,14 @@ import { PlayButton } from "./components/PlayButton";
 import { VolumeSlider } from "./components/VolumeSlider";
 import { TimerControls } from "./components/TimerControls";
 import { TimerReadout } from "./components/TimerReadout";
+import { ListeningStats } from "./components/ListeningStats";
+import { AccountControls } from "./components/AccountControls";
 import { WaterfallBackdrop } from "./components/WaterfallBackdrop";
+import { useSync } from "./sync/useSync";
 
 export function App() {
   const { ready, snapshot, loadError, dispatch } = useCascade();
+  const sync = useSync(snapshot, dispatch);
   const [showCustomTimer, setShowCustomTimer] = useState(false);
 
   // Space bar toggles play/pause anywhere — the canonical media-app gesture —
@@ -105,6 +109,15 @@ export function App() {
             {snapshot.errorMessage}
           </div>
         )}
+
+        <ListeningStats
+          listening={snapshot.listening}
+          onToggleTracking={(enabled) =>
+            dispatch({ type: "setListeningTracking", enabled })
+          }
+        />
+
+        <AccountControls sync={sync} />
       </main>
 
       <footer className="cascade-footer">

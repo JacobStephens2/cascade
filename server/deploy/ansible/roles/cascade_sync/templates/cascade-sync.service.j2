@@ -1,0 +1,33 @@
+# {{ ansible_managed }}
+[Unit]
+Description=Cascade listening-time sync service
+After=network-online.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User={{ cascade_sync_user }}
+Group={{ cascade_sync_user }}
+EnvironmentFile=/etc/cascade-sync/cascade-sync.env
+ExecStart=/opt/cascade-sync/cascade-sync-server
+Restart=on-failure
+RestartSec=3
+
+# Hardening: the service needs only the network and to read its env file. It
+# writes nothing to disk, so lock the filesystem down. (This same least-
+# privilege posture is the runtime half of the threat model — see
+# server/docs/threat-model.md.)
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectKernelTunables=true
+ProtectControlGroups=true
+RestrictAddressFamilies=AF_INET AF_INET6
+CapabilityBoundingSet=
+LockPersonality=true
+MemoryDenyWriteExecute=true
+
+[Install]
+WantedBy=multi-user.target

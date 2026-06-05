@@ -11,6 +11,7 @@
 
 pub mod command;
 pub mod effect;
+pub mod listening;
 pub mod settings;
 pub mod snapshot;
 pub mod state;
@@ -18,8 +19,9 @@ pub mod timer;
 
 pub use command::Command;
 pub use effect::Effect;
+pub use listening::{ListeningLedger, PersistedListening, LISTENING_VERSION, MAX_TICK_ACCRUAL_MS};
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
-pub use snapshot::{Snapshot, TimerSnapshot, TimerSnapshotKind};
+pub use snapshot::{ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind};
 pub use state::{PlaybackIntent, State, TimerMode};
 
 use serde::{Deserialize, Serialize};

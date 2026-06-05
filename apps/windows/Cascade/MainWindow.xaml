@@ -19,6 +19,8 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -136,9 +138,74 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Listening time -->
+        <Grid Grid.Row="8" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock
+                    Text="{x:Bind ViewModel.Snapshot.Listening.TotalLabel, Mode=OneWay}"
+                    FontSize="18"
+                    FontWeight="Light" />
+                <TextBlock Text="LIFETIME LISTENING" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            </StackPanel>
+            <HyperlinkButton
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Command="{x:Bind ViewModel.ToggleListeningTrackingCommand}"
+                Content="{x:Bind local:Converters.TrackingLabel(ViewModel.Snapshot.Listening.TrackingEnabled), Mode=OneWay}" />
+        </Grid>
+
+        <!-- Account / sync -->
+        <StackPanel
+            Grid.Row="9"
+            Spacing="8"
+            Visibility="{x:Bind local:Converters.VisibleIf(ViewModel.SyncAvailable)}">
+            <TextBlock Text="SYNC ACROSS DEVICES" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+
+            <!-- Signed out -->
+            <StackPanel
+                Spacing="6"
+                Visibility="{x:Bind local:Converters.VisibleIfSignedOut(ViewModel.Account), Mode=OneWay}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox
+                        PlaceholderText="you@example.com"
+                        Width="240"
+                        Text="{x:Bind ViewModel.EmailInput, Mode=TwoWay}" />
+                    <Button Content="Email me a link" Command="{x:Bind ViewModel.RequestLinkCommand}" />
+                </StackPanel>
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox
+                        PlaceholderText="paste the sign-in link"
+                        Width="240"
+                        Text="{x:Bind ViewModel.SignInLinkInput, Mode=TwoWay}" />
+                    <Button Content="Sign in" Command="{x:Bind ViewModel.CompleteSignInCommand}" />
+                </StackPanel>
+            </StackPanel>
+
+            <!-- Signed in -->
+            <StackPanel
+                Spacing="6"
+                Visibility="{x:Bind local:Converters.VisibleIfSignedIn(ViewModel.Account), Mode=OneWay}">
+                <TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <HyperlinkButton Content="Sign out" Command="{x:Bind ViewModel.SignOutCommand}" />
+                    <HyperlinkButton Content="Delete data" Command="{x:Bind ViewModel.DeleteListeningDataCommand}" />
+                    <HyperlinkButton Content="Delete account" Command="{x:Bind ViewModel.DeleteAccountCommand}" />
+                </StackPanel>
+            </StackPanel>
+
+            <TextBlock
+                Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
+                Opacity="0.7"
+                TextWrapping="Wrap" />
+        </StackPanel>
+
         <!-- Error -->
         <InfoBar
-            Grid.Row="8"
+            Grid.Row="10"
             VerticalAlignment="Bottom"
             IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"

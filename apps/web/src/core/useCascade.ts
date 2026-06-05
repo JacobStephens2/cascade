@@ -8,8 +8,14 @@ const SETTINGS_STORAGE_KEY = "cascade.settings.v1";
 // Live session (play state + running timer/stopwatch) so a page reload picks
 // up where it left off. Separate from settings, which the Rust core owns.
 const SESSION_STORAGE_KEY = "cascade.session.v1";
+// Lifetime listening-time ledger (a grow-only counter). Its own blob, owned by
+// the Rust core — the shell stores the opaque string and hands it back verbatim.
+const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
+// Fine cadence while a timer is counting; coarse cadence when we're only
+// accruing listening time during plain playback, to keep the loop cheap.
 const TICK_INTERVAL_MS = 250;
+const LISTENING_TICK_INTERVAL_MS = 1000;
 
 interface SessionState {
   isPlaying: boolean;
@@ -38,6 +44,10 @@ export function useCascade(): UseCascadeResult {
   // overwrite it), replayed once the core is ready.
   const pendingRestoreRef = useRef<SessionState | null>(null);
   const restoredRef = useRef(false);
+  // Listening blob captured at boot, replayed once into the core via
+  // `restoreListening` after it's ready.
+  const pendingListeningRef = useRef<string | null>(null);
+  const listeningRestoredRef = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -57,6 +67,15 @@ export function useCascade(): UseCascadeResult {
             : null;
         } catch {
           pendingRestoreRef.current = null;
+        }
+
+        // Capture the listening ledger blob; it's restored once the core is up.
+        try {
+          pendingListeningRef.current = localStorage.getItem(
+            LISTENING_STORAGE_KEY,
+          );
+        } catch {
+          pendingListeningRef.current = null;
         }
 
         const savedJson = localStorage.getItem(SETTINGS_STORAGE_KEY);
@@ -117,6 +136,13 @@ export function useCascade(): UseCascadeResult {
             console.warn("Could not persist settings", err);
           }
           break;
+        case "persistListening":
+          try {
+            localStorage.setItem(LISTENING_STORAGE_KEY, effect.json);
+          } catch (err) {
+            console.warn("Could not persist listening data", err);
+          }
+          break;
       }
     }
   }, []);
@@ -145,30 +171,47 @@ export function useCascade(): UseCascadeResult {
     [dispatchInternal],
   );
 
-  // Tick loop. Only ticks when a timer is running — no point churning React
-  // state otherwise.
+  // Tick loop. Runs while a timer is counting (fine cadence, so the readout is
+  // smooth) and also while audio is simply playing (coarse cadence, just to
+  // accrue listening time). When neither is true there's nothing to advance, so
+  // the loop stays parked.
+  const isPlaying = snapshot?.isPlaying ?? false;
+  const isTimerActive =
+    snapshot?.timer.kind === "sleep" ||
+    snapshot?.timer.kind === "pomodoro" ||
+    snapshot?.timer.kind === "stopwatch";
   useEffect(() => {
     if (!ready) return;
-    const isTimerActive =
-      snapshot?.timer.kind === "sleep" ||
-      snapshot?.timer.kind === "pomodoro" ||
-      snapshot?.timer.kind === "stopwatch";
-    if (!isTimerActive) return;
+    if (!isTimerActive && !isPlaying) return;
+    const interval = isTimerActive
+      ? TICK_INTERVAL_MS
+      : LISTENING_TICK_INTERVAL_MS;
 
     let last = performance.now();
     let frame: number;
     const tick = () => {
       const now = performance.now();
       const elapsed = Math.round(now - last);
-      if (elapsed >= TICK_INTERVAL_MS) {
+      if (elapsed >= interval) {
         last = now;
         dispatchInternal({ type: "tick", elapsedMs: elapsed });
       }
-      frame = window.setTimeout(tick, TICK_INTERVAL_MS);
+      frame = window.setTimeout(tick, interval);
     };
-    frame = window.setTimeout(tick, TICK_INTERVAL_MS);
+    frame = window.setTimeout(tick, interval);
     return () => window.clearTimeout(frame);
-  }, [ready, snapshot?.timer.kind, dispatchInternal]);
+  }, [ready, isTimerActive, isPlaying, dispatchInternal]);
+
+  // Restore the listening ledger once, after the core is ready. The core
+  // ignores a missing/incompatible blob and never lets a restore lower the
+  // live counter.
+  useEffect(() => {
+    if (!ready || listeningRestoredRef.current) return;
+    listeningRestoredRef.current = true;
+    const json = pendingListeningRef.current;
+    pendingListeningRef.current = null;
+    if (json) dispatchInternal({ type: "restoreListening", json });
+  }, [ready, dispatchInternal]);
 
   // Media Session: lets macOS route the keyboard's play/pause media key (and
   // Control Center / Now Playing) to the app. The OS decides whether to send
