@@ -12,10 +12,14 @@ mod mail;
 use std::net::SocketAddr;
 use std::time::Duration as StdDuration;
 
-use axum::extract::State;
+use axum::extract::{MatchedPath, Request, State};
 use axum::http::{HeaderMap, Method};
+use axum::middleware::{self, Next};
+use axum::response::Response;
 use axum::routing::{delete, get, post, put};
 use axum::{Json, Router};
+use metrics_exporter_prometheus::{PrometheusBuilder, PrometheusHandle};
+use std::time::Instant;
 use base64::engine::general_purpose::URL_SAFE_NO_PAD;
 use base64::Engine;
 use chrono::{Duration, Utc};
@@ -41,6 +45,8 @@ struct AppState {
     mailer: Mailer,
     /// Where the magic link points (the web app), e.g. `https://cascade.stephens.page`.
     frontend_origin: String,
+    /// Renders the Prometheus exposition for `GET /metrics`.
+    metrics_handle: PrometheusHandle,
 }
 
 #[tokio::main]
@@ -76,11 +82,19 @@ async fn main() -> anyhow::Result<()> {
 
     sqlx::migrate!("./migrations").run(&pool).await?;
 
+    // Prometheus recorder. We render it through our own `/metrics` route rather
+    // than the exporter's built-in HTTP server, so it stays on the same
+    // localhost bind and is never proxied to the public internet.
+    let metrics_handle = PrometheusBuilder::new()
+        .install_recorder()
+        .map_err(|e| anyhow::anyhow!("failed to install metrics recorder: {e}"))?;
+
     let cors = build_cors(&frontend_origin);
     let state = AppState {
         pool,
         mailer,
         frontend_origin,
+        metrics_handle,
     };
 
     let app = Router::new()
@@ -92,6 +106,13 @@ async fn main() -> anyhow::Result<()> {
         .route("/listening", get(listening_get))
         .route("/listening", delete(listening_delete))
         .route("/account", delete(account_delete))
+        // route_layer wraps only the routes registered above it, so the API is
+        // request-counted...
+        .route_layer(middleware::from_fn(track_metrics))
+        // ...and /metrics is added afterward, so a 15s scrape doesn't dominate
+        // the counters. It must not be exposed through the public Apache vhost —
+        // Prometheus scrapes it on the localhost bind.
+        .route("/metrics", get(metrics))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
         .with_state(state);
@@ -129,6 +150,37 @@ fn build_cors(frontend_origin: &str) -> CorsLayer {
 async fn shutdown_signal() {
     let _ = tokio::signal::ctrl_c().await;
     tracing::info!("shutting down");
+}
+
+// ---- observability -------------------------------------------------------
+
+/// Render the Prometheus exposition format for scraping.
+async fn metrics(State(state): State<AppState>) -> String {
+    state.metrics_handle.render()
+}
+
+/// Count every API request and record its latency, labelled by the matched
+/// route template (not the raw path) so label cardinality stays bounded.
+async fn track_metrics(req: Request, next: Next) -> Response {
+    let path = req
+        .extensions()
+        .get::<MatchedPath>()
+        .map(|m| m.as_str().to_owned())
+        .unwrap_or_else(|| "unmatched".to_owned());
+    let method = req.method().clone();
+    let start = Instant::now();
+
+    let response = next.run(req).await;
+
+    let labels = [
+        ("method", method.to_string()),
+        ("path", path),
+        ("status", response.status().as_u16().to_string()),
+    ];
+    metrics::counter!("cascade_sync_http_requests_total", &labels).increment(1);
+    metrics::histogram!("cascade_sync_http_request_duration_seconds", &labels)
+        .record(start.elapsed().as_secs_f64());
+    response
 }
 
 // ---- token helpers -------------------------------------------------------
