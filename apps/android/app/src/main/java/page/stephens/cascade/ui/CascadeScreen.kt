@@ -28,6 +28,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.ui.text.input.KeyboardType
@@ -81,6 +82,12 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     isMuted = snapshot.isMuted,
                     onChange = viewModel::setVolume,
                     onToggleMute = viewModel::toggleMute,
+                )
+                Spacer(Modifier.height(16.dp))
+                ListeningStats(
+                    totalLabel = snapshot.listening.totalLabel,
+                    trackingEnabled = snapshot.listening.trackingEnabled,
+                    onToggleTracking = viewModel::setListeningTracking,
                 )
                 Spacer(Modifier.height(24.dp))
                 TimerControls(
@@ -330,6 +337,32 @@ private fun CustomDurationSection(
         ) {
             Text(if (sleepMode) "Start sleep" else "Start focus")
         }
+    }
+}
+
+@Composable
+private fun ListeningStats(
+    totalLabel: String,
+    trackingEnabled: Boolean,
+    onToggleTracking: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column {
+            Text(
+                text = totalLabel,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Light),
+            )
+            Text(
+                text = if (trackingEnabled) "Lifetime listening" else "Tracking paused",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            )
+        }
+        Switch(checked = trackingEnabled, onCheckedChange = onToggleTracking)
     }
 }
 

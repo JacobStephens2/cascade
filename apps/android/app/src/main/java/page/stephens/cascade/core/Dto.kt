@@ -34,6 +34,10 @@ sealed class Command {
     @Serializable @SerialName("platformPlaybackStarted") data object PlatformPlaybackStarted : Command()
     @Serializable @SerialName("platformPlaybackPaused") data object PlatformPlaybackPaused : Command()
     @Serializable @SerialName("platformPlaybackError") data class PlatformPlaybackError(val message: String) : Command()
+    @Serializable @SerialName("setListeningTracking") data class SetListeningTracking(val enabled: Boolean) : Command()
+    @Serializable @SerialName("restoreListening") data class RestoreListening(val json: String) : Command()
+    @Serializable @SerialName("applySyncedTotal") data class ApplySyncedTotal(val syncedThroughMs: Long, val serverTotalMs: Long) : Command()
+    @Serializable @SerialName("resetListeningData") data object ResetListeningData : Command()
 }
 
 @Serializable
@@ -43,6 +47,7 @@ sealed class Effect {
     @Serializable @SerialName("pausePlayback") data object PausePlayback : Effect()
     @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val volumePercent: Int) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
+    @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
 }
 
 @Serializable
@@ -64,6 +69,15 @@ data class TimerSnapshot(
 )
 
 @Serializable
+data class ListeningSnapshot(
+    val trackingEnabled: Boolean,
+    val deviceTotalMs: Long,
+    val displayedTotalMs: Long,
+    val unsyncedMs: Long,
+    val totalLabel: String,
+)
+
+@Serializable
 data class Snapshot(
     val title: String,
     val subtitle: String,
@@ -73,6 +87,7 @@ data class Snapshot(
     val primaryButtonLabel: String,
     val timer: TimerSnapshot,
     val errorMessage: String? = null,
+    val listening: ListeningSnapshot,
 )
 
 @Serializable
