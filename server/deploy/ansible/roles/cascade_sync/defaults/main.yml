@@ -1,0 +1,37 @@
+---
+# Non-secret defaults. Secrets (db password, SMTP creds) come from an
+# Ansible Vault file — see group_vars/all/vault.example.yml. Override any of
+# these in group_vars/host_vars as needed.
+
+cascade_sync_user: cascade-sync
+
+cascade_sync_host: sync.cascade.stephens.page
+cascade_sync_port: 3470
+cascade_sync_bind_addr: "127.0.0.1:3470"
+
+cascade_sync_frontend_origin: "https://cascade.stephens.page"
+cascade_sync_cors_origins: "https://cascade.stephens.page"
+cascade_sync_rust_log: "info,sqlx=warn"
+
+# Postgres (on the existing instance). Set cascade_sync_manage_postgres: false
+# if you create the role/db out of band.
+cascade_sync_manage_postgres: true
+cascade_sync_db_name: cascade_sync
+cascade_sync_db_user: cascade_sync
+# cascade_sync_db_password is a VAULT secret (see vault.example.yml).
+cascade_sync_database_url: "postgres://{{ cascade_sync_db_user }}:{{ cascade_sync_db_password }}@localhost:5432/{{ cascade_sync_db_name }}"
+
+# SMTP for magic links. Leave host empty to log links instead of sending.
+cascade_sync_smtp_host: ""
+cascade_sync_smtp_port: 587
+# cascade_sync_smtp_username / _password are VAULT secrets.
+cascade_sync_smtp_from: "Cascade <noreply@stephens.page>"
+
+# Where the built binary is staged before deploy (CI uploads it here).
+cascade_sync_binary_src: "files/cascade-sync-server"
+
+# Distro-specific: defaults target Rocky 9 / httpd.
+cascade_sync_apache_service: httpd
+cascade_sync_apache_confdir: /etc/httpd/conf.d
+
+cascade_sync_certbot_email: "jacob.stephens.701@gmail.com"

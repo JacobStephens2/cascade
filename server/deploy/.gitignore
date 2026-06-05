@@ -1,0 +1,11 @@
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate
+terraform/*.tfstate.*
+terraform/terraform.tfvars
+terraform/.terraform.lock.hcl
+
+# Ansible secrets, real inventory, staged binary
+ansible/inventory.ini
+ansible/group_vars/all/vault.yml
+ansible/roles/cascade_sync/files/cascade-sync-server

@@ -1,0 +1,14 @@
+---
+- name: Reload systemd
+  ansible.builtin.systemd_service:
+    daemon_reload: true
+
+- name: Restart cascade-sync
+  ansible.builtin.systemd_service:
+    name: cascade-sync
+    state: restarted
+
+- name: Reload apache
+  ansible.builtin.service:
+    name: "{{ cascade_sync_apache_service }}"
+    state: reloaded

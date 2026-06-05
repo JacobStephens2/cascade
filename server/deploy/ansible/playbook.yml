@@ -1,0 +1,6 @@
+---
+- name: Deploy the Cascade listening-time sync service
+  hosts: cascade_sync
+  become: true
+  roles:
+    - cascade_sync

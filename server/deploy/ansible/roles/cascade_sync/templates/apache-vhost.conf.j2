@@ -1,0 +1,20 @@
+# {{ ansible_managed }}
+# Reverse proxy for the Cascade sync API. certbot --apache promotes this to a
+# TLS vhost and adds an HTTP->HTTPS redirect on first run.
+<VirtualHost *:80>
+    ServerName {{ cascade_sync_host }}
+
+    ProxyPreserveHost On
+
+    # Never expose /metrics publicly — Prometheus scrapes it on localhost.
+    ProxyPass "/metrics" "!"
+    <Location "/metrics">
+        Require all denied
+    </Location>
+
+    ProxyPass        "/" "http://127.0.0.1:{{ cascade_sync_port }}/"
+    ProxyPassReverse "/" "http://127.0.0.1:{{ cascade_sync_port }}/"
+
+    ErrorLog  /var/log/httpd/{{ cascade_sync_host }}-error.log
+    CustomLog /var/log/httpd/{{ cascade_sync_host }}-access.log combined
+</VirtualHost>
