@@ -4,6 +4,7 @@ import { PlayButton } from "./components/PlayButton";
 import { VolumeSlider } from "./components/VolumeSlider";
 import { TimerControls } from "./components/TimerControls";
 import { TimerReadout } from "./components/TimerReadout";
+import { ListeningStats } from "./components/ListeningStats";
 import { WaterfallBackdrop } from "./components/WaterfallBackdrop";
 
 export function App() {
@@ -105,6 +106,13 @@ export function App() {
             {snapshot.errorMessage}
           </div>
         )}
+
+        <ListeningStats
+          listening={snapshot.listening}
+          onToggleTracking={(enabled) =>
+            dispatch({ type: "setListeningTracking", enabled })
+          }
+        />
       </main>
 
       <footer className="cascade-footer">

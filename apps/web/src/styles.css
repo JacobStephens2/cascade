@@ -154,6 +154,62 @@ body {
   text-align: center;
 }
 
+/* ------------------------------------------------------------- listening */
+
+.listening {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 320px);
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  border: 1px solid var(--paper-strong);
+}
+
+.listening__readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.listening__value {
+  font-size: 26px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.listening__value.is-off {
+  color: var(--ink-faint);
+}
+
+.listening__caption {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.listening__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.listening__toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
 /* ------------------------------------------------------------------ main */
 
 .cascade-main {
