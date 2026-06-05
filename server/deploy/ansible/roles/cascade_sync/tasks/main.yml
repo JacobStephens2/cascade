@@ -77,6 +77,16 @@
     state: started
     daemon_reload: true
 
+- name: Ensure Apache proxy modules are enabled (Ubuntu)
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+  when: cascade_sync_apache_use_a2ensite
+  notify: Reload apache
+
 - name: Install the Apache reverse-proxy vhost
   ansible.builtin.template:
     src: apache-vhost.conf.j2
@@ -84,6 +94,13 @@
     owner: root
     group: root
     mode: "0644"
+  notify: Reload apache
+
+- name: Enable the vhost (a2ensite)
+  ansible.builtin.command:
+    cmd: "a2ensite {{ cascade_sync_host }}.conf"
+    creates: "/etc/apache2/sites-enabled/{{ cascade_sync_host }}.conf"
+  when: cascade_sync_apache_use_a2ensite
   notify: Reload apache
 
 # --- TLS ------------------------------------------------------------------

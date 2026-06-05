@@ -30,8 +30,11 @@ cascade_sync_smtp_from: "Cascade <noreply@stephens.page>"
 # Where the built binary is staged before deploy (CI uploads it here).
 cascade_sync_binary_src: "files/cascade-sync-server"
 
-# Distro-specific: defaults target Rocky 9 / httpd.
-cascade_sync_apache_service: httpd
-cascade_sync_apache_confdir: /etc/httpd/conf.d
+# Distro-specific: defaults target Ubuntu / Apache 2.4 (the real fleet). On a
+# Rocky/httpd host set apache_service=httpd, confdir=/etc/httpd/conf.d, and
+# apache_use_a2ensite=false (httpd auto-loads conf.d/*.conf).
+cascade_sync_apache_service: apache2
+cascade_sync_apache_confdir: /etc/apache2/sites-available
+cascade_sync_apache_use_a2ensite: true
 
 cascade_sync_certbot_email: "jacob.stephens.701@gmail.com"
