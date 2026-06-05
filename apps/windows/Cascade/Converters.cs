@@ -24,4 +24,7 @@ public static class Converters
 
     public static string VolumeReadout(int percent, bool muted) =>
         muted ? "Muted" : $"{percent}%";
+
+    public static string TrackingLabel(bool enabled) =>
+        enabled ? "Tracking on" : "Tracking off";
 }

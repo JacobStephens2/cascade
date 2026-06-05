@@ -15,6 +15,10 @@ public sealed class SettingsStore
 {
     public string FilePath { get; }
 
+    /// Lifetime listening ledger — a separate file from settings, so the two
+    /// evolve and fail independently (mirrors cascade.listening.v1 on web).
+    public string ListeningFilePath { get; }
+
     public SettingsStore()
     {
         var dir = Path.Combine(
@@ -22,13 +26,22 @@ public sealed class SettingsStore
             "Cascade");
         Directory.CreateDirectory(dir);
         FilePath = Path.Combine(dir, "settings.json");
+        ListeningFilePath = Path.Combine(dir, "listening.json");
     }
 
-    public string? ReadSafely()
+    public string? ReadSafely() => ReadFile(FilePath);
+
+    public void WriteSafely(string json) => WriteFile(FilePath, json);
+
+    public string? ReadListeningSafely() => ReadFile(ListeningFilePath);
+
+    public void WriteListeningSafely(string json) => WriteFile(ListeningFilePath, json);
+
+    private static string? ReadFile(string path)
     {
         try
         {
-            return File.Exists(FilePath) ? File.ReadAllText(FilePath) : null;
+            return File.Exists(path) ? File.ReadAllText(path) : null;
         }
         catch
         {
@@ -36,11 +49,11 @@ public sealed class SettingsStore
         }
     }
 
-    public void WriteSafely(string json)
+    private static void WriteFile(string path, string json)
     {
         try
         {
-            File.WriteAllText(FilePath, json);
+            File.WriteAllText(path, json);
         }
         catch
         {

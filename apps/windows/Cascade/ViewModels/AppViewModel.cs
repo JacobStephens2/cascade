@@ -48,6 +48,14 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
         _smtc.BindDispatch(Send);
         _smtc.Update(snapshot);
+
+        // Restore the listening ledger once at startup. The core ignores a
+        // missing/incompatible blob and never lets a restore lower the counter.
+        var listeningJson = _settings.ReadListeningSafely();
+        if (!string.IsNullOrEmpty(listeningJson))
+        {
+            Send(new RestoreListeningCommand(listeningJson));
+        }
     }
 
     public void Send(CascadeCommand command)
@@ -68,7 +76,6 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     private void Apply(CascadeUpdate update)
     {
-        var prevTimer = Snapshot.Timer.Kind;
         Snapshot = update.Snapshot;
 
         foreach (var effect in update.Effects)
@@ -93,17 +100,24 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                 case PersistSettingsEffect persist:
                     _settings.WriteSafely(persist.Json);
                     break;
+                case PersistListeningEffect persistListening:
+                    _settings.WriteListeningSafely(persistListening.Json);
+                    break;
             }
         }
 
-        // Drive the tick loop only when a timer is running.
+        // Drive the tick loop while a timer is running (fine cadence) and also
+        // while audio is simply playing (coarse cadence, just to accrue
+        // listening time). Restart only when the cadence actually changes.
         var nowTimer = update.Snapshot.Timer.Kind;
-        var nowActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
-        var wasActive = prevTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
-        if (nowActive && !wasActive)
-            _tick.Start(elapsedMs => Send(new TickCommand(elapsedMs)));
-        if (!nowActive && wasActive)
+        var timerActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
+        var desiredInterval = timerActive ? 250 : (update.Snapshot.IsPlaying ? 1000 : 0);
+        if (desiredInterval != _tick.IntervalMs)
+        {
             _tick.Stop();
+            if (desiredInterval > 0)
+                _tick.Start(elapsedMs => Send(new TickCommand(elapsedMs)), desiredInterval);
+        }
 
         _smtc.Update(update.Snapshot);
     }
@@ -142,6 +156,10 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     [RelayCommand]
     private void ToggleMute() => Send(new ToggleMuteCommand());
+
+    [RelayCommand]
+    private void ToggleListeningTracking() =>
+        Send(new SetListeningTrackingCommand(!Snapshot.Listening.TrackingEnabled));
 
     /// Start a user-entered duration. `sleep` picks the timer flavor:
     /// sleep timer (play, then stop) vs focus session.

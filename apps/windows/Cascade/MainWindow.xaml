@@ -19,6 +19,7 @@
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
@@ -136,9 +137,29 @@
             </StackPanel>
         </StackPanel>
 
+        <!-- Listening time -->
+        <Grid Grid.Row="8" ColumnSpacing="12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <StackPanel Grid.Column="0" Spacing="2">
+                <TextBlock
+                    Text="{x:Bind ViewModel.Snapshot.Listening.TotalLabel, Mode=OneWay}"
+                    FontSize="18"
+                    FontWeight="Light" />
+                <TextBlock Text="LIFETIME LISTENING" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+            </StackPanel>
+            <HyperlinkButton
+                Grid.Column="1"
+                VerticalAlignment="Center"
+                Command="{x:Bind ViewModel.ToggleListeningTrackingCommand}"
+                Content="{x:Bind local:Converters.TrackingLabel(ViewModel.Snapshot.Listening.TrackingEnabled), Mode=OneWay}" />
+        </Grid>
+
         <!-- Error -->
         <InfoBar
-            Grid.Row="8"
+            Grid.Row="9"
             VerticalAlignment="Bottom"
             IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
             Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
