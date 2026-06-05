@@ -5,7 +5,11 @@ use serde::{Deserialize, Serialize};
 /// Everything that can happen to the core. User actions, platform reports,
 /// and wall-clock ticks all funnel through here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Command {
     /// User asked to start playback.
     Play,
@@ -47,6 +51,29 @@ pub enum Command {
     PlatformPlaybackPaused,
     /// Platform reports a playback error that the user should know about.
     PlatformPlaybackError { message: String },
+
+    /// Turn listening-time tracking on or off. On by default; this is the
+    /// opt-out. Turning it off stops accrual immediately but never erases the
+    /// total already counted — use [`Command::ResetListeningData`] for that.
+    SetListeningTracking { enabled: bool },
+    /// Restore the persisted listening blob at startup. `json` is the opaque
+    /// string a previous [`crate::Effect::PersistListening`] handed the shell;
+    /// the core owns its schema, so the shell stores and returns it verbatim.
+    /// A missing or unparseable blob is ignored (the in-memory ledger keeps its
+    /// defaults) — restore never *lowers* a live counter.
+    RestoreListening { json: String },
+    /// Record a successful sync. The server accepted everything up to
+    /// `synced_through_ms` and reports `server_total_ms` as the cross-device
+    /// aggregate. Moves the display baseline only; never lowers the device slot.
+    ApplySyncedTotal {
+        synced_through_ms: u64,
+        server_total_ms: u64,
+    },
+    /// "Delete my listening data": zero this device's slot and forget the server
+    /// aggregate. The shell must rotate its `device_id` alongside this so a
+    /// stale offline write can't resurrect the deleted total. Leaves the
+    /// tracking toggle untouched.
+    ResetListeningData,
 }
 
 #[cfg(test)]

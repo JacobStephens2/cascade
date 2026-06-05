@@ -3,6 +3,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::listening::format_listening_total;
 use crate::state::{State, DEFAULT_VOLUME_PERCENT};
 use crate::timer::{format_remaining, TimerKind};
 
@@ -32,6 +33,24 @@ pub struct TimerSnapshot {
     pub progress: f32,
 }
 
+/// Listening-time view for the UI. `displayed_total_ms` is the number to show;
+/// `total_label` is a ready-formatted version of it. `unsynced_ms` is what a
+/// shell watches to decide when to sync.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ListeningSnapshot {
+    pub tracking_enabled: bool,
+    /// This device's grow-only slot.
+    pub device_total_ms: u64,
+    /// The lifetime total to show the user (server aggregate + unsynced when
+    /// signed in, else the device slot).
+    pub displayed_total_ms: u64,
+    /// Locally-accrued milliseconds the server hasn't acknowledged yet.
+    pub unsynced_ms: u64,
+    /// `displayed_total_ms` pre-formatted as e.g. `"12h 34m"`.
+    pub total_label: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -44,6 +63,7 @@ pub struct Snapshot {
     pub primary_button_label: String,
     pub timer: TimerSnapshot,
     pub error_message: Option<String>,
+    pub listening: ListeningSnapshot,
 }
 
 impl Snapshot {
@@ -114,6 +134,13 @@ impl Snapshot {
             },
             timer,
             error_message: state.last_error.clone(),
+            listening: ListeningSnapshot {
+                tracking_enabled: state.listening.tracking_enabled,
+                device_total_ms: state.listening.device_total_ms,
+                displayed_total_ms: state.listening.displayed_total_ms(),
+                unsynced_ms: state.listening.unsynced_ms(),
+                total_label: format_listening_total(state.listening.displayed_total_ms()),
+            },
         }
     }
 }

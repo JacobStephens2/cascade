@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::command::Command;
 use crate::effect::Effect;
+use crate::listening::{ListeningLedger, PersistedListening};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
 use crate::timer::{ActiveTimer, TimerKind};
 
@@ -49,6 +50,14 @@ pub struct State {
     pub default_sleep_minutes: Option<u32>,
     pub default_pomodoro_minutes: Option<u32>,
     pub last_error: Option<String>,
+    /// True only between [`Command::PlatformPlaybackStarted`] and the next
+    /// pause/error — i.e. audio is *confirmed* playing, not merely intended.
+    /// Listening accrues on this, not on `intent`, so an autoplay-blocked shell
+    /// (intent says Playing, audio never started) accrues nothing.
+    pub audio_confirmed_playing: bool,
+    /// Listening-time ledger. Restored from its own blob via
+    /// [`Command::RestoreListening`], not from settings.
+    pub listening: ListeningLedger,
 }
 
 impl Default for State {
@@ -62,6 +71,8 @@ impl Default for State {
             default_sleep_minutes: Some(30),
             default_pomodoro_minutes: Some(30),
             last_error: None,
+            audio_confirmed_playing: false,
+            listening: ListeningLedger::default(),
         }
     }
 }
@@ -77,6 +88,8 @@ impl State {
             default_sleep_minutes: s.default_sleep_minutes,
             default_pomodoro_minutes: s.default_pomodoro_minutes,
             last_error: None,
+            audio_confirmed_playing: false,
+            listening: ListeningLedger::default(),
         }
     }
 
@@ -112,6 +125,18 @@ fn push_persist(state: &State, effects: &mut Vec<Effect>) {
     if let Ok(json) = serde_json::to_string(&state.to_settings()) {
         effects.push(Effect::PersistSettings { json });
     }
+}
+
+fn push_persist_listening(state: &State, effects: &mut Vec<Effect>) {
+    if let Ok(json) = serde_json::to_string(&state.listening.to_persisted()) {
+        effects.push(Effect::PersistListening { json });
+    }
+}
+
+/// Whether a tick should count as listening: tracking on, audio *confirmed*
+/// playing (not merely intended), and not muted.
+fn is_accruing(state: &State) -> bool {
+    state.listening.tracking_enabled && state.audio_confirmed_playing && !state.muted
 }
 
 /// The reducer. Mutates `state` and appends to `effects`.
@@ -174,6 +199,14 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.active_timer = None;
         }
         Command::Tick { elapsed_ms } => {
+            // Accrue listening for the elapsed audible time *before* processing
+            // timer expiry: the audio was playing during this delta even if the
+            // timer is about to pause it. `accrue` clamps the per-tick delta, so
+            // a sleep/wake gap can't inflate the counter.
+            let was_accruing = is_accruing(state);
+            if was_accruing {
+                state.listening.accrue(elapsed_ms);
+            }
             if let Some(t) = state.active_timer.as_mut() {
                 let just_expired = t.tick(elapsed_ms);
                 if just_expired {
@@ -185,19 +218,58 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                     }
                 }
             }
+            // Persist the new total on the tick we actually counted something,
+            // so a process kill loses at most one tick of listening.
+            if was_accruing {
+                push_persist_listening(state, effects);
+            }
         }
         Command::PlatformPlaybackStarted => {
-            // Platform confirms playback — clear any stale error.
+            // Platform confirms audio is genuinely playing — start accruing and
+            // clear any stale error.
+            state.audio_confirmed_playing = true;
             state.last_error = None;
         }
         Command::PlatformPlaybackPaused => {
             // Platform paused us without user input (audio focus, error). Make
-            // sure our intent matches reality so the UI doesn't lie.
+            // sure our intent matches reality so the UI doesn't lie, and stop
+            // accruing — audio is no longer confirmed playing.
             state.intent = PlaybackIntent::Paused;
+            state.audio_confirmed_playing = false;
         }
         Command::PlatformPlaybackError { message } => {
             state.last_error = Some(message);
             state.intent = PlaybackIntent::Paused;
+            state.audio_confirmed_playing = false;
+        }
+
+        Command::SetListeningTracking { enabled } => {
+            state.listening.tracking_enabled = enabled;
+            push_persist_listening(state, effects);
+        }
+        Command::RestoreListening { json } => {
+            // The shell hands back the opaque blob it stored. A missing or
+            // unparseable/unknown-version blob is ignored — restore must never
+            // lower a live counter, and the defaults are already correct.
+            if let Ok(restored) = serde_json::from_str::<PersistedListening>(&json) {
+                if restored.version == crate::listening::LISTENING_VERSION {
+                    let ledger = ListeningLedger::from_persisted(&restored);
+                    state.listening.restore_from(&ledger);
+                }
+            }
+        }
+        Command::ApplySyncedTotal {
+            synced_through_ms,
+            server_total_ms,
+        } => {
+            state
+                .listening
+                .apply_synced(synced_through_ms, server_total_ms);
+            push_persist_listening(state, effects);
+        }
+        Command::ResetListeningData => {
+            state.listening.reset();
+            push_persist_listening(state, effects);
         }
     }
 }
@@ -222,6 +294,9 @@ fn stop_playback(state: &mut State, effects: &mut Vec<Effect>) {
     state.intent = PlaybackIntent::Paused;
     // Mute is a live-playback concern; clear it so the next play isn't silent.
     state.muted = false;
+    // Audio is no longer confirmed playing, so listening stops accruing until
+    // the platform reports it started again.
+    state.audio_confirmed_playing = false;
     effects.push(Effect::PausePlayback);
     push_persist(state, effects);
 }
@@ -299,7 +374,10 @@ mod tests {
         dispatch(&mut s, Command::Play);
         dispatch(&mut s, Command::ToggleMute);
         dispatch(&mut s, Command::Pause);
-        assert!(!s.muted, "pausing should clear mute so the next play is audible");
+        assert!(
+            !s.muted,
+            "pausing should clear mute so the next play is audible"
+        );
     }
 
     #[test]
@@ -307,9 +385,12 @@ mod tests {
         let mut s = State::default();
         let effects = dispatch(&mut s, Command::SetVolume { percent: 250 });
         assert_eq!(s.volume_percent, Some(100));
-        assert!(effects
-            .iter()
-            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 100 })));
+        assert!(effects.iter().any(|e| matches!(
+            e,
+            Effect::SetPlatformVolume {
+                volume_percent: 100
+            }
+        )));
         assert!(effects
             .iter()
             .any(|e| matches!(e, Effect::PersistSettings { .. })));
@@ -409,5 +490,128 @@ mod tests {
         dispatch(&mut s, Command::CancelTimer);
         assert!(s.active_timer.is_none());
         assert!(s.intent.is_playing());
+    }
+
+    // ---- listening-time accrual -------------------------------------------
+
+    #[test]
+    fn intent_alone_does_not_accrue_until_audio_confirmed() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play); // intent only — autoplay may be blocked
+        dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        assert_eq!(
+            s.listening.device_total_ms, 0,
+            "must not count time before the platform confirms audio started"
+        );
+        // Platform confirms → now ticks count.
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        let effects = dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        assert_eq!(s.listening.device_total_ms, 1_000);
+        assert!(
+            effects
+                .iter()
+                .any(|e| matches!(e, Effect::PersistListening { .. })),
+            "a counted tick should persist the listening blob"
+        );
+    }
+
+    #[test]
+    fn muting_stops_accrual_but_not_the_timer() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        assert_eq!(s.listening.device_total_ms, 1_000);
+        dispatch(&mut s, Command::ToggleMute);
+        let effects = dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        assert_eq!(
+            s.listening.device_total_ms, 1_000,
+            "muted time is not listening"
+        );
+        assert!(!effects
+            .iter()
+            .any(|e| matches!(e, Effect::PersistListening { .. })));
+    }
+
+    #[test]
+    fn disabling_tracking_stops_accrual_without_erasing_total() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 2_000 });
+        dispatch(&mut s, Command::SetListeningTracking { enabled: false });
+        dispatch(&mut s, Command::Tick { elapsed_ms: 2_000 });
+        assert_eq!(
+            s.listening.device_total_ms, 2_000,
+            "off = no new accrual, no erase"
+        );
+    }
+
+    #[test]
+    fn pause_then_resume_requires_fresh_confirmation_to_accrue() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        dispatch(&mut s, Command::Pause);
+        // Paused: ticks don't count, and confirmation was cleared.
+        dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
+        assert_eq!(s.listening.device_total_ms, 1_000);
+        // Resume intent without confirmation still doesn't count.
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
+        assert_eq!(s.listening.device_total_ms, 1_000);
+        // Fresh confirmation re-enables accrual.
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        assert_eq!(s.listening.device_total_ms, 2_000);
+    }
+
+    #[test]
+    fn restore_listening_loads_blob_without_lowering_live_total() {
+        let mut s = State::default();
+        let blob = serde_json::to_string(&crate::listening::PersistedListening {
+            version: crate::listening::LISTENING_VERSION,
+            device_total_ms: 7_200_000,
+            synced_through_ms: 3_600_000,
+            server_total_ms: Some(10_000_000),
+            tracking_enabled: false,
+        })
+        .unwrap();
+        dispatch(&mut s, Command::RestoreListening { json: blob });
+        assert_eq!(s.listening.device_total_ms, 7_200_000);
+        assert_eq!(s.listening.server_total_ms, Some(10_000_000));
+        assert!(!s.listening.tracking_enabled);
+    }
+
+    #[test]
+    fn apply_synced_total_moves_baseline_and_persists() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
+        let effects = dispatch(
+            &mut s,
+            Command::ApplySyncedTotal {
+                synced_through_ms: 5_000,
+                server_total_ms: 9_000_000,
+            },
+        );
+        assert_eq!(s.listening.unsynced_ms(), 0);
+        assert_eq!(s.listening.displayed_total_ms(), 9_000_000);
+        assert!(effects
+            .iter()
+            .any(|e| matches!(e, Effect::PersistListening { .. })));
+    }
+
+    #[test]
+    fn reset_listening_data_zeros_slot_keeps_toggle() {
+        let mut s = State::default();
+        dispatch(&mut s, Command::Play);
+        dispatch(&mut s, Command::PlatformPlaybackStarted);
+        dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
+        dispatch(&mut s, Command::ResetListeningData);
+        assert_eq!(s.listening.device_total_ms, 0);
+        assert!(s.listening.tracking_enabled);
     }
 }
