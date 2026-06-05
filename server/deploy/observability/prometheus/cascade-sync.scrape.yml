@@ -1,0 +1,29 @@
+# Scrape jobs for the Cascade sync service. Drop into Prometheus via
+# scrape_config_files, or paste under `scrape_configs:` in prometheus.yml.
+#
+# Two complementary signals:
+#   - cascade-sync: the app's own /metrics, scraped on localhost (it is never
+#     exposed publicly — see the Apache vhost).
+#   - blackbox-cascade-sync: an external HTTPS probe of the public health
+#     endpoint, so we also catch Apache/TLS/DNS failures the app can't report.
+
+scrape_configs:
+  - job_name: cascade-sync
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["127.0.0.1:3470"]
+
+  - job_name: blackbox-cascade-sync
+    metrics_path: /probe
+    params:
+      module: [http_2xx]
+    static_configs:
+      - targets:
+          - https://sync.cascade.stephens.page/health
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: instance
+      - target_label: __address__
+        replacement: 127.0.0.1:9115 # blackbox_exporter
