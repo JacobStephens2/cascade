@@ -7,6 +7,9 @@ import Foundation
 /// round-trip the bytes.
 final class SettingsStore {
     private let url: URL
+    /// Lifetime listening ledger — a separate file from settings, so the two
+    /// evolve and fail independently (mirrors cascade.listening.v1 on web).
+    private let listeningUrl: URL
 
     init() {
         let fm = FileManager.default
@@ -18,21 +21,30 @@ final class SettingsStore {
         let dir = support.appendingPathComponent("Cascade", isDirectory: true)
         try? fm.createDirectory(at: dir, withIntermediateDirectories: true)
         self.url = dir.appendingPathComponent("settings.json")
+        self.listeningUrl = dir.appendingPathComponent("listening.json")
     }
 
     /// Returns nil if the file doesn't exist or can't be read — the bridge
     /// then boots with defaults.
-    func readSafely() -> String? {
+    func readSafely() -> String? { Self.read(url) }
+
+    func writeSafely(_ json: String) { Self.write(json, to: url, label: "settings") }
+
+    func readListeningSafely() -> String? { Self.read(listeningUrl) }
+
+    func writeListeningSafely(_ json: String) { Self.write(json, to: listeningUrl, label: "listening") }
+
+    private static func read(_ url: URL) -> String? {
         guard let data = try? Data(contentsOf: url) else { return nil }
         return String(data: data, encoding: .utf8)
     }
 
-    func writeSafely(_ json: String) {
+    private static func write(_ json: String, to url: URL, label: String) {
         guard let data = json.data(using: .utf8) else { return }
         do {
             try data.write(to: url, options: [.atomic])
         } catch {
-            NSLog("[Cascade] settings write failed: \(error)")
+            NSLog("[Cascade] \(label) write failed: \(error)")
         }
     }
 

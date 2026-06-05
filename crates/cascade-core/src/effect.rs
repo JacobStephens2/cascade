@@ -6,23 +6,26 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(tag = "type", rename_all = "camelCase", rename_all_fields = "camelCase")]
+#[serde(
+    tag = "type",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Effect {
     /// Begin (or resume) playback of the waterfall loop at the given volume.
-    StartPlayback {
-        volume_percent: u8,
-    },
+    StartPlayback { volume_percent: u8 },
     /// Stop / pause playback.
     PausePlayback,
     /// Update the platform's volume control without changing play/pause state.
-    SetPlatformVolume {
-        volume_percent: u8,
-    },
+    SetPlatformVolume { volume_percent: u8 },
     /// Persist the supplied settings JSON. The platform decides where
     /// (localStorage, DataStore, file system, …).
-    PersistSettings {
-        json: String,
-    },
+    PersistSettings { json: String },
+    /// Persist the listening blob. Stored in its own slot
+    /// (`cascade.listening.v1`), separate from settings, so the two evolve and
+    /// fail independently. The platform stores the string verbatim and hands it
+    /// back via [`crate::Command::RestoreListening`] on the next launch.
+    PersistListening { json: String },
 }
 
 #[cfg(test)]
@@ -34,15 +37,14 @@ mod tests {
     // `undefined` and the slider stops working — silently. Lock the wire shape.
     #[test]
     fn set_platform_volume_serializes_camel_case() {
-        let json = serde_json::to_string(&Effect::SetPlatformVolume { volume_percent: 25 })
-            .unwrap();
+        let json =
+            serde_json::to_string(&Effect::SetPlatformVolume { volume_percent: 25 }).unwrap();
         assert_eq!(json, r#"{"type":"setPlatformVolume","volumePercent":25}"#);
     }
 
     #[test]
     fn start_playback_serializes_camel_case() {
-        let json = serde_json::to_string(&Effect::StartPlayback { volume_percent: 40 })
-            .unwrap();
+        let json = serde_json::to_string(&Effect::StartPlayback { volume_percent: 40 }).unwrap();
         assert_eq!(json, r#"{"type":"startPlayback","volumePercent":40}"#);
     }
 }

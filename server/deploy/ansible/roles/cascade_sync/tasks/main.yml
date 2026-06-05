@@ -1,0 +1,117 @@
+---
+# Provision and run the Cascade listening-time sync service on the existing
+# droplet. Idempotent: safe to re-run; it converges to the declared state.
+
+- name: Create the cascade-sync system user
+  ansible.builtin.user:
+    name: "{{ cascade_sync_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Create install and config directories
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: directory
+    owner: "{{ item.owner }}"
+    group: "{{ item.owner }}"
+    mode: "{{ item.mode }}"
+  loop:
+    - { path: /opt/cascade-sync, owner: root, mode: "0755" }
+    - { path: /etc/cascade-sync, owner: "{{ cascade_sync_user }}", mode: "0750" }
+
+# --- Postgres (on the existing instance) ---------------------------------
+# Requires the community.postgresql collection and psycopg2 on the host.
+- name: Create the Postgres role
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_user:
+    name: "{{ cascade_sync_db_user }}"
+    password: "{{ cascade_sync_db_password }}"
+  when: cascade_sync_manage_postgres
+
+- name: Create the Postgres database
+  become: true
+  become_user: postgres
+  community.postgresql.postgresql_db:
+    name: "{{ cascade_sync_db_name }}"
+    owner: "{{ cascade_sync_db_user }}"
+  when: cascade_sync_manage_postgres
+
+# --- Application binary ---------------------------------------------------
+# Built in CI (or `cargo build --release`) and dropped into the role's files/.
+- name: Install the service binary
+  ansible.builtin.copy:
+    src: "{{ cascade_sync_binary_src }}"
+    dest: /opt/cascade-sync/cascade-sync-server
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Restart cascade-sync
+
+# --- Config, unit, vhost --------------------------------------------------
+- name: Template the environment file
+  ansible.builtin.template:
+    src: cascade-sync.env.j2
+    dest: /etc/cascade-sync/cascade-sync.env
+    owner: "{{ cascade_sync_user }}"
+    group: "{{ cascade_sync_user }}"
+    mode: "0640"
+  notify: Restart cascade-sync
+
+- name: Install the systemd unit
+  ansible.builtin.template:
+    src: cascade-sync.service.j2
+    dest: /etc/systemd/system/cascade-sync.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify:
+    - Reload systemd
+    - Restart cascade-sync
+
+- name: Enable and start the service
+  ansible.builtin.systemd_service:
+    name: cascade-sync
+    enabled: true
+    state: started
+    daemon_reload: true
+
+- name: Ensure Apache proxy modules are enabled (Ubuntu)
+  community.general.apache2_module:
+    name: "{{ item }}"
+    state: present
+  loop:
+    - proxy
+    - proxy_http
+  when: cascade_sync_apache_use_a2ensite
+  notify: Reload apache
+
+- name: Install the Apache reverse-proxy vhost
+  ansible.builtin.template:
+    src: apache-vhost.conf.j2
+    dest: "{{ cascade_sync_apache_confdir }}/{{ cascade_sync_host }}.conf"
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reload apache
+
+- name: Enable the vhost (a2ensite)
+  ansible.builtin.command:
+    cmd: "a2ensite {{ cascade_sync_host }}.conf"
+    creates: "/etc/apache2/sites-enabled/{{ cascade_sync_host }}.conf"
+  when: cascade_sync_apache_use_a2ensite
+  notify: Reload apache
+
+# --- TLS ------------------------------------------------------------------
+# Idempotent: --keep-until-expiring is a no-op when a valid cert exists, and the
+# `creates` guard skips the run entirely once the live cert directory exists.
+- name: Obtain/expand the TLS certificate with certbot
+  ansible.builtin.command:
+    cmd: >-
+      certbot --apache --non-interactive --agree-tos
+      -m {{ cascade_sync_certbot_email }}
+      -d {{ cascade_sync_host }}
+      --keep-until-expiring --redirect
+    creates: "/etc/letsencrypt/live/{{ cascade_sync_host }}/fullchain.pem"
+  notify: Reload apache

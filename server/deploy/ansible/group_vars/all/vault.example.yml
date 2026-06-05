@@ -1,0 +1,12 @@
+---
+# Copy to group_vars/all/vault.yml, fill in real values, then encrypt:
+#   ansible-vault encrypt group_vars/all/vault.yml
+# Run plays with --ask-vault-pass (or a vault password file).
+
+cascade_sync_db_password: "CHANGE-ME-strong-random"
+
+# To actually send magic links, set a real SMTP host + creds. Leaving the host
+# empty (the default) makes the service log links instead of emailing them.
+# cascade_sync_smtp_host: "smtp.your-provider.com"
+cascade_sync_smtp_username: "CHANGE-ME"
+cascade_sync_smtp_password: "CHANGE-ME"

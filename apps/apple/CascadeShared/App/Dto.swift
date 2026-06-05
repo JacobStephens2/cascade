@@ -18,8 +18,14 @@ enum Command: Codable {
     case platformPlaybackStarted
     case platformPlaybackPaused
     case platformPlaybackError(message: String)
+    case setListeningTracking(enabled: Bool)
+    case restoreListening(json: String)
+    case applySyncedTotal(syncedThroughMs: UInt64, serverTotalMs: UInt64)
+    case resetListeningData
 
-    private enum CodingKeys: String, CodingKey { case type, percent, minutes, elapsedMs, message }
+    private enum CodingKeys: String, CodingKey {
+        case type, percent, minutes, elapsedMs, message, enabled, json, syncedThroughMs, serverTotalMs
+    }
 
     func encode(to encoder: Encoder) throws {
         var c = encoder.container(keyedBy: CodingKeys.self)
@@ -47,6 +53,18 @@ enum Command: Codable {
         case .platformPlaybackError(let message):
             try c.encode("platformPlaybackError", forKey: .type)
             try c.encode(message, forKey: .message)
+        case .setListeningTracking(let enabled):
+            try c.encode("setListeningTracking", forKey: .type)
+            try c.encode(enabled, forKey: .enabled)
+        case .restoreListening(let json):
+            try c.encode("restoreListening", forKey: .type)
+            try c.encode(json, forKey: .json)
+        case .applySyncedTotal(let syncedThroughMs, let serverTotalMs):
+            try c.encode("applySyncedTotal", forKey: .type)
+            try c.encode(syncedThroughMs, forKey: .syncedThroughMs)
+            try c.encode(serverTotalMs, forKey: .serverTotalMs)
+        case .resetListeningData:
+            try c.encode("resetListeningData", forKey: .type)
         }
     }
 
@@ -68,6 +86,13 @@ enum Command: Codable {
         case "platformPlaybackStarted": self = .platformPlaybackStarted
         case "platformPlaybackPaused": self = .platformPlaybackPaused
         case "platformPlaybackError": self = .platformPlaybackError(message: try c.decode(String.self, forKey: .message))
+        case "setListeningTracking": self = .setListeningTracking(enabled: try c.decode(Bool.self, forKey: .enabled))
+        case "restoreListening": self = .restoreListening(json: try c.decode(String.self, forKey: .json))
+        case "applySyncedTotal":
+            self = .applySyncedTotal(
+                syncedThroughMs: try c.decode(UInt64.self, forKey: .syncedThroughMs),
+                serverTotalMs: try c.decode(UInt64.self, forKey: .serverTotalMs))
+        case "resetListeningData": self = .resetListeningData
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown command type: \(type)")
         }
@@ -79,6 +104,7 @@ enum Effect: Decodable {
     case pausePlayback
     case setPlatformVolume(volumePercent: Int)
     case persistSettings(json: String)
+    case persistListening(json: String)
 
     private enum CodingKeys: String, CodingKey { case type, volumePercent, json }
 
@@ -94,6 +120,8 @@ enum Effect: Decodable {
             self = .setPlatformVolume(volumePercent: try c.decode(Int.self, forKey: .volumePercent))
         case "persistSettings":
             self = .persistSettings(json: try c.decode(String.self, forKey: .json))
+        case "persistListening":
+            self = .persistListening(json: try c.decode(String.self, forKey: .json))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown effect type: \(type)")
         }
@@ -112,6 +140,14 @@ struct TimerSnapshot: Decodable, Equatable {
     let progress: Float
 }
 
+struct ListeningSnapshot: Decodable, Equatable {
+    let trackingEnabled: Bool
+    let deviceTotalMs: UInt64
+    let displayedTotalMs: UInt64
+    let unsyncedMs: UInt64
+    let totalLabel: String
+}
+
 struct Snapshot: Decodable, Equatable {
     let title: String
     let subtitle: String
@@ -121,6 +157,7 @@ struct Snapshot: Decodable, Equatable {
     let primaryButtonLabel: String
     let timer: TimerSnapshot
     let errorMessage: String?
+    let listening: ListeningSnapshot
 }
 
 struct Update: Decodable {

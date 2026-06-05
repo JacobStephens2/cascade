@@ -154,6 +154,177 @@ body {
   text-align: center;
 }
 
+/* ------------------------------------------------------------- listening */
+
+.listening {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(100%, 320px);
+  padding: 18px 20px;
+  border-radius: var(--radius-md);
+  background: var(--paper);
+  border: 1px solid var(--paper-strong);
+}
+
+.listening__readout {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.listening__value {
+  font-size: 26px;
+  font-weight: 300;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+  letter-spacing: 0.02em;
+}
+
+.listening__value.is-off {
+  color: var(--ink-faint);
+}
+
+.listening__caption {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.listening__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--ink-dim);
+  cursor: pointer;
+}
+
+.listening__toggle input {
+  width: 15px;
+  height: 15px;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+/* --------------------------------------------------------------- account */
+
+.account {
+  width: min(100%, 320px);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: center;
+}
+
+.account__caption,
+.account__email {
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+}
+
+.account__row {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  align-items: center;
+}
+
+.account__signin {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.account__input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--paper-strong);
+  background: var(--bg-deep);
+  color: var(--ink);
+  font: inherit;
+  font-size: 14px;
+}
+
+.account__input:focus-visible {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.account__submit {
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(110, 201, 226, 0.3);
+  background: var(--accent-soft);
+  color: var(--accent);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.account__submit:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.account__signed-in {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  align-items: center;
+}
+
+.account__link {
+  background: none;
+  border: none;
+  color: var(--ink-dim);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  padding: 2px 4px;
+}
+
+.account__link:hover {
+  color: var(--ink);
+}
+
+.account__manage {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.account__danger {
+  background: none;
+  border: 1px solid rgba(255, 138, 114, 0.3);
+  border-radius: var(--radius-sm);
+  color: var(--danger);
+  font: inherit;
+  font-size: 13px;
+  padding: 7px 10px;
+  cursor: pointer;
+}
+
+.account__danger:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.account__status {
+  font-size: 12px;
+  color: var(--ink-dim);
+  margin: 0;
+}
+
 /* ------------------------------------------------------------------ main */
 
 .cascade-main {

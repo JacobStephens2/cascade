@@ -34,6 +34,10 @@ public static class CascadeJson
 [JsonDerivedType(typeof(PlatformPlaybackStartedCommand), "platformPlaybackStarted")]
 [JsonDerivedType(typeof(PlatformPlaybackPausedCommand), "platformPlaybackPaused")]
 [JsonDerivedType(typeof(PlatformPlaybackErrorCommand), "platformPlaybackError")]
+[JsonDerivedType(typeof(SetListeningTrackingCommand), "setListeningTracking")]
+[JsonDerivedType(typeof(RestoreListeningCommand), "restoreListening")]
+[JsonDerivedType(typeof(ApplySyncedTotalCommand), "applySyncedTotal")]
+[JsonDerivedType(typeof(ResetListeningDataCommand), "resetListeningData")]
 public abstract record CascadeCommand;
 
 public sealed record PlayCommand : CascadeCommand;
@@ -49,6 +53,10 @@ public sealed record TickCommand(ulong ElapsedMs) : CascadeCommand;
 public sealed record PlatformPlaybackStartedCommand : CascadeCommand;
 public sealed record PlatformPlaybackPausedCommand : CascadeCommand;
 public sealed record PlatformPlaybackErrorCommand(string Message) : CascadeCommand;
+public sealed record SetListeningTrackingCommand(bool Enabled) : CascadeCommand;
+public sealed record RestoreListeningCommand(string Json) : CascadeCommand;
+public sealed record ApplySyncedTotalCommand(ulong SyncedThroughMs, ulong ServerTotalMs) : CascadeCommand;
+public sealed record ResetListeningDataCommand : CascadeCommand;
 
 // ---------- Effects ----------
 
@@ -57,12 +65,14 @@ public sealed record PlatformPlaybackErrorCommand(string Message) : CascadeComma
 [JsonDerivedType(typeof(PausePlaybackEffect), "pausePlayback")]
 [JsonDerivedType(typeof(SetPlatformVolumeEffect), "setPlatformVolume")]
 [JsonDerivedType(typeof(PersistSettingsEffect), "persistSettings")]
+[JsonDerivedType(typeof(PersistListeningEffect), "persistListening")]
 public abstract record CascadeEffect;
 
 public sealed record StartPlaybackEffect(int VolumePercent) : CascadeEffect;
 public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(int VolumePercent) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
+public sealed record PersistListeningEffect(string Json) : CascadeEffect;
 
 // ---------- Snapshot ----------
 
@@ -104,6 +114,14 @@ public sealed record TimerSnapshot(
     float Progress
 );
 
+public sealed record ListeningSnapshot(
+    bool TrackingEnabled,
+    ulong DeviceTotalMs,
+    ulong DisplayedTotalMs,
+    ulong UnsyncedMs,
+    string TotalLabel
+);
+
 public sealed record CascadeSnapshot(
     string Title,
     string Subtitle,
@@ -112,7 +130,8 @@ public sealed record CascadeSnapshot(
     bool IsMuted,
     string PrimaryButtonLabel,
     TimerSnapshot Timer,
-    string? ErrorMessage
+    string? ErrorMessage,
+    ListeningSnapshot Listening
 );
 
 public sealed record CascadeUpdate(

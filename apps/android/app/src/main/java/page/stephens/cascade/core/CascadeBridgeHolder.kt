@@ -32,6 +32,15 @@ class CascadeBridgeHolder(private val settingsStore: SettingsStore) {
     private val _snapshot = MutableStateFlow(cascadeJson.decodeFromString<Snapshot>(bridge.snapshot()))
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
 
+    init {
+        // Restore the listening ledger once at startup. The core ignores a
+        // missing/incompatible blob and never lets a restore lower the counter.
+        val listeningJson = runBlocking { settingsStore.readListening() }
+        if (!listeningJson.isNullOrEmpty()) {
+            dispatch(Command.RestoreListening(listeningJson))
+        }
+    }
+
     /** Latest effects emitted by the most recent dispatch — consumers
      *  (PlaybackController, settings persister) collect this. */
     private val _effects = MutableStateFlow<List<Effect>>(emptyList())
@@ -49,8 +58,10 @@ class CascadeBridgeHolder(private val settingsStore: SettingsStore) {
             // Persist any settings effect immediately — DataStore handles its
             // own coalescing, so flooding it on every slider tick is fine.
             for (effect in update.effects) {
-                if (effect is Effect.PersistSettings) {
-                    scope.launch { settingsStore.write(effect.json) }
+                when (effect) {
+                    is Effect.PersistSettings -> scope.launch { settingsStore.write(effect.json) }
+                    is Effect.PersistListening -> scope.launch { settingsStore.writeListening(effect.json) }
+                    else -> {}
                 }
             }
         }

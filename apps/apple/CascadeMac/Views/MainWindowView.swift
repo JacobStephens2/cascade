@@ -23,6 +23,12 @@ struct MainWindowView: View {
                     onToggleMute: { store.dispatch(.toggleMute) }
                 )
                 .padding(.horizontal, 4)
+                ListeningRow(listening: snapshot.listening) {
+                    store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
+                }
+                .padding(.horizontal, 4)
+                AccountControlsView()
+                    .padding(.horizontal, 4)
                 TimerControls()
                 Spacer(minLength: 0)
                 if let message = snapshot.errorMessage ?? store.lastError {
@@ -139,6 +145,30 @@ private struct VolumeSlider: View {
                 in: 0 ... 100,
                 step: 1
             )
+        }
+    }
+}
+
+private struct ListeningRow: View {
+    let listening: ListeningSnapshot
+    let onToggle: () -> Void
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(listening.totalLabel)
+                    .font(.title3.weight(.light))
+                    .monospacedDigit()
+                Text(listening.trackingEnabled ? "LIFETIME LISTENING" : "TRACKING PAUSED")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .tracking(2)
+            }
+            Spacer()
+            Toggle(
+                "Track listening",
+                isOn: Binding(get: { listening.trackingEnabled }, set: { _ in onToggle() })
+            )
+            .labelsHidden()
         }
     }
 }

@@ -1,0 +1,2 @@
+# The release binary (cascade-sync-server) is staged here by CI or `cargo build
+# --release` before `ansible-playbook`. It is gitignored — never commit binaries.

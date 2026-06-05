@@ -21,13 +21,17 @@ public sealed class TickScheduler
         _dispatcher = dispatcher;
     }
 
-    public void Start(Action<ulong> onTickElapsedMs)
+    /// <summary>Interval the scheduler is currently running at, in ms; 0 when stopped.</summary>
+    public int IntervalMs { get; private set; }
+
+    public void Start(Action<ulong> onTickElapsedMs, int intervalMs = 250)
     {
         if (_timer is not null) return;
 
+        IntervalMs = intervalMs;
         _lastTick = DateTimeOffset.UtcNow;
         _timer = _dispatcher.CreateTimer();
-        _timer.Interval = TimeSpan.FromMilliseconds(250);
+        _timer.Interval = TimeSpan.FromMilliseconds(intervalMs);
         _timer.IsRepeating = true;
         _timer.Tick += (_, _) =>
         {
@@ -43,5 +47,6 @@ public sealed class TickScheduler
     {
         _timer?.Stop();
         _timer = null;
+        IntervalMs = 0;
     }
 }

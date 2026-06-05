@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Tracking Listening Time Across Six Platforms — Without Building a Surveillance Tool | Jacob Stephens' Personal Site</title>
+    <meta name="description" content="How I added cross-device listening-time tracking to a six-platform app using a G-Counter CRDT and a schema that structurally cannot record when you listened.">
+    <meta property="og:title" content="Tracking Listening Time Across Six Platforms — Without Building a Surveillance Tool">
+    <meta property="og:description" content="A G-Counter CRDT, a pure Rust core, and data-minimization by construction: how to centralize a number across devices without storing a timeline.">
+    <meta property="og:type" content="article">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:creator" content="Jacob Stephens">
+    <meta name="twitter:title" content="Tracking Listening Time Across Six Platforms — Without Building a Surveillance Tool">
+    <meta name="twitter:description" content="A G-Counter CRDT, a pure Rust core, and data-minimization by construction.">
+    <link rel="icon" href="/favicon-32x32.png" type="image/png">
+    <link rel="stylesheet" href="/styles/reset.css">
+    <link rel="stylesheet" href="/styles/style.css?v=12">
+    <style>
+      /* Scoped styling for code in this technical post; harmless if the site
+         theme already styles pre/code. */
+      pre { background: #11161c; color: #e6f1f6; padding: 14px 16px; border-radius: 10px;
+            overflow-x: auto; font-size: 14px; line-height: 1.5; }
+      code { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+      p code { background: rgba(127,127,127,0.15); padding: 1px 5px; border-radius: 5px; }
+      .lede { font-size: 1.1em; }
+    </style>
+</head>
+
+<body>
+    <h1 class="title">Tracking Listening Time Across Six Platforms — Without Building a Surveillance Tool</h1>
+    <p class="center">
+        <span>Jacob&nbsp;Stephens</span>&emsp;
+        <span>June&nbsp;5,&nbsp;2026</span>&emsp;
+        <span>Engineering</span>
+    </p>
+    <p class="post-meta-nav"><a href="/posts/">All posts</a> &middot; <a href="/posts/#engineering">Engineering</a></p>
+
+    <p class="lede">Cascade is a white-noise app: it plays one waterfall recording, reliably, on web, Android, macOS, Windows, iOS, and watchOS. I wanted to show people how long they'd spent listening — totalled across every device they use. That is a deceptively dangerous feature to build, because the obvious implementation is a surveillance tool. Here's how I built it so that it structurally <em>cannot</em> be one.</p>
+
+    <h2>One core, six shells</h2>
+    <p>Cascade has an unusual shape: a single headless Rust core (<code>cascade-core</code>) owns all the state and intent, and six thin native shells own the side effects — audio, OS integration, UI. The core has no clock, no filesystem, no network. Time is fed <em>in</em>: the platform sends a <code>Tick</code> command with the elapsed milliseconds.</p>
+    <p>That constraint turned out to be the whole trick. Because every shell already shares one definition of "what's happening," I could add listening-time accrual in exactly one place and have it mean the same thing on all six platforms. No per-platform stopwatch, no six subtly-different definitions of a "session."</p>
+
+    <h2>Count audio, not intent</h2>
+    <p>The naïve version counts time while the app thinks it's playing. That over-counts badly. A browser that blocks autoplay reports "playing" the instant you click — but no sound is coming out until a user gesture unlocks it. So I gated accrual on <em>confirmed</em> playback, not intent: a flag flipped by the platform's real "audio actually started" signal, cleared on pause or error.</p>
+    <pre><code>// inside the pure reducer, on the existing Tick path
+if tracking_enabled && audio_confirmed_playing && !muted {
+    let delta = elapsed_ms.min(MAX_TICK_ACCRUAL_MS); // clamp clock jumps
+    device_total_ms = device_total_ms.saturating_add(delta);
+}</code></pre>
+    <p>Note the clamp. The merge math I'm about to describe is provably correct, but it consumes a per-tick delta as input — and a laptop sleeping for three hours produces one enormous "tick" on wake. Capping each tick at five seconds (shells tick roughly every 250ms) means a sleep/wake gap or a fiddled clock can't inflate the number. The input delta is the only attack surface a grow-only counter has, so that's where the guard goes.</p>
+
+    <h2>The merge problem: why "latest total" is wrong</h2>
+    <p>Here's the bug almost everyone ships first. You listen for two hours on your phone and one hour on your laptop. Both sync. If the server keeps "the latest total it received," one of those devices silently erases the other's hours. The whole point of <em>cross-device</em> tracking is that concurrent listening must <strong>add</strong>, not overwrite.</p>
+    <p>The clean answer is a <strong>G-Counter</strong> — a grow-only counter, one of the simplest CRDTs. Each device owns its own slot and only ever increases it. The server merges with two boring operations:</p>
+    <pre><code>-- on write: keep the higher value for this device's slot
+INSERT INTO device_counters (user_id, device_id, total_ms)
+VALUES ($1, $2, $3)
+ON CONFLICT (user_id, device_id)
+DO UPDATE SET total_ms = GREATEST(device_counters.total_ms, EXCLUDED.total_ms);
+
+-- on read: the lifetime total is the sum across the user's devices
+SELECT COALESCE(SUM(total_ms), 0) FROM device_counters WHERE user_id = $1;</code></pre>
+    <p>That's the entire sync engine. No vector clocks, no conflict UI, no "which version wins" — <code>GREATEST</code> on write, <code>SUM</code> on read. Two devices adding concurrently is not a conflict; it's just addition. The device is a CRDT replica and the server is almost stupid, which is exactly what you want a server holding other people's data to be.</p>
+
+    <h2>The part I actually care about: it can't store a timeline</h2>
+    <p>Tracking how long someone listens is one schema change away from tracking <em>when</em> they listen — what time they fall asleep, when they're at their desk, the shape of their week. I did not want to hold that data, and "we promise not to look" is a weak claim. So I made it impossible to express.</p>
+    <p>The account stores an email address and <strong>one integer per device</strong>. No timestamps. No session log. No event stream. You can ask the database "how much has this person listened?" and it can answer. You cannot ask it "when?" — there is nowhere for that answer to live.</p>
+    <p>This is the difference between <em>we choose not to store your timeline</em> and <em>we cannot</em>. The second is checkable: open the four-table schema and there is simply no column for it. It's also why I was comfortable making tracking on-by-default — the data minimization is a structural property of the design, not a setting someone has to trust.</p>
+
+    <h2>Auth without the baggage</h2>
+    <p>The account exists only to add numbers across devices, so it should carry as little as possible. Sign-in is an emailed magic link — no passwords to store or leak. Sessions are <strong>opaque server-side tokens</strong>, not JWTs, stored only as SHA-256 hashes. That choice pays off at deletion time: "log out everywhere" and "delete my account" are a single <code>DELETE</code> that takes effect immediately, instead of waiting out a signed token's expiry.</p>
+    <p>One subtle bug hides in every grow-only-counter design: deletion. If you delete your data but a forgotten phone is offline in a drawer, it can later sync a stale-but-higher counter and <em>resurrect</em> the total you deleted. The fix is small — deleting rotates the device's id, so any late write lands in a fresh slot instead of the grave you just dug. Grow-only counters and "delete my data" are in tension, and that rotation is the reconciliation.</p>
+
+    <h2>Where the cleverness does <em>not</em> go</h2>
+    <p>The core never decides <em>when</em> to sync. It exposes one number — how much time hasn't been pushed yet — and each shell owns the cadence, because syncing depends on things only the shell knows: are we online, are we signed in, is the app about to be suspended. The web shell flushes on <code>pagehide</code>; Android flushes in <code>onStop</code>. Keeping network policy out of the core is what lets the same pure reducer drive a watch and a desktop without caring which it is.</p>
+
+    <h2>What it added up to</h2>
+    <p>One Rust core, six shells, and a deliberately small Rust/Axum + Postgres service — four tables, a handful of endpoints — behind a hardened systemd unit, deployed as Terraform + Ansible. The measurement is identical everywhere because it lives in one place; concurrent devices add instead of clobbering because the merge is a CRDT; and the scariest version of the feature is off the table because the schema can't represent it.</p>
+    <p>The lesson I keep relearning: the strongest privacy guarantee isn't a policy, it's a data model that makes the bad version unbuildable.</p>
+
+    <p class="post-meta-nav"><a href="/posts/">All posts</a> &middot; <a href="https://github.com/JacobStephens2/cascade">Cascade on GitHub</a></p>
+    <p class="center footer">Copyright Jacob Stephens 2026</p>
+</body>
+</html>

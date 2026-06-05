@@ -1,0 +1,48 @@
+# Alerting rules for the Cascade sync service. Load via `rule_files:` in
+# prometheus.yml; route to Alertmanager.
+groups:
+  - name: cascade-sync
+    rules:
+      - alert: CascadeSyncDown
+        expr: up{job="cascade-sync"} == 0
+        for: 2m
+        labels: { severity: critical }
+        annotations:
+          summary: "cascade-sync /metrics is unreachable"
+          description: "Prometheus can't scrape the service on localhost for >2m — the systemd unit is likely down."
+
+      - alert: CascadeSyncHealthProbeFailing
+        expr: probe_success{job="blackbox-cascade-sync"} == 0
+        for: 3m
+        labels: { severity: critical }
+        annotations:
+          summary: "sync.cascade.stephens.page health probe failing"
+          description: "The external HTTPS probe of /health has failed for >3m (app, Apache, TLS, or DNS)."
+
+      - alert: CascadeSyncTLSCertExpiringSoon
+        expr: (probe_ssl_earliest_cert_expiry{job="blackbox-cascade-sync"} - time()) < 7 * 24 * 3600
+        for: 1h
+        labels: { severity: warning }
+        annotations:
+          summary: "TLS cert for sync.cascade.stephens.page expires in <7 days"
+          description: "certbot renewal may have stalled."
+
+      - alert: CascadeSyncHighErrorRate
+        expr: |
+          sum(rate(cascade_sync_http_requests_total{status=~"5.."}[5m]))
+            / clamp_min(sum(rate(cascade_sync_http_requests_total[5m])), 1) > 0.05
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "cascade-sync 5xx rate above 5%"
+          description: "More than 5% of requests have returned 5xx for 10m."
+
+      - alert: CascadeSyncHighLatency
+        expr: |
+          sum(rate(cascade_sync_http_request_duration_seconds_sum[5m]))
+            / clamp_min(sum(rate(cascade_sync_http_request_duration_seconds_count[5m])), 1) > 1
+        for: 10m
+        labels: { severity: warning }
+        annotations:
+          summary: "cascade-sync average latency above 1s"
+          description: "Mean request latency has exceeded 1s for 10m."

@@ -1,6 +1,6 @@
 package page.stephens.cascade
 
-import android.os.Build
+import android.content.Intent
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -17,7 +17,7 @@ class MainActivity : ComponentActivity() {
 
     private val viewModel: CascadeViewModel by viewModels {
         val app = application as CascadeApp
-        CascadeViewModel.factory(app.bridgeHolder)
+        CascadeViewModel.factory(app.bridgeHolder, app.syncManager)
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -28,12 +28,31 @@ class MainActivity : ComponentActivity() {
         val app = application as CascadeApp
         playback = PlaybackController(this, app.bridgeHolder)
         playback.start()
+        handleAuthDeepLink(intent)
 
         setContent {
             CascadeTheme {
                 CascadeScreen(viewModel)
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleAuthDeepLink(intent)
+    }
+
+    /** Complete a magic-link sign-in if we were opened via .../auth?token=... */
+    private fun handleAuthDeepLink(intent: Intent?) {
+        val token = intent?.data?.getQueryParameter("token") ?: return
+        (application as CascadeApp).syncManager.completeSignIn(token)
+    }
+
+    override fun onStop() {
+        // Flush recent listening before we risk being suspended.
+        (application as CascadeApp).syncManager.flush()
+        super.onStop()
     }
 
     override fun onDestroy() {
