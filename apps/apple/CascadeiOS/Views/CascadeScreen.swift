@@ -32,6 +32,7 @@ struct CascadeScreen: View {
                 ListeningRow(listening: snapshot.listening) {
                     store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
                 }
+                AccountControlsView()
                 TimerControls()
                 if let message = snapshot.errorMessage ?? store.lastError {
                     Text(message)

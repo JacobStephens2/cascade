@@ -16,6 +16,17 @@ final class AppStore {
     private(set) var snapshot: Snapshot
     private(set) var lastError: String?
 
+    // Optional account + sync. The core stays pure; this layer reads
+    // snapshot.listening and decides when to talk to the server.
+    private(set) var account: SyncAccount?
+    private(set) var syncStatus: String?
+    var syncAvailable: Bool { SyncConfig.available }
+
+    private let accountStore = AccountStore()
+    private let syncApi = SyncApi()
+    private var syncing = false
+    private static let syncThresholdMs: UInt64 = 30_000
+
     /// Side-channel observer for non-SwiftUI consumers (the iPhone's
     /// `PhoneConnectivityService` uses this to push every snapshot down to
     /// the watch). SwiftUI views observe `snapshot` directly via `@Observable`.
@@ -44,6 +55,10 @@ final class AppStore {
         // missing/incompatible blob and never lets a restore lower the counter.
         if let listeningJson = settings.readListeningSafely() {
             store.dispatch(.restoreListening(json: listeningJson))
+        }
+        store.account = store.accountStore.readAccount()
+        if store.account != nil {
+            Task { await store.sync() }
         }
         return store
     }
@@ -119,6 +134,120 @@ final class AppStore {
         }
 
         nowPlaying.update(snapshot: update.snapshot)
+
+        // Sync cadence lives in the shell: push once enough unsynced time has
+        // accrued.
+        if account != nil, update.snapshot.listening.unsyncedMs >= Self.syncThresholdMs {
+            Task { await sync() }
+        }
+    }
+
+    // MARK: - Sync
+
+    func sync() async {
+        guard !syncing, let account else { return }
+        syncing = true
+        defer { syncing = false }
+        let deviceTotal = Int64(snapshot.listening.deviceTotalMs)
+        do {
+            let res = try await syncApi.putListening(
+                token: account.sessionToken,
+                deviceId: accountStore.deviceId(),
+                deviceTotalMs: deviceTotal)
+            dispatch(.applySyncedTotal(
+                syncedThroughMs: UInt64(deviceTotal),
+                serverTotalMs: UInt64(max(0, res.serverTotalMs))))
+        } catch let error as SyncError where error.status == 401 {
+            self.account = nil
+            accountStore.clearAccount()
+            syncStatus = "Signed out — sign in again to sync."
+        } catch {
+            // offline / transient — retry on the next trigger
+        }
+    }
+
+    func signIn(email: String) async {
+        syncStatus = nil
+        do {
+            try await syncApi.requestLink(email: email)
+            syncStatus = "Check \(email) for a sign-in link."
+        } catch {
+            syncStatus = "Couldn't send the sign-in link."
+        }
+    }
+
+    /// Complete a magic-link sign-in from a pasted link (…/auth?token=XYZ) or a
+    /// raw token. (Universal Links / a URL scheme are the on-device follow-up.)
+    func completeSignIn(fromLinkOrToken input: String) async {
+        guard let token = Self.extractToken(input) else {
+            syncStatus = "Paste the full sign-in link."
+            return
+        }
+        syncStatus = "Signing in…"
+        do {
+            let res = try await syncApi.verify(token: token)
+            let acct = SyncAccount(sessionToken: res.sessionToken, email: res.email)
+            accountStore.writeAccount(acct)
+            account = acct
+            syncStatus = "Signed in as \(res.email)."
+            await sync()
+        } catch {
+            syncStatus = "That sign-in link was invalid or expired."
+        }
+    }
+
+    /// Entry point for `.onOpenURL` once Universal Links are configured.
+    func handleOpenURL(_ url: URL) {
+        Task { await completeSignIn(fromLinkOrToken: url.absoluteString) }
+    }
+
+    func signOut() async {
+        let previous = account
+        account = nil
+        accountStore.clearAccount()
+        syncStatus = nil
+        if let previous {
+            try? await syncApi.logout(token: previous.sessionToken)
+        }
+    }
+
+    func deleteListeningData() async {
+        guard let account else { return }
+        do {
+            try await syncApi.deleteListening(token: account.sessionToken)
+            accountStore.rotateDeviceId()
+            dispatch(.resetListeningData)
+            syncStatus = "Listening data deleted."
+        } catch {
+            syncStatus = "Couldn't delete listening data."
+        }
+    }
+
+    func deleteAccount() async {
+        guard let account else { return }
+        do {
+            try await syncApi.deleteAccount(token: account.sessionToken)
+            accountStore.rotateDeviceId()
+            dispatch(.resetListeningData)
+            self.account = nil
+            accountStore.clearAccount()
+            syncStatus = "Account deleted."
+        } catch {
+            syncStatus = "Couldn't delete the account."
+        }
+    }
+
+    private static func extractToken(_ input: String) -> String? {
+        let s = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if s.isEmpty { return nil }
+        if let range = s.range(of: "token=") {
+            let rest = s[range.upperBound...]
+            if let amp = rest.firstIndex(of: "&") {
+                return String(rest[..<amp])
+            }
+            return String(rest)
+        }
+        return s
     }
 
     // MARK: - Tick loop

@@ -27,6 +27,8 @@ struct MainWindowView: View {
                     store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
                 }
                 .padding(.horizontal, 4)
+                AccountControlsView()
+                    .padding(.horizontal, 4)
                 TimerControls()
                 Spacer(minLength: 0)
                 if let message = snapshot.errorMessage ?? store.lastError {

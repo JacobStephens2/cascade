@@ -9,6 +9,7 @@ struct CascadeMacApp: App {
             MainWindowView()
                 .environment(store)
                 .frame(minWidth: 420, minHeight: 520)
+                .onOpenURL { store.handleOpenURL($0) }
         }
         .windowResizability(.contentSize)
         .commands { CascadeCommands(store: store) }

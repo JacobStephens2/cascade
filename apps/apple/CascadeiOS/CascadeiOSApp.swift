@@ -23,6 +23,7 @@ struct CascadeiOSApp: App {
                 .onAppear {
                     wireWatchConnectivity()
                 }
+                .onOpenURL { store.handleOpenURL($0) }
         }
     }
 
