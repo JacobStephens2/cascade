@@ -29,7 +29,8 @@ final class AppStore {
     private let nowPlaying: NowPlayingController
 
     private var tickTimer: Timer?
-    private static let tickIntervalMs: UInt64 = 250
+    /// Interval the tick loop is currently running at, in ms; 0 when stopped.
+    private var tickIntervalMs: UInt64 = 0
 
     /// Bootstrap from disk. Failures fall back to defaults — the user never
     /// gets stuck on a startup error for something as trivial as malformed
@@ -38,7 +39,13 @@ final class AppStore {
         let settings = SettingsStore()
         let json = settings.readSafely()
         let bridge = CoreBridge(persistedSettings: json)
-        return AppStore(bridge: bridge, settings: settings)
+        let store = AppStore(bridge: bridge, settings: settings)
+        // Restore the listening ledger once at startup. The core ignores a
+        // missing/incompatible blob and never lets a restore lower the counter.
+        if let listeningJson = settings.readListeningSafely() {
+            store.dispatch(.restoreListening(json: listeningJson))
+        }
+        return store
     }
 
     private init(bridge: CoreBridge, settings: SettingsStore) {
@@ -77,7 +84,6 @@ final class AppStore {
     }
 
     private func apply(_ update: Update) {
-        let prev = snapshot
         snapshot = update.snapshot
         lastError = update.snapshot.errorMessage
         onSnapshotChanged?(update.snapshot)
@@ -95,34 +101,38 @@ final class AppStore {
                 audio.setVolume(volumePercent: volumePercent)
             case .persistSettings(let json):
                 settings.writeSafely(json)
+            case .persistListening(let json):
+                settings.writeListeningSafely(json)
             }
         }
 
-        // Tick loop: run while a timer is active. We mirror the web app's
-        // 250ms cadence so the countdown reads smoothly.
+        // Tick loop: run while a timer is active (fine cadence, so the countdown
+        // reads smoothly) and also while audio is simply playing (coarse cadence,
+        // just to accrue listening time). Restart only when the cadence changes.
         let timerActive = update.snapshot.timer.kind == .sleep
             || update.snapshot.timer.kind == .pomodoro
             || update.snapshot.timer.kind == .stopwatch
-        let wasActive = prev.timer.kind == .sleep
-            || prev.timer.kind == .pomodoro
-            || prev.timer.kind == .stopwatch
-        if timerActive && !wasActive { startTicking() }
-        if !timerActive && wasActive { stopTicking() }
+        let desired: UInt64 = timerActive ? 250 : (update.snapshot.isPlaying ? 1000 : 0)
+        if desired != tickIntervalMs {
+            stopTicking()
+            if desired > 0 { startTicking(intervalMs: desired) }
+        }
 
         nowPlaying.update(snapshot: update.snapshot)
     }
 
     // MARK: - Tick loop
 
-    private func startTicking() {
+    private func startTicking(intervalMs: UInt64) {
         // Tell macOS this app is doing time-sensitive work — without this the
         // kernel can throttle our Timer to once-per-10-seconds when the main
         // window is closed and we're in the background.
-        napGuard.begin(reason: "Cascade focus / sleep timer")
+        napGuard.begin(reason: "Cascade listening / timer")
+        tickIntervalMs = intervalMs
 
         var last = Date()
         tickTimer?.invalidate()
-        tickTimer = Timer.scheduledTimer(withTimeInterval: 0.25, repeats: true) { [weak self] _ in
+        tickTimer = Timer.scheduledTimer(withTimeInterval: Double(intervalMs) / 1000.0, repeats: true) { [weak self] _ in
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 let now = Date()
@@ -141,6 +151,7 @@ final class AppStore {
     private func stopTicking() {
         tickTimer?.invalidate()
         tickTimer = nil
+        tickIntervalMs = 0
         napGuard.end()
     }
 }
@@ -154,6 +165,13 @@ extension Snapshot {
         isMuted: false,
         primaryButtonLabel: "Play",
         timer: TimerSnapshot(kind: .off, remainingLabel: "", remainingMs: 0, totalMs: 0, progress: 0),
-        errorMessage: nil
+        errorMessage: nil,
+        listening: ListeningSnapshot(
+            trackingEnabled: true,
+            deviceTotalMs: 0,
+            displayedTotalMs: 0,
+            unsyncedMs: 0,
+            totalLabel: "0m"
+        )
     )
 }

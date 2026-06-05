@@ -29,6 +29,9 @@ struct CascadeScreen: View {
                     onChange: { store.dispatch(.setVolume(percent: $0)) },
                     onToggleMute: { store.dispatch(.toggleMute) }
                 )
+                ListeningRow(listening: snapshot.listening) {
+                    store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
+                }
                 TimerControls()
                 if let message = snapshot.errorMessage ?? store.lastError {
                     Text(message)
@@ -139,6 +142,30 @@ private struct VolumeSlider: View {
                 in: 0 ... 100,
                 step: 1
             )
+        }
+    }
+}
+
+private struct ListeningRow: View {
+    let listening: ListeningSnapshot
+    let onToggle: () -> Void
+    var body: some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(listening.totalLabel)
+                    .font(.title3.weight(.light))
+                    .monospacedDigit()
+                Text(listening.trackingEnabled ? "LIFETIME LISTENING" : "TRACKING PAUSED")
+                    .font(.caption2)
+                    .foregroundStyle(.secondary)
+                    .tracking(2)
+            }
+            Spacer()
+            Toggle(
+                "Track listening",
+                isOn: Binding(get: { listening.trackingEnabled }, set: { _ in onToggle() })
+            )
+            .labelsHidden()
         }
     }
 }
