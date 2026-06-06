@@ -15,6 +15,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -62,17 +64,18 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                 modifier = Modifier
                     .fillMaxSize()
                     .systemBarsPadding()
+                    .verticalScroll(rememberScrollState())
                     .padding(horizontal = 24.dp, vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Header(subtitle = snapshot.subtitle)
-                Spacer(Modifier.height(24.dp))
+                Spacer(Modifier.height(32.dp))
                 TimerReadout(
                     kind = snapshot.timer.kind,
                     label = snapshot.timer.remainingLabel,
                     progress = snapshot.timer.progress,
                 )
-                Spacer(Modifier.weight(1f))
+                Spacer(Modifier.height(32.dp))
                 PlayButton(
                     isPlaying = snapshot.isPlaying,
                     label = snapshot.primaryButtonLabel,
@@ -91,16 +94,6 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     trackingEnabled = snapshot.listening.trackingEnabled,
                     onToggleTracking = viewModel::setListeningTracking,
                 )
-                if (syncState.available) {
-                    Spacer(Modifier.height(12.dp))
-                    AccountControls(
-                        state = syncState,
-                        onSignIn = viewModel::signIn,
-                        onSignOut = viewModel::signOut,
-                        onDeleteData = viewModel::deleteListeningData,
-                        onDeleteAccount = viewModel::deleteAccount,
-                    )
-                }
                 Spacer(Modifier.height(24.dp))
                 TimerControls(
                     activeKind = snapshot.timer.kind,
@@ -109,6 +102,16 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     onStartStopwatch = viewModel::startStopwatch,
                     onCancel = viewModel::cancelTimer,
                 )
+                if (syncState.available) {
+                    Spacer(Modifier.height(28.dp))
+                    AccountControls(
+                        state = syncState,
+                        onSignIn = viewModel::signIn,
+                        onSignOut = viewModel::signOut,
+                        onDeleteData = viewModel::deleteListeningData,
+                        onDeleteAccount = viewModel::deleteAccount,
+                    )
+                }
                 Spacer(Modifier.height(12.dp))
                 snapshot.errorMessage?.let {
                     Text(
