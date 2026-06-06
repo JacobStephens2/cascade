@@ -57,6 +57,7 @@ class CascadeViewModel(
     fun setListeningTracking(enabled: Boolean) = bridge.dispatch(Command.SetListeningTracking(enabled))
 
     fun signIn(email: String) = syncManager.signIn(email)
+    fun completeSignInFromLink(input: String) = syncManager.completeSignInFromLink(input)
     fun signOut() = syncManager.signOut()
     fun deleteListeningData() = syncManager.deleteData()
     fun deleteAccount() = syncManager.deleteAccount()

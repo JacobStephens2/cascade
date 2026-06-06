@@ -107,6 +107,7 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     AccountControls(
                         state = syncState,
                         onSignIn = viewModel::signIn,
+                        onCompleteSignIn = viewModel::completeSignInFromLink,
                         onSignOut = viewModel::signOut,
                         onDeleteData = viewModel::deleteListeningData,
                         onDeleteAccount = viewModel::deleteAccount,
@@ -385,11 +386,13 @@ private fun ListeningStats(
 private fun AccountControls(
     state: SyncUiState,
     onSignIn: (String) -> Unit,
+    onCompleteSignIn: (String) -> Unit,
     onSignOut: () -> Unit,
     onDeleteData: () -> Unit,
     onDeleteAccount: () -> Unit,
 ) {
     var email by remember { mutableStateOf("") }
+    var link by remember { mutableStateOf("") }
     var showManage by remember { mutableStateOf(false) }
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -418,8 +421,16 @@ private fun AccountControls(
             }
         } else {
             Text("Sync across devices", style = MaterialTheme.typography.labelMedium)
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(4.dp))
+            Text(
+                "1. Email yourself a link.  2. Paste it back here to sign in.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onBackground.copy(alpha = 0.6f),
+            )
+            Spacer(Modifier.height(10.dp))
+            // Step 1 — request the magic link.
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
@@ -429,11 +440,31 @@ private fun AccountControls(
                     label = { Text("you@example.com") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
-                    modifier = Modifier.size(width = 200.dp, height = 64.dp),
+                    modifier = Modifier.weight(1f),
                 )
                 Button(
                     onClick = { if (email.isNotBlank()) onSignIn(email.trim()) },
                     enabled = !state.busy && email.isNotBlank(),
+                ) { Text("Email link") }
+            }
+            Spacer(Modifier.height(8.dp))
+            // Step 2 — paste the link from the email to finish.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = link,
+                    onValueChange = { link = it },
+                    label = { Text("paste the sign-in link") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri),
+                    modifier = Modifier.weight(1f),
+                )
+                Button(
+                    onClick = { if (link.isNotBlank()) onCompleteSignIn(link.trim()) },
+                    enabled = !state.busy && link.isNotBlank(),
                 ) { Text("Sign in") }
             }
         }
