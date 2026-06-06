@@ -1,0 +1,90 @@
+# Build the Android APK and publish it as a GitHub Release.
+#
+# Trigger: pushing a tag like v0.2.0-android (the deliberate human act that
+# starts a release). workflow_dispatch builds without releasing, for testing.
+#
+# The release build is debug-signed (see app/build.gradle.kts -> release
+# signingConfig), so no signing secrets are needed: a fresh CI run generates a
+# debug keystore on first build. The APK is a sideload build, not a Play upload.
+#
+# The publish step is split into its own job behind `environment: release`, so a
+# required reviewer can be added in Settings -> Environments to gate every
+# release behind a named human approval (mirrors deploy-sync.yml).
+name: Android release
+
+on:
+  push:
+    tags:
+      - "v*-android"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK + NDK
+        uses: android-actions/setup-android@v3
+      - name: Install NDK + platform
+        run: |
+          sdkmanager --install "ndk;26.3.11579264" "platforms;android-35" "build-tools;35.0.0"
+          echo "ANDROID_NDK_HOME=$ANDROID_HOME/ndk/26.3.11579264" >> "$GITHUB_ENV"
+
+      - name: Install Rust + Android targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
+      - uses: Swatinem/rust-cache@v2
+      - name: Install cargo-ndk
+        run: cargo install cargo-ndk --locked
+
+      - name: Build release APK (Rust core for all ABIs + Kotlin)
+        working-directory: apps/android
+        run: ./gradlew :app:assembleRelease --no-daemon
+
+      - name: Stage APK
+        run: |
+          src="apps/android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$src" || { echo "APK not produced: $src"; exit 1; }
+          name="cascade-${GITHUB_REF_NAME//\//-}.apk"
+          cp "$src" "$name"
+          echo "APK_NAME=$name" >> "$GITHUB_ENV"
+          ls -la "$name"
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cascade-android-apk
+          path: ${{ env.APK_NAME }}
+          if-no-files-found: error
+          retention-days: 14
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    # Only publish on a tag; workflow_dispatch just builds (above) as a smoke test.
+    if: startsWith(github.ref, 'refs/tags/')
+    environment: release          # add a required reviewer here to gate the publish
+    steps:
+      - name: Download APK
+        uses: actions/download-artifact@v4
+        with:
+          name: cascade-android-apk
+
+      - name: Create / update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Cascade ${{ github.ref_name }} (Android)"
+          files: cascade-*.apk
+          generate_release_notes: false
+          fail_on_unmatched_files: true
