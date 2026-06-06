@@ -15,8 +15,8 @@ android {
         applicationId = "page.stephens.cascade"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
 
         ndk {
             // Keep parity with cargo-ndk targets in the build script below.
