@@ -1,0 +1,10 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "page.stephens.cascade",
+      "sha256_cert_fingerprints": ["A4:AD:D7:91:39:1A:78:1E:F4:EB:9C:5F:33:61:85:CF:BD:00:5E:CF:71:4A:A7:A3:F3:7B:1D:B3:26:C5:EB:08"]
+    }
+  }
+]
