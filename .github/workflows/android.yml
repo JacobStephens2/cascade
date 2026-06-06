@@ -46,9 +46,7 @@ jobs:
           targets: aarch64-linux-android,armv7-linux-androideabi,x86_64-linux-android
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-ndk
-        uses: taiki-e/install-action@v2
-        with:
-          tool: cargo-ndk
+        run: cargo install cargo-ndk --locked
       - name: Build debug APK
         working-directory: apps/android
         run: ./gradlew :app:assembleDebug --no-daemon
