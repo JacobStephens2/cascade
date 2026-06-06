@@ -1,6 +1,10 @@
 <?xml version="1.0" encoding="utf-8"?>
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
+    <!-- The optional account/sync feature makes HTTPS calls to the sync service.
+         (Core playback is fully offline; this is only used once you sign in.) -->
+    <uses-permission android:name="android.permission.INTERNET" />
+
     <!-- Required for Media3 MediaSessionService to keep audio playing
          while the app is backgrounded. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />

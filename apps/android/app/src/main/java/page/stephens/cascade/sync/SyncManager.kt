@@ -84,6 +84,16 @@ class SyncManager(
         }
     }
 
+    /** Complete sign-in from a pasted link (…/auth?token=XYZ) or a raw token. */
+    fun completeSignInFromLink(input: String) {
+        val token = extractToken(input)
+        if (token == null) {
+            _state.value = _state.value.copy(status = "Paste the full sign-in link.")
+            return
+        }
+        completeSignIn(token)
+    }
+
     fun signOut() {
         val account = _state.value.account
         _state.value = _state.value.copy(account = null, status = null)
@@ -153,6 +163,19 @@ class SyncManager(
     fun flush() {
         val account = _state.value.account ?: return
         scope.launch { sync(account) }
+    }
+
+    /** Pull the token out of a pasted sign-in URL, or accept a raw token. */
+    private fun extractToken(input: String): String? {
+        val s = input.trim()
+        if (s.isEmpty()) return null
+        val idx = s.indexOf("token=")
+        if (idx >= 0) {
+            val rest = s.substring(idx + "token=".length)
+            val amp = rest.indexOf('&')
+            return if (amp >= 0) rest.substring(0, amp) else rest
+        }
+        return s
     }
 
     companion object {
