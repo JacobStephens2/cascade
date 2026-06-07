@@ -1,0 +1,16 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["G38J85UN6P.page.stephens.cascade"],
+        "components": [
+          {
+            "/": "/auth",
+            "?": { "token": "?*" },
+            "comment": "Magic-link sign-in: open Cascade instead of the website."
+          }
+        ]
+      }
+    ]
+  }
+}
