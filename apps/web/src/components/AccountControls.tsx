@@ -92,6 +92,11 @@ export function AccountControls({ sync }: { sync: SyncState }) {
         </form>
       )}
       {sync.status && <p className="account__status">{sync.status}</p>}
+      {sync.desktopHandoff && (
+        <a className="account__link" href={sync.desktopHandoff}>
+          Open the Cascade app to finish signing in
+        </a>
+      )}
     </div>
   );
 }

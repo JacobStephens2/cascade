@@ -168,7 +168,7 @@
             <!-- Signed out -->
             <StackPanel
                 Spacing="6"
-                Visibility="{x:Bind local:Converters.VisibleIfSignedOut(ViewModel.Account), Mode=OneWay}">
+                Visibility="{x:Bind ViewModel.SignedOutVisibility, Mode=OneWay}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBox
                         PlaceholderText="you@example.com"
@@ -188,7 +188,7 @@
             <!-- Signed in -->
             <StackPanel
                 Spacing="6"
-                Visibility="{x:Bind local:Converters.VisibleIfSignedIn(ViewModel.Account), Mode=OneWay}">
+                Visibility="{x:Bind ViewModel.SignedInVisibility, Mode=OneWay}">
                 <TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" />
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <HyperlinkButton Content="Sign out" Command="{x:Bind ViewModel.SignOutCommand}" />
