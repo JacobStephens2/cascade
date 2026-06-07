@@ -30,10 +30,4 @@ public static class Converters
 
     public static Visibility VisibleIf(bool b) =>
         b ? Visibility.Visible : Visibility.Collapsed;
-
-    public static Visibility VisibleIfSignedIn(Account? account) =>
-        account is not null ? Visibility.Visible : Visibility.Collapsed;
-
-    public static Visibility VisibleIfSignedOut(Account? account) =>
-        account is null ? Visibility.Visible : Visibility.Collapsed;
 }

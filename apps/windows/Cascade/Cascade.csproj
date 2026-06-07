@@ -20,6 +20,9 @@
          don't compile, so keep the field syntax and silence the forward-compat
          nudge until this target moves to .NET 9. -->
     <NoWarn>$(NoWarn);MVVMTK0045</NoWarn>
+    <!-- Provide our own entry point (Program.Main) for single-instancing and
+         cascade:// protocol activation; disable the XAML-generated Main. -->
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Set this to your unique app identifier when you turn on signing. -->
     <DefaultLanguage>en-US</DefaultLanguage>
     <AppxPackageSigningEnabled>false</AppxPackageSigningEnabled>

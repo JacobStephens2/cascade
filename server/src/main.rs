@@ -241,8 +241,14 @@ async fn aggregate_total_ms(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
 // ---- request / response shapes ------------------------------------------
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 struct AuthRequest {
     email: String,
+    /// Optional client hint. When "windows", the emailed link carries
+    /// `&app=windows` so the web `/auth` page hands the token off to the
+    /// desktop app via `cascade://` instead of consuming it in the browser.
+    #[serde(default)]
+    platform: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -304,7 +310,17 @@ async fn auth_request(
         .bind(expires_at)
         .execute(&state.pool)
         .await?;
-    let link = format!("{}/auth?token={}", state.frontend_origin, token);
+    // A "windows" hint tags the link so the web /auth page offers a desktop
+    // handoff (cascade://) rather than signing in on the web and burning the
+    // single-use token. Any other/absent value keeps the plain web link.
+    let app_suffix = match body.platform.as_deref() {
+        Some("windows") => "&app=windows",
+        _ => "",
+    };
+    let link = format!(
+        "{}/auth?token={}{}",
+        state.frontend_origin, token, app_suffix
+    );
     if let Err(e) = state.mailer.send_login_link(&email, &link).await {
         // Don't fail the request — log and still return 200. A retry just mints
         // another link.

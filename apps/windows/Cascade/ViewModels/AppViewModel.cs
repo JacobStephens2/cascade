@@ -5,6 +5,7 @@ using Cascade.Services;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Xaml;
 
 namespace Cascade.ViewModels;
 
@@ -56,7 +57,22 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     public string AccountEmail => Account?.Email ?? "";
 
-    partial void OnAccountChanged(Account? value) => OnPropertyChanged(nameof(AccountEmail));
+    // Bound directly (not via an x:Bind function) so the signed-in / signed-out
+    // panels flip whenever Account changes at runtime — function bindings on
+    // Account proved not to re-evaluate, stranding the view after sign-out / a
+    // 401. Explicit notification in OnAccountChanged drives these.
+    public Visibility SignedInVisibility =>
+        Account is not null ? Visibility.Visible : Visibility.Collapsed;
+
+    public Visibility SignedOutVisibility =>
+        Account is not null ? Visibility.Collapsed : Visibility.Visible;
+
+    partial void OnAccountChanged(Account? value)
+    {
+        OnPropertyChanged(nameof(AccountEmail));
+        OnPropertyChanged(nameof(SignedInVisibility));
+        OnPropertyChanged(nameof(SignedOutVisibility));
+    }
 
     public AppViewModel(DispatcherQueue dispatcher)
     {
@@ -223,9 +239,15 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         }
         catch (SyncHttpException e) when (e.Status == 401)
         {
-            Account = null;
-            _accountStore.ClearAccount();
-            SyncStatus = "Signed out — sign in again to sync.";
+            // The await above may resume off the UI thread; marshal the account
+            // mutation back so the bound visibility actually updates (and we
+            // never touch observable state from a background thread).
+            _dispatcher.TryEnqueue(() =>
+            {
+                Account = null;
+                _accountStore.ClearAccount();
+                SyncStatus = "Signed out — sign in again to sync.";
+            });
         }
         catch
         {
@@ -251,6 +273,17 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         {
             SyncStatus = "Couldn't send the sign-in link.";
         }
+    }
+
+    /// <summary>
+    /// Entry point for a <c>cascade://auth?token=…</c> deep link: reuse the
+    /// exact paste-and-sign-in path so the link handoff and manual paste behave
+    /// identically (same token extraction, verify, persist, and status text).
+    /// </summary>
+    public Task SignInWithLinkAsync(string link)
+    {
+        SignInLinkInput = link;
+        return CompleteSignInCommand.ExecuteAsync(null);
     }
 
     [RelayCommand]
