@@ -35,6 +35,27 @@ public sealed partial class MainWindow : Window
         Microsoft.UI.Windowing.AppWindow.GetFromWindowId(windowId).SetIcon(iconPath);
     }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+
+    private const int SW_RESTORE = 9;
+
+    /// <summary>
+    /// Restore and foreground the window after a <c>cascade://</c> deep-link
+    /// activation, so a sign-in handoff surfaces the app even if it was
+    /// minimized or behind other windows.
+    /// </summary>
+    public void BringToFront()
+    {
+        var hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        ShowWindow(hwnd, SW_RESTORE);
+        SetForegroundWindow(hwnd);
+        Activate();
+    }
+
     /// <summary>
     /// Slider raises ValueChanged on every motion frame; ignore the initial
     /// load callback (where IntermediateValue == OldValue) so we don't

@@ -27,7 +27,10 @@ public sealed class SyncApi
     private static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(15) };
 
     public Task RequestLinkAsync(string email) =>
-        PostAsync("/auth/request", new { email }, null);
+        // The "windows" hint makes the emailed link carry &app=windows, so the
+        // web /auth page hands the token to this app via cascade:// rather than
+        // consuming it in the browser.
+        PostAsync("/auth/request", new { email, platform = "windows" }, null);
 
     public async Task<VerifyResponse> VerifyAsync(string token)
     {
