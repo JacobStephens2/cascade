@@ -59,6 +59,14 @@ targets:
         # Outbound network for the optional account/listening-time sync
         # (magic-link sign-in + G-Counter sync to cascade-sync-server).
         com.apple.security.network.client: true
+        # Universal Links: lets the magic-link email (https://cascade.stephens.page
+        # /auth?token=…) open the app straight into completeSignIn() instead of a
+        # browser. Requires the matching AASA file hosted at
+        # https://cascade.stephens.page/.well-known/apple-app-site-association and
+        # a provisioning profile with the Associated Domains capability (paid
+        # Apple Developer Program — not available under free personal-team signing).
+        com.apple.developer.associated-domains:
+          - applinks:cascade.stephens.page
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
@@ -107,6 +115,13 @@ targets:
         NSHumanReadableCopyright: "© 2026 Jacob Stephens"
     entitlements:
       path: CascadeiOS/Cascade.entitlements
+      properties:
+        # Universal Links — see the macOS target above. iOS reaches the network
+        # without a sandbox entitlement, so associated-domains is the only key.
+        # (Must live here, not in the .entitlements file: XcodeGen regenerates
+        # that file on every run and would clobber a hand-written key — see #1.)
+        com.apple.developer.associated-domains:
+          - applinks:cascade.stephens.page
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade

@@ -1,0 +1,115 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" href="/icon-192.png" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#0b1a24" />
+    <title>Cascade — Sign in</title>
+    <meta name="description" content="Finish signing in to Cascade." />
+    <meta name="robots" content="noindex" />
+    <style>
+      :root {
+        --bg: #050b10;
+        --bg-deep: #02060a;
+        --ink: #e6f1f6;
+        --ink-dim: #8aa3b0;
+        --accent: #6ec9e2;
+        --card: #0b1a24;
+        --line: #16313f;
+      }
+      * { box-sizing: border-box; }
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+        font: 16px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        color: var(--ink);
+        background: radial-gradient(circle at 50% 0%, var(--bg), var(--bg-deep));
+      }
+      .card {
+        width: 100%;
+        max-width: 460px;
+        background: var(--card);
+        border: 1px solid var(--line);
+        border-radius: 16px;
+        padding: 32px 28px;
+        text-align: center;
+      }
+      h1 { font-size: 1.4rem; margin: 0 0 8px; }
+      p { color: var(--ink-dim); margin: 0 0 20px; }
+      .token {
+        display: flex;
+        gap: 8px;
+        align-items: stretch;
+      }
+      code {
+        flex: 1;
+        min-width: 0;
+        padding: 12px 14px;
+        background: #02060a;
+        border: 1px solid var(--line);
+        border-radius: 10px;
+        font: 13px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace;
+        color: var(--accent);
+        overflow: auto;
+        white-space: nowrap;
+        text-align: left;
+      }
+      button {
+        padding: 0 16px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #042029;
+        font-weight: 600;
+        cursor: pointer;
+      }
+      button:active { transform: translateY(1px); }
+      .hint { font-size: 0.85rem; margin-top: 18px; }
+      .err { color: #e2786e; }
+    </style>
+  </head>
+  <body>
+    <main class="card">
+      <h1>Sign in to Cascade</h1>
+      <div id="content">
+        <p>
+          If the Cascade app is installed it should have opened automatically.
+          Otherwise, open Cascade, then paste this sign-in code into the
+          <em>“paste the sign-in link”</em> box:
+        </p>
+        <div class="token">
+          <code id="token">…</code>
+          <button id="copy" type="button">Copy</button>
+        </div>
+        <p class="hint">This code is single-use and expires 15 minutes after it was emailed.</p>
+      </div>
+    </main>
+    <script>
+      // The whole sign-in link works too — the app extracts the token itself —
+      // but showing just the token keeps the copy/paste short.
+      const token = new URLSearchParams(location.search).get("token");
+      const tokenEl = document.getElementById("token");
+      const copyBtn = document.getElementById("copy");
+      if (token) {
+        tokenEl.textContent = token;
+        copyBtn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(token);
+            copyBtn.textContent = "Copied";
+            setTimeout(() => (copyBtn.textContent = "Copy"), 1500);
+          } catch {
+            copyBtn.textContent = "Select it";
+          }
+        });
+      } else {
+        document.getElementById("content").innerHTML =
+          '<p class="err">This sign-in link is missing its token. Request a new one from the Cascade app.</p>';
+      }
+    </script>
+  </body>
+</html>

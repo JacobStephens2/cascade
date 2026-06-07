@@ -2,7 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-    <!-- iOS apps are sandboxed by default; this file is here for parity with
-         the macOS target and to make the network-absent intent explicit. -->
+	<key>com.apple.developer.associated-domains</key>
+	<array>
+		<string>applinks:cascade.stephens.page</string>
+	</array>
 </dict>
 </plist>
