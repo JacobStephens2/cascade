@@ -19,6 +19,8 @@ export interface SyncState {
   account: Account | null;
   status: string | null;
   busy: boolean;
+  /** cascade:// deep link when handing a sign-in off to the Windows app. */
+  desktopHandoff: string | null;
   signIn: (email: string) => Promise<void>;
   signOut: () => Promise<void>;
   deleteData: () => Promise<void>;
@@ -66,6 +68,9 @@ export function useSync(
   );
   const [status, setStatus] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // A cascade:// deep link when this page is handing a sign-in off to the
+  // Windows desktop app (links minted with &app=windows); null otherwise.
+  const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
   const syncingRef = useRef(false);
   // Latest listening figures, kept in a ref so the sync callback is stable.
   const deviceTotalRef = useRef(0);
@@ -120,8 +125,27 @@ export function useSync(
     const url = new URL(window.location.href);
     const token = url.searchParams.get("token");
     if (!token) return;
+
+    // Links minted for the Windows app carry &app=windows: hand the token off
+    // to the desktop app via the cascade:// protocol instead of verifying here,
+    // since the single-use token can only be redeemed once. We surface the deep
+    // link for the user to confirm (and attempt it automatically) rather than
+    // burning it on the web.
+    const isWindowsHandoff = url.searchParams.get("app") === "windows";
     url.searchParams.delete("token");
+    url.searchParams.delete("app");
     window.history.replaceState({}, "", url.toString());
+
+    if (isWindowsHandoff) {
+      const deepLink = `cascade://auth?token=${encodeURIComponent(token)}`;
+      setDesktopHandoff(deepLink);
+      setStatus("Opening the Cascade app to finish signing in…");
+      // Best-effort auto-launch; the visible link is the reliable fallback if
+      // the browser blocks programmatic protocol navigation.
+      window.location.href = deepLink;
+      return;
+    }
+
     setBusy(true);
     setStatus("Signing in…");
     api
@@ -235,6 +259,7 @@ export function useSync(
     account,
     status,
     busy,
+    desktopHandoff,
     signIn,
     signOut,
     deleteData,
