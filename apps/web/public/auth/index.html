@@ -71,17 +71,29 @@
       button:active { transform: translateY(1px); }
       .hint { font-size: 0.85rem; margin-top: 18px; }
       .err { color: #e2786e; }
+      .open {
+        display: inline-block;
+        margin: 0 0 18px;
+        padding: 12px 22px;
+        border-radius: 10px;
+        background: var(--accent);
+        color: #042029;
+        font-weight: 600;
+        text-decoration: none;
+      }
+      .open[hidden] { display: none; }
     </style>
   </head>
   <body>
     <main class="card">
       <h1>Sign in to Cascade</h1>
       <div id="content">
-        <p>
+        <p id="lead">
           If the Cascade app is installed it should have opened automatically.
           Otherwise, open Cascade, then paste this sign-in code into the
           <em>“paste the sign-in link”</em> box:
         </p>
+        <a id="open" class="open" href="#" hidden>Open Cascade</a>
         <div class="token">
           <code id="token">…</code>
           <button id="copy" type="button">Copy</button>
@@ -92,11 +104,29 @@
     <script>
       // The whole sign-in link works too — the app extracts the token itself —
       // but showing just the token keeps the copy/paste short.
-      const token = new URLSearchParams(location.search).get("token");
+      const params = new URLSearchParams(location.search);
+      const token = params.get("token");
       const tokenEl = document.getElementById("token");
       const copyBtn = document.getElementById("copy");
       if (token) {
         tokenEl.textContent = token;
+
+        // Windows desktop handoff: links minted for the Windows app carry
+        // &app=windows. The unpackaged app has no Universal Link (unlike
+        // Apple), so launch it explicitly via its cascade:// scheme — auto-
+        // attempt, plus a button as the reliable fallback if the browser
+        // blocks programmatic protocol navigation. The copy-the-code path
+        // below still works if the app isn't installed.
+        if (params.get("app") === "windows") {
+          const deepLink = "cascade://auth?token=" + encodeURIComponent(token);
+          document.getElementById("lead").textContent =
+            "Opening the Cascade app to finish signing in…";
+          const openBtn = document.getElementById("open");
+          openBtn.href = deepLink;
+          openBtn.hidden = false;
+          location.href = deepLink;
+        }
+
         copyBtn.addEventListener("click", async () => {
           try {
             await navigator.clipboard.writeText(token);
