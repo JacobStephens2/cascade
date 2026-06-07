@@ -56,8 +56,9 @@ targets:
         # App Sandbox: audio + Application Support writes + IOKit power
         # assertions + MediaPlayer Now Playing all work under sandbox.
         com.apple.security.app-sandbox: true
-        # Explicit: this app never reaches the network.
-        com.apple.security.network.client: false
+        # Outbound network for the optional account/listening-time sync
+        # (magic-link sign-in + G-Counter sync to cascade-sync-server).
+        com.apple.security.network.client: true
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade
