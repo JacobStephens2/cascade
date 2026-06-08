@@ -43,6 +43,8 @@ code is written and wired but the build is only verified via CI.
 
 ## Architecture (the Clave kata)
 
+![Cascade architecture - one Rust core driving six native shells over a single dispatch(Command) -> { Snapshot, Effects } boundary](docs/cascade-core-architecture.png)
+
 - **Headless core.** `cascade-core` (Rust) owns intent and state; platforms own
   side effects (audio output, OS integration, UI). The core has no audio,
   filesystem, or clock dependencies.
@@ -110,6 +112,7 @@ cd ../../apps/web && npm install && npm run dev
 
 ## Documentation
 
+- Architecture diagram: [`docs/cascade-core-architecture.svg`](docs/cascade-core-architecture.svg) - the rendered overview above (PNG alongside for embedding).
 - [`docs/architecture-brief-web-and-android.md`](docs/architecture-brief-web-and-android.md) — original design rationale
 - Per-platform architecture: [macOS](docs/macos-app-architecture.md) ·
   [Windows](docs/windows-app-architecture.md) · [iOS](docs/ios-app-architecture.md) ·
