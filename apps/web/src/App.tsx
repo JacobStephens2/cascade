@@ -122,6 +122,7 @@ export function App() {
 
       <footer className="cascade-footer">
         <span>Cascade · looped</span>
+        <a className="cascade-footer__link" href="/architecture/">Architecture</a>
       </footer>
     </div>
   );
