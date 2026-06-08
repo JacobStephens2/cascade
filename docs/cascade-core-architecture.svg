@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="900" viewBox="0 0 1280 900">
+<rect x="0" y="0" width="1280" height="900" rx="0" fill="#f5efe5"/>
+<text x="48" y="62" font-family="Georgia, 'Times New Roman', serif" font-size="30" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Cascade - one Rust core, six native shells</text>
+<text x="48" y="90" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">The headless core owns every behavior. Each shell is a thin native UI bound over a single JSON dispatch boundary.</text>
+<rect x="446" y="250" width="388" height="232" rx="22" fill="none" stroke="#9b4d24" stroke-width="1.4" stroke-dasharray="2 7"/>
+<text x="640" y="242" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="600" fill="#9b4d24" text-anchor="middle" letter-spacing="1">single JSON boundary</text>
+<line x1="370" y1="192" x2="470" y2="300" stroke="#e2d7c6" stroke-width="1.8"/>
+<line x1="910" y1="192" x2="810" y2="300" stroke="#e2d7c6" stroke-width="1.8"/>
+<circle cx="470" cy="300" r="3.2" fill="#9b4d24"/>
+<circle cx="810" cy="300" r="3.2" fill="#9b4d24"/>
+<line x1="370" y1="360" x2="470" y2="360" stroke="#e2d7c6" stroke-width="1.8"/>
+<line x1="910" y1="360" x2="810" y2="360" stroke="#e2d7c6" stroke-width="1.8"/>
+<circle cx="470" cy="360" r="3.2" fill="#9b4d24"/>
+<circle cx="810" cy="360" r="3.2" fill="#9b4d24"/>
+<line x1="370" y1="528" x2="470" y2="420" stroke="#e2d7c6" stroke-width="1.8"/>
+<line x1="910" y1="528" x2="810" y2="420" stroke="#e2d7c6" stroke-width="1.8"/>
+<circle cx="470" cy="420" r="3.2" fill="#9b4d24"/>
+<circle cx="810" cy="420" r="3.2" fill="#9b4d24"/>
+<rect x="470" y="272" width="340" height="176" rx="18" fill="#fff7ef" stroke="#9b4d24" stroke-width="2.2"/>
+<text x="640" y="306" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="21" font-weight="700" fill="#9b4d24" text-anchor="middle" letter-spacing="0">cascade-core</text>
+<text x="640" y="328" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="middle" letter-spacing="0">Rust · pure logic, no audio, no I/O</text>
+<rect x="500" y="344" width="280" height="74" rx="11" fill="#f1e4d6" stroke="#e2d7c6" stroke-width="1"/>
+<text x="640" y="372" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15.5" font-weight="600" fill="#1c1814" text-anchor="middle" letter-spacing="0">dispatch(Command)</text>
+<text x="640" y="398" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="15.5" font-weight="600" fill="#1c1814" text-anchor="middle" letter-spacing="0">-&gt; { Snapshot, Effects }</text>
+<text x="640" y="440" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="11.5" font-weight="400" fill="#6b6258" text-anchor="middle" letter-spacing="0">owns timers · volume · sessions · settings</text>
+<rect x="70" y="146" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="70" y="146" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="94" y="180" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Web</text>
+<text x="94" y="203" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">React · PWA</text>
+<text x="94" y="223" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">wasm-bindgen</text>
+<rect x="70" y="314" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="70" y="314" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="94" y="348" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Android</text>
+<text x="94" y="371" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">Jetpack Compose</text>
+<text x="94" y="391" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">UniFFI · Kotlin</text>
+<rect x="70" y="482" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="70" y="482" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="94" y="516" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Windows</text>
+<text x="94" y="539" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">WinUI 3 · .NET 8</text>
+<text x="94" y="559" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">C ABI · P/Invoke</text>
+<rect x="910" y="146" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="910" y="146" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="934" y="180" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">macOS</text>
+<text x="934" y="203" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">SwiftUI</text>
+<text x="934" y="223" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">UniFFI · Swift</text>
+<rect x="910" y="314" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="910" y="314" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="934" y="348" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">iOS</text>
+<text x="934" y="371" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">SwiftUI</text>
+<text x="934" y="391" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">UniFFI · Swift</text>
+<rect x="910" y="482" width="300" height="92" rx="13" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="910" y="482" width="5" height="92" rx="0" fill="#9b4d24"/>
+<text x="934" y="516" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="18" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">watchOS</text>
+<text x="934" y="539" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13.5" font-weight="500" fill="#1c1814" text-anchor="start" letter-spacing="0">SwiftUI</text>
+<text x="934" y="559" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">UniFFI · Swift</text>
+<text x="640" y="604" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="500" fill="#6b6258" text-anchor="middle" letter-spacing="0">UI  -&gt;  Command      core.dispatch()  -&gt;  Snapshot (render) + Effects (perform)      platform events return as Commands</text>
+<rect x="48" y="636" width="378" height="224" rx="14" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="48" y="636" width="378" height="4" rx="0" fill="#9b4d24"/>
+<text x="70" y="674" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16.5" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Commands</text>
+<text x="164" y="674" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">UI -> core</text>
+<text x="70" y="706" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">Play · Pause · TogglePlayback · SetVolume</text>
+<text x="70" y="728" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">ToggleMute · StartSleepTimer · StartPomodoro</text>
+<text x="70" y="750" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">StartStopwatch · CancelTimer · Tick</text>
+<text x="70" y="772" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">PlatformPlaybackStarted</text>
+<text x="70" y="794" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">PlatformPlaybackPaused · PlatformPlaybackError</text>
+<text x="70" y="816" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">SetListeningTracking</text>
+<rect x="450" y="636" width="378" height="224" rx="14" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="450" y="636" width="378" height="4" rx="0" fill="#9b4d24"/>
+<text x="472" y="674" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16.5" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Effects</text>
+<text x="556" y="674" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">core -> shell performs</text>
+<text x="472" y="706" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">StartPlayback · PausePlayback</text>
+<text x="472" y="728" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">SetPlatformVolume · PersistSettings</text>
+<text x="472" y="750" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">PersistListening</text>
+<rect x="852" y="636" width="378" height="224" rx="14" fill="#fffdf8" stroke="#e2d7c6" stroke-width="1.4"/>
+<rect x="852" y="636" width="378" height="4" rx="0" fill="#9b4d24"/>
+<text x="874" y="674" font-family="Inter, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="16.5" font-weight="700" fill="#1c1814" text-anchor="start" letter-spacing="0">Snapshot</text>
+<text x="968" y="674" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">core -> shell renders</text>
+<text x="874" y="706" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">title · subtitle · is_playing · volume_percent</text>
+<text x="874" y="728" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">is_muted · primary_button_label · timer</text>
+<text x="874" y="750" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12.5" font-weight="400" fill="#1c1814" text-anchor="start" letter-spacing="0">error_message · listening</text>
+<text x="48" y="888" font-family="ui-monospace, 'SF Mono', Menlo, Consolas, monospace" font-size="12" font-weight="400" fill="#6b6258" text-anchor="start" letter-spacing="0">github.com/JacobStephens2/cascade   ·   crates: cascade-core · cascade-uniffi · cascade-wasm</text>
+</svg>
