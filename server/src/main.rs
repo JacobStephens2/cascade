@@ -321,7 +321,7 @@ async fn auth_request(
         "{}/auth?token={}{}",
         state.frontend_origin, token, app_suffix
     );
-    if let Err(e) = state.mailer.send_login_link(&email, &link).await {
+    if let Err(e) = state.mailer.send_login_link(&email, &link, &token).await {
         // Don't fail the request — log and still return 200. A retry just mints
         // another link.
         tracing::error!(error = ?e, "failed to send magic link");
