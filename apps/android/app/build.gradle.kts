@@ -15,8 +15,8 @@ android {
         applicationId = "page.stephens.cascade"
         minSdk = 26
         targetSdk = 35
-        versionCode = 4
-        versionName = "0.2.2"
+        versionCode = 6
+        versionName = "0.2.4"
 
         ndk {
             // Keep parity with cargo-ndk targets in the build script below.
@@ -24,11 +24,27 @@ android {
         }
     }
 
+    signingConfigs {
+        // Release signing from the environment (set in CI from repo secrets).
+        // Falls back to debug signing locally when the keystore env isn't present,
+        // so a local `assembleRelease` still works without the production key.
+        val ksFile = System.getenv("ANDROID_KEYSTORE_FILE")
+        if (ksFile != null && file(ksFile).exists()) {
+            create("release") {
+                storeFile = file(ksFile)
+                storePassword = System.getenv("ANDROID_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("ANDROID_KEY_ALIAS")
+                keyPassword = System.getenv("ANDROID_KEY_PASSWORD")
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            // Production key in CI; debug key locally (and as a safety fallback).
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
