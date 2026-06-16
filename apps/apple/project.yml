@@ -18,7 +18,7 @@ options:
 
 settings:
   base:
-    DEVELOPMENT_TEAM: ""           # fill in your Apple Team ID before signing
+    DEVELOPMENT_TEAM: "LHY8W725A8" # Apple Developer Program team (paid)
     # Swift *language* mode (must be 5.0 / 6.0 — "5.10" is a compiler version,
     # not a language mode, and silently falls back to Swift 6 mode). Stay on 5
     # so main-thread Timer/AVFoundation callbacks aren't rejected by Swift 6's
