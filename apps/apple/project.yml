@@ -26,7 +26,7 @@ settings:
     SWIFT_VERSION: "5.0"
     CODE_SIGN_STYLE: Automatic
     PRODUCT_NAME: Cascade
-    MARKETING_VERSION: "0.1.0"
+    MARKETING_VERSION: "0.2.0"
     CURRENT_PROJECT_VERSION: "1"
 
 targets:
@@ -177,6 +177,13 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: page.stephens.cascade.watchkitapp
         CODE_SIGN_ENTITLEMENTS: CascadeWatch/Cascade.entitlements
+        # Distinct product/module name from the iOS app (which is "Cascade").
+        # The base settings force PRODUCT_NAME: Cascade on every target; sharing
+        # it makes `xcodebuild archive` collide ("Multiple commands produce
+        # Cascade.swiftmodule / Cascade.app.dSYM") because the iOS app and the
+        # embedded watch app emit identically-named products into one archive
+        # path. The watch still shows "Cascade" via CFBundleDisplayName.
+        PRODUCT_NAME: CascadeWatch
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         TARGETED_DEVICE_FAMILY: "4"            # watchOS
         WATCHOS_DEPLOYMENT_TARGET: "10.0"
