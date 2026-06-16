@@ -30,8 +30,9 @@ personal-team signing**. A *signed* build with this entitlement fails with:
 So to ship this you must:
 
 1. Enrol in the paid Apple Developer Program.
-2. Set `DEVELOPMENT_TEAM` in `project.yml` to your Team ID (`G38J85UN6P`) and
-   build with development/distribution signing (not ad-hoc `-`).
+2. Set `DEVELOPMENT_TEAM` in `project.yml` to your Team ID (`LHY8W725A8`, the
+   paid program team) and build with development/distribution signing (not
+   ad-hoc `-`). The AASA `appIDs` entry must match: `LHY8W725A8.page.stephens.cascade`.
 3. Enable the **Associated Domains** capability for the App ID in the developer
    portal.
 
