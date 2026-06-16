@@ -1,49 +1,48 @@
 package page.stephens.cascade.ui
 
-import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.Color
 
-// Match the web shell's deep-teal-into-foam palette.
-private val CascadeMidnight = Color(0xFF0B1A24)
-private val CascadeDeep = Color(0xFF112E3F)
-private val CascadeMist = Color(0xFFB6DDE8)
-private val CascadeFoam = Color(0xFFEDF6F9)
-private val CascadeAccent = Color(0xFF7CC7D6)
-private val CascadeError = Color(0xFFE07A5F)
+/**
+ * The web shell's design tokens (apps/web/src/styles.css `:root`), mirrored so
+ * the native UI reads as the same product. Material's ColorScheme has no slot
+ * for the dim/faint ink ramp or the translucent "paper" surfaces, so they live
+ * here and are used directly, the way the web uses CSS custom properties.
+ */
+object CascadeColors {
+    val Bg = Color(0xFF050B10)          // --bg
+    val BgDeep = Color(0xFF02060A)      // --bg-deep
+    val Ink = Color(0xFFE6F1F6)         // --ink
+    val InkDim = Color(0xFF8AA3B0)      // --ink-dim
+    val InkFaint = Color(0xFF4F6B78)    // --ink-faint
+    val Accent = Color(0xFF6EC9E2)      // --accent
+    val AccentGlow = Color(0x736EC9E2)  // --accent-glow  (~0.45)
+    val AccentSoft = Color(0x1F6EC9E2)  // --accent-soft  (~0.12)
+    val Paper = Color(0x0AFFFFFF)       // --paper        (white 0.04)
+    val PaperStrong = Color(0x12FFFFFF) // --paper-strong (white 0.07)
+    val Danger = Color(0xFFFF8A72)      // --danger
+}
 
+// The web app is dark-only (color-scheme: dark); match it rather than tracking
+// the system light/dark setting, so the brand reads identically everywhere.
 private val DarkColors = darkColorScheme(
-    primary = CascadeAccent,
-    onPrimary = CascadeMidnight,
-    primaryContainer = CascadeDeep,
-    onPrimaryContainer = CascadeFoam,
-    background = CascadeMidnight,
-    onBackground = CascadeFoam,
-    surface = CascadeDeep,
-    onSurface = CascadeFoam,
-    surfaceVariant = Color(0xFF1A3D52),
-    onSurfaceVariant = CascadeMist,
-    error = CascadeError,
-)
-
-private val LightColors = lightColorScheme(
-    primary = Color(0xFF1E607A),
-    onPrimary = Color.White,
-    primaryContainer = CascadeFoam,
-    onPrimaryContainer = CascadeMidnight,
-    background = Color(0xFFF7FBFD),
-    onBackground = CascadeMidnight,
-    surface = Color.White,
-    onSurface = CascadeMidnight,
-    surfaceVariant = Color(0xFFD8E9EF),
-    onSurfaceVariant = Color(0xFF335968),
+    primary = CascadeColors.Accent,
+    onPrimary = Color(0xFF03161E),          // --chip--primary text
+    primaryContainer = Color(0xFF0B2530),
+    onPrimaryContainer = CascadeColors.Ink,
+    background = CascadeColors.Bg,
+    onBackground = CascadeColors.Ink,
+    surface = CascadeColors.BgDeep,
+    onSurface = CascadeColors.Ink,
+    surfaceVariant = Color(0xFF0E2029),
+    onSurfaceVariant = CascadeColors.InkDim,
+    outline = CascadeColors.InkFaint,
+    error = CascadeColors.Danger,
 )
 
 @Composable
 fun CascadeTheme(content: @Composable () -> Unit) {
-    val colors = if (isSystemInDarkTheme()) DarkColors else LightColors
-    MaterialTheme(colorScheme = colors, content = content)
+    MaterialTheme(colorScheme = DarkColors, content = content)
 }
