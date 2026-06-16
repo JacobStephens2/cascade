@@ -49,16 +49,26 @@ impl Mailer {
         })
     }
 
-    /// Send a sign-in link to `to`. The link is already a full URL.
-    pub async fn send_login_link(&self, to: &str, link: &str) -> anyhow::Result<()> {
+    /// Send a sign-in link to `to`. `link` is the full URL; `token` is the bare
+    /// code from that URL, offered separately so it can be copied without the
+    /// surrounding URL (which some mail clients render in copy-unfriendly ways).
+    pub async fn send_login_link(&self, to: &str, link: &str, token: &str) -> anyhow::Result<()> {
         match self {
             Mailer::LogOnly => {
                 tracing::info!(%to, %link, "magic link (log-only mailer)");
                 Ok(())
             }
             Mailer::Smtp { transport, from } => {
+                // Three ways to use this, in order of convenience: click the link
+                // (works in the browser and on devices set up to open the app);
+                // paste the whole link into the app's box; or paste just the code.
+                // The web, Android, and Apple apps all accept either a full link
+                // or a bare token in "paste the sign-in link".
                 let body = format!(
                     "Hi,\n\nClick to sign in to Cascade and sync your listening time:\n\n{link}\n\n\
+                     If that doesn't open the app, open Cascade yourself and paste the whole \
+                     link above into the \"paste the sign-in link\" box — or paste just this code:\n\n\
+                     {token}\n\n\
                      This link expires in 15 minutes and can only be used once. \
                      If you didn't request it, you can ignore this email.\n\n— Cascade"
                 );
