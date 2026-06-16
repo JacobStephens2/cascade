@@ -1,8 +1,10 @@
 package page.stephens.cascade
 
 import android.content.Intent
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
@@ -23,7 +25,15 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         installSplashScreen()
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        // The app is dark-only (matching the web), so force transparent system
+        // bars with light icons regardless of the device's light/dark setting.
+        // The default enableEdgeToEdge() adapts to the *system* theme, which on a
+        // light-mode phone gives a stark white nav bar and dark, unreadable
+        // status-bar icons over our dark background.
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
 
         val app = application as CascadeApp
         playback = PlaybackController(this, app.bridgeHolder)
