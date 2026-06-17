@@ -25,6 +25,10 @@ public static class Converters
     public static string VolumeReadout(int percent, bool muted) =>
         muted ? "Muted" : $"{percent}%";
 
+    /// Segoe Fluent / MDL2 glyph for the big circular control: Pause (E769) while
+    /// playing, Play (E768) otherwise.
+    public static string PrimaryGlyph(bool isPlaying) => isPlaying ? "" : "";
+
     public static string TrackingLabel(bool enabled) =>
         enabled ? "Tracking on" : "Tracking off";
 
