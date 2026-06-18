@@ -1,0 +1,307 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Cascade design tokens, ported from the web shell (apps/web/src/styles.css).
+  This dictionary is merged into App.xaml after XamlControlsResources, so the
+  keyed brush/colour overrides below replace WinUI's defaults app-wide while the
+  app runs forced-Dark. Hex alpha cheatsheet vs. the web rgba():
+    0.04 -> 0A   0.07 -> 12   0.12 -> 1F   0.35 -> 59   0.45 -> 73
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!-- ============================================================ palette -->
+    <Color x:Key="BgColor">#FF050B10</Color>
+    <Color x:Key="BgDeepColor">#FF02060A</Color>
+    <Color x:Key="InkColor">#FFE6F1F6</Color>
+    <Color x:Key="InkDimColor">#FF8AA3B0</Color>
+    <Color x:Key="InkFaintColor">#FF4F6B78</Color>
+    <Color x:Key="AccentCyanColor">#FF6EC9E2</Color>
+    <Color x:Key="AccentHoverColor">#FF94DBEF</Color>
+    <Color x:Key="AccentGlowColor">#736EC9E2</Color>
+    <Color x:Key="AccentSoftColor">#1F6EC9E2</Color>
+    <Color x:Key="PaperColor">#0AFFFFFF</Color>
+    <Color x:Key="PaperStrongColor">#12FFFFFF</Color>
+    <Color x:Key="DangerColor">#FFFF8A72</Color>
+
+    <SolidColorBrush x:Key="BgBrush" Color="{StaticResource BgColor}" />
+    <SolidColorBrush x:Key="BgDeepBrush" Color="{StaticResource BgDeepColor}" />
+    <SolidColorBrush x:Key="InkBrush" Color="{StaticResource InkColor}" />
+    <SolidColorBrush x:Key="InkDimBrush" Color="{StaticResource InkDimColor}" />
+    <SolidColorBrush x:Key="InkFaintBrush" Color="{StaticResource InkFaintColor}" />
+    <SolidColorBrush x:Key="AccentBrush" Color="{StaticResource AccentCyanColor}" />
+    <SolidColorBrush x:Key="AccentHoverBrush" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="AccentSoftBrush" Color="{StaticResource AccentSoftColor}" />
+    <SolidColorBrush x:Key="PaperBrush" Color="{StaticResource PaperColor}" />
+    <SolidColorBrush x:Key="PaperStrongBrush" Color="{StaticResource PaperStrongColor}" />
+    <SolidColorBrush x:Key="DangerBrush" Color="{StaticResource DangerColor}" />
+    <SolidColorBrush x:Key="OnAccentBrush" Color="#FF03161E" />
+
+    <!-- Window backdrop: bg -> bg-deep vertical wash (the cyan top-glow is a
+         separate radial layer in MainWindow's backdrop). -->
+    <LinearGradientBrush x:Key="ShellBackgroundBrush" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="{StaticResource BgColor}" Offset="0" />
+        <GradientStop Color="{StaticResource BgDeepColor}" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- ============================================ accent / control overrides -->
+    <!-- One lever recolours every accent-driven control (AccentButton, radio,
+         checkbox, NumberBox, focus rings) to Cascade cyan. -->
+    <Color x:Key="SystemAccentColor">#FF6EC9E2</Color>
+    <Color x:Key="SystemAccentColorLight1">#FF8AD6E9</Color>
+    <Color x:Key="SystemAccentColorLight2">#FFA6E2F0</Color>
+    <Color x:Key="SystemAccentColorLight3">#FFC2EEF6</Color>
+    <Color x:Key="SystemAccentColorDark1">#FF55B0C9</Color>
+    <Color x:Key="SystemAccentColorDark2">#FF3F8CA1</Color>
+    <Color x:Key="SystemAccentColorDark3">#FF2A6878</Color>
+
+    <!-- Slider: accent fill, paper rail, accent thumb (gradient-fill look). -->
+    <SolidColorBrush x:Key="SliderTrackValueFill" Color="{StaticResource AccentCyanColor}" />
+    <SolidColorBrush x:Key="SliderTrackValueFillPointerOver" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="SliderTrackValueFillPressed" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="SliderTrackValueFillDisabled" Color="{StaticResource InkFaintColor}" />
+    <SolidColorBrush x:Key="SliderTrackFill" Color="{StaticResource PaperStrongColor}" />
+    <SolidColorBrush x:Key="SliderTrackFillPointerOver" Color="{StaticResource PaperStrongColor}" />
+    <SolidColorBrush x:Key="SliderTrackFillPressed" Color="{StaticResource PaperStrongColor}" />
+    <SolidColorBrush x:Key="SliderThumbBackground" Color="{StaticResource AccentCyanColor}" />
+    <SolidColorBrush x:Key="SliderThumbBackgroundPointerOver" Color="{StaticResource AccentHoverColor}" />
+    <SolidColorBrush x:Key="SliderThumbBackgroundPressed" Color="{StaticResource AccentHoverColor}" />
+
+    <!-- ProgressBar (the timer bar accent). -->
+    <SolidColorBrush x:Key="ProgressBarForeground" Color="{StaticResource AccentCyanColor}" />
+    <SolidColorBrush x:Key="ProgressBarBackground" Color="{StaticResource PaperColor}" />
+
+    <!-- ================================================== typography (text) -->
+    <!-- WinUI has no text-transform; uppercase labels are typed uppercase in the
+         markup. CharacterSpacing is in 1/1000 em, so web 0.18em -> 180. -->
+    <Style x:Key="BrandMarkTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="18" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="180" />
+        <Setter Property="Foreground" Value="{StaticResource AccentBrush}" />
+    </Style>
+
+    <Style x:Key="SubTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CharacterSpacing" Value="40" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+    </Style>
+
+    <Style x:Key="SectionHeadingTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="220" />
+        <Setter Property="Foreground" Value="{StaticResource InkFaintBrush}" />
+    </Style>
+
+    <Style x:Key="CaptionTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="CharacterSpacing" Value="180" />
+        <Setter Property="Foreground" Value="{StaticResource InkFaintBrush}" />
+    </Style>
+
+    <Style x:Key="TimerReadoutTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="52" />
+        <Setter Property="FontWeight" Value="Light" />
+        <Setter Property="CharacterSpacing" Value="40" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="LineHeight" Value="56" />
+    </Style>
+
+    <Style x:Key="ListeningValueTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="26" />
+        <Setter Property="FontWeight" Value="Light" />
+        <Setter Property="CharacterSpacing" Value="20" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+    </Style>
+
+    <!-- Volume row label (web .volume-slider__label: uppercase, 12px, ink-dim,
+         letter-spacing 0.16em -> 160). -->
+    <Style x:Key="VolumeLabelTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="12" />
+        <Setter Property="CharacterSpacing" Value="160" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+    </Style>
+
+    <!-- App footer (web .cascade-footer: uppercase, 11px, ink-faint, 0.18em). -->
+    <Style x:Key="FooterTextStyle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="11" />
+        <Setter Property="CharacterSpacing" Value="180" />
+        <Setter Property="Foreground" Value="{StaticResource InkFaintBrush}" />
+    </Style>
+
+    <!-- ====================================================== chip buttons -->
+    <!-- Pill-shaped (radius 999px -> large CornerRadius) translucent buttons,
+         mirroring web .chip / .chip-ghost / .chip-primary. -->
+    <Style x:Key="ChipButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource PaperBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource InkBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CharacterSpacing" Value="60" />
+        <Setter Property="CornerRadius" Value="18" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter x:Name="Content"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          ContentTransitions="{TemplateBinding ContentTransitions}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{StaticResource PaperStrongBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{StaticResource PaperStrongBrush}" />
+                                        <Setter Target="Root.Opacity" Value="0.85" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.5" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Ghost: transparent with a paper-strong outline; used for the cancel /
+         secondary affordances. -->
+    <Style x:Key="GhostChipButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="Transparent" />
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="BorderBrush" Value="{StaticResource PaperStrongBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="CharacterSpacing" Value="60" />
+        <Setter Property="CornerRadius" Value="18" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter x:Name="Content"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          ContentTransitions="{TemplateBinding ContentTransitions}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.BorderBrush" Value="{StaticResource AccentBrush}" />
+                                        <Setter Target="Content.Foreground" Value="{StaticResource InkBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.BorderBrush" Value="{StaticResource AccentBrush}" />
+                                        <Setter Target="Root.Opacity" Value="0.85" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.5" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Primary: solid cyan, dark ink, brightens on hover. -->
+    <Style x:Key="PrimaryChipButtonStyle" TargetType="Button">
+        <Setter Property="Background" Value="{StaticResource AccentBrush}" />
+        <Setter Property="Foreground" Value="{StaticResource OnAccentBrush}" />
+        <Setter Property="BorderBrush" Value="Transparent" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Padding" Value="16,9" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="CharacterSpacing" Value="60" />
+        <Setter Property="CornerRadius" Value="18" />
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Template">
+            <Setter.Value>
+                <ControlTemplate TargetType="Button">
+                    <Border x:Name="Root"
+                            Background="{TemplateBinding Background}"
+                            BorderBrush="{TemplateBinding BorderBrush}"
+                            BorderThickness="{TemplateBinding BorderThickness}"
+                            CornerRadius="{TemplateBinding CornerRadius}"
+                            Padding="{TemplateBinding Padding}">
+                        <ContentPresenter x:Name="Content"
+                                          HorizontalAlignment="Center"
+                                          VerticalAlignment="Center"
+                                          Foreground="{TemplateBinding Foreground}"
+                                          Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"
+                                          ContentTransitions="{TemplateBinding ContentTransitions}" />
+                        <VisualStateManager.VisualStateGroups>
+                            <VisualStateGroup x:Name="CommonStates">
+                                <VisualState x:Name="Normal" />
+                                <VisualState x:Name="PointerOver">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{StaticResource AccentHoverBrush}" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Pressed">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Background" Value="{StaticResource AccentHoverBrush}" />
+                                        <Setter Target="Root.Opacity" Value="0.85" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                                <VisualState x:Name="Disabled">
+                                    <VisualState.Setters>
+                                        <Setter Target="Root.Opacity" Value="0.5" />
+                                    </VisualState.Setters>
+                                </VisualState>
+                            </VisualStateGroup>
+                        </VisualStateManager.VisualStateGroups>
+                    </Border>
+                </ControlTemplate>
+            </Setter.Value>
+        </Setter>
+    </Style>
+
+    <!-- Subtle hyperlink-style text button (sign out / delete / tracking). -->
+    <Style x:Key="QuietLinkButtonStyle" TargetType="HyperlinkButton">
+        <Setter Property="Foreground" Value="{StaticResource InkDimBrush}" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="Padding" Value="4,2" />
+    </Style>
+
+</ResourceDictionary>
