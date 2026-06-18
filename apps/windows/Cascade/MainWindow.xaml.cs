@@ -79,12 +79,26 @@ public sealed partial class MainWindow : Window
         BeginLoop("DriftB");
         BeginLoop("DriftC");
         BeginLoop("RingSpin");
+        // Three identical 18s ripple loops, seeked 6s apart so a fresh ring leaves
+        // each blob every 6s and expands slowly.
+        BeginRipple("RippleP1", 0);
+        BeginRipple("RippleP2", 6);
+        BeginRipple("RippleP3", 12);
         UpdateAmbientVisuals();
     }
 
     private void BeginLoop(string key)
     {
         if (RootGrid.Resources[key] is Storyboard sb) sb.Begin();
+    }
+
+    private void BeginRipple(string key, double offsetSeconds)
+    {
+        if (RootGrid.Resources[key] is Storyboard sb)
+        {
+            sb.Begin();
+            sb.Seek(TimeSpan.FromSeconds(offsetSeconds));
+        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -198,6 +212,33 @@ public sealed partial class MainWindow : Window
         {
             ViewModel.SetVolumeCommand.Execute(e.NewValue);
         }
+    }
+
+    /// <summary>Show/hide the custom-duration panel behind the "Custom…" chip,
+    /// matching the web's progressive disclosure.</summary>
+    private void OnToggleCustom(object sender, RoutedEventArgs e)
+    {
+        CustomPanel.Visibility =
+            CustomPanel.Visibility == Visibility.Visible
+                ? Visibility.Collapsed
+                : Visibility.Visible;
+    }
+
+    /// <summary>Relabel the custom Start button per the selected mode, mirroring
+    /// the web ("Start session" vs "Start sleep timer").</summary>
+    private void OnCustomModeChanged(object sender, RoutedEventArgs e)
+    {
+        if (StartCustomButton is null) return; // radios may fire during init
+        StartCustomButton.Content =
+            CustomSleepRadio.IsChecked == true ? "Start sleep timer" : "Start session";
+    }
+
+    /// <summary>Checkbox toggles listening tracking; IsChecked is bound one-way
+    /// from the snapshot, so we drive the change through the command and let the
+    /// next snapshot push the authoritative state back.</summary>
+    private void OnToggleTracking(object sender, RoutedEventArgs e)
+    {
+        ViewModel.ToggleListeningTrackingCommand.Execute(null);
     }
 
     private void OnStartCustom(object sender, RoutedEventArgs e)
