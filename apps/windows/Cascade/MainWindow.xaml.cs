@@ -75,30 +75,13 @@ public sealed partial class MainWindow : Window
     /// </summary>
     private void OnRootLoaded(object sender, RoutedEventArgs e)
     {
-        BeginLoop("DriftA");
-        BeginLoop("DriftB");
-        BeginLoop("DriftC");
         BeginLoop("RingSpin");
-        // Three identical 18s ripple loops, seeked 6s apart so a fresh ring leaves
-        // each blob every 6s and expands slowly.
-        BeginRipple("RippleP1", 0);
-        BeginRipple("RippleP2", 6);
-        BeginRipple("RippleP3", 12);
         UpdateAmbientVisuals();
     }
 
     private void BeginLoop(string key)
     {
         if (RootGrid.Resources[key] is Storyboard sb) sb.Begin();
-    }
-
-    private void BeginRipple(string key, double offsetSeconds)
-    {
-        if (RootGrid.Resources[key] is Storyboard sb)
-        {
-            sb.Begin();
-            sb.Seek(TimeSpan.FromSeconds(offsetSeconds));
-        }
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
