@@ -9,206 +9,442 @@
     xmlns:vm="using:Cascade.ViewModels"
     Title="Cascade"
     mc:Ignorable="d">
-    <Grid Padding="32" RowSpacing="20">
+
+    <Grid x:Name="RootGrid" Background="{StaticResource ShellBackgroundBrush}">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="12">
-            <TextBlock Text="Cascade" Style="{ThemeResource TitleTextBlockStyle}" />
-            <TextBlock
-                Text="{x:Bind ViewModel.Snapshot.Subtitle, Mode=OneWay}"
-                Style="{ThemeResource CaptionTextBlockStyle}"
-                VerticalAlignment="Bottom"
-                Opacity="0.6" />
-        </StackPanel>
+        <!-- Drifting-blob storyboards (started in code-behind on Loaded). The
+             soft radial blobs fading to transparent approximate the web's
+             blur(60px); CompositeTransform translate/scale are composition-thread
+             animations, so no EnableDependentAnimation needed. -->
+        <Grid.Resources>
+            <!-- Soft cyan ring (transparent core, glowing mid-radius, fading edge)
+                 used by every ripple pulse; shared since only each Ellipse's
+                 Opacity/scale is animated, never the brush itself. -->
+            <RadialGradientBrush x:Key="RippleRingBrush">
+                <GradientStop Color="#006EC9E2" Offset="0.0" />
+                <GradientStop Color="#006EC9E2" Offset="0.42" />
+                <GradientStop Color="#806EC9E2" Offset="0.60" />
+                <GradientStop Color="#006EC9E2" Offset="0.80" />
+            </RadialGradientBrush>
 
-        <!-- Timer readout -->
-        <StackPanel Grid.Row="1" HorizontalAlignment="Center" Spacing="6">
-            <TextBlock
-                Text="{x:Bind ViewModel.Snapshot.Timer.RemainingLabel, Mode=OneWay}"
-                FontSize="40"
-                FontWeight="Light"
-                HorizontalAlignment="Center" />
-            <ProgressBar
-                Value="{x:Bind ViewModel.Snapshot.Timer.Progress, Mode=OneWay}"
-                Minimum="0"
-                Maximum="1"
-                Width="220"
-                Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
-        </StackPanel>
+            <Storyboard x:Key="DriftA" RepeatBehavior="Forever" AutoReverse="True">
+                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="TranslateX"
+                                 From="-70" To="30" Duration="0:0:14">
+                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="TranslateY"
+                                 From="-40" To="40" Duration="0:0:14">
+                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="ScaleX"
+                                 From="1" To="1.12" Duration="0:0:14" />
+                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="ScaleY"
+                                 From="1" To="1.12" Duration="0:0:14" />
+            </Storyboard>
+            <Storyboard x:Key="DriftB" RepeatBehavior="Forever" AutoReverse="True">
+                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="TranslateX"
+                                 From="80" To="-20" Duration="0:0:18">
+                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="TranslateY"
+                                 From="50" To="-30" Duration="0:0:18">
+                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="ScaleX"
+                                 From="1" To="1.18" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="ScaleY"
+                                 From="1" To="1.18" Duration="0:0:18" />
+            </Storyboard>
+            <Storyboard x:Key="DriftC" RepeatBehavior="Forever" AutoReverse="True">
+                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="TranslateY"
+                                 From="120" To="-40" Duration="0:0:11">
+                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
+                </DoubleAnimation>
+                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="ScaleX"
+                                 From="1" To="1.22" Duration="0:0:11" />
+                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="ScaleY"
+                                 From="1" To="1.22" Duration="0:0:11" />
+            </Storyboard>
+            <Storyboard x:Key="RingSpin" RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="OuterRingRotation" Storyboard.TargetProperty="Angle"
+                                 From="0" To="360" Duration="0:1:0" />
+            </Storyboard>
 
-        <!-- Play / Pause -->
-        <Button
-            Grid.Row="2"
-            Command="{x:Bind ViewModel.TogglePlaybackCommand}"
-            Content="{x:Bind ViewModel.Snapshot.PrimaryButtonLabel, Mode=OneWay}"
-            HorizontalAlignment="Stretch"
-            HorizontalContentAlignment="Center"
-            Style="{ThemeResource AccentButtonStyle}"
-            Padding="16,12"
-            FontSize="18" />
+            <!-- Water-ripple pulses: each phase expands a soft ring out of the
+                 left + right glow blobs while fading it, on a 6s loop. The three
+                 phases are seeked to 0/2/4s in code-behind so a fresh ripple
+                 emanates every 2s. Scale/Opacity are composition-thread, so no
+                 EnableDependentAnimation is needed. -->
+            <Storyboard x:Key="RippleP1" RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="RippleL1T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL1T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL1" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR1T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR1T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR1" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+            </Storyboard>
+            <Storyboard x:Key="RippleP2" RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="RippleL2T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL2T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL2" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR2T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR2T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR2" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+            </Storyboard>
+            <Storyboard x:Key="RippleP3" RepeatBehavior="Forever">
+                <DoubleAnimation Storyboard.TargetName="RippleL3T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL3T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleL3" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR3T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR3T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
+                <DoubleAnimation Storyboard.TargetName="RippleR3" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
+            </Storyboard>
+        </Grid.Resources>
 
-        <!-- Volume -->
-        <Grid Grid.Row="3" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <Button
-                Grid.Column="0"
-                Command="{x:Bind ViewModel.ToggleMuteCommand}"
-                VerticalAlignment="Center"
-                Padding="8"
-                Background="Transparent"
-                BorderThickness="0"
-                ToolTipService.ToolTip="Mute (keeps the timer running)">
-                <FontIcon Glyph="{x:Bind local:Converters.MuteGlyph(ViewModel.Snapshot.IsMuted), Mode=OneWay}" />
-            </Button>
-            <Slider
-                Grid.Column="1"
-                Value="{x:Bind ViewModel.Snapshot.VolumePercent, Mode=OneWay}"
-                Minimum="0"
-                Maximum="100"
-                ValueChanged="OnVolumeChanged"
-                Header="Volume" />
-            <TextBlock
-                Grid.Column="2"
-                Text="{x:Bind local:Converters.VolumeReadout(ViewModel.Snapshot.VolumePercent, ViewModel.Snapshot.IsMuted), Mode=OneWay}"
-                VerticalAlignment="Center"
-                FontFamily="Consolas" />
+        <!-- ============================================ animated waterfall backdrop -->
+        <Grid x:Name="BackdropRoot" Grid.RowSpan="2" Opacity="0.55" IsHitTestVisible="False">
+            <!-- Cyan top-glow wash (web: radial-gradient ellipse at 50% 0%). -->
+            <Rectangle>
+                <Rectangle.Fill>
+                    <RadialGradientBrush Center="0.5,0.0" GradientOrigin="0.5,0.0" RadiusX="0.8" RadiusY="0.6">
+                        <GradientStop Color="#146EC9E2" Offset="0" />
+                        <GradientStop Color="#006EC9E2" Offset="1" />
+                    </RadialGradientBrush>
+                </Rectangle.Fill>
+            </Rectangle>
+            <!-- Layer A: deep teal tint. -->
+            <Ellipse x:Name="BackdropLayerA" Width="640" Height="640"
+                     HorizontalAlignment="Left" VerticalAlignment="Top"
+                     Margin="-120,-120,0,0" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerATransform" /></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#FF0B3A4B" Offset="0" />
+                        <GradientStop Color="#000B3A4B" Offset="0.7" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <!-- Layer B: accent cyan. -->
+            <Ellipse x:Name="BackdropLayerB" Width="560" Height="560"
+                     HorizontalAlignment="Right" VerticalAlignment="Center"
+                     Margin="0,0,-100,0" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerBTransform" /></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#596EC9E2" Offset="0" />
+                        <GradientStop Color="#006EC9E2" Offset="0.7" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+            <!-- Layer C: pale highlight (drifts up from the bottom). -->
+            <Ellipse x:Name="BackdropLayerC" Width="520" Height="520"
+                     HorizontalAlignment="Center" VerticalAlignment="Bottom"
+                     Margin="0,0,0,-120" RenderTransformOrigin="0.5,0.5">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerCTransform" /></Ellipse.RenderTransform>
+                <Ellipse.Fill>
+                    <RadialGradientBrush>
+                        <GradientStop Color="#2EB4EAF8" Offset="0" />
+                        <GradientStop Color="#00B4EAF8" Offset="0.7" />
+                    </RadialGradientBrush>
+                </Ellipse.Fill>
+            </Ellipse>
+
+            <!-- Ripple pulses emanating from the left + right glow blobs. Three
+                 phase-staggered rings per side (driven by RippleP1/2/3). -->
+            <Ellipse x:Name="RippleL1" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL1T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="RippleL2" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL2T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="RippleL3" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL3T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="RippleR1" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR1T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="RippleR2" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR2T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
+            <Ellipse x:Name="RippleR3" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
+                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
+                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
+                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR3T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
+            </Ellipse>
         </Grid>
 
-        <!-- Focus session -->
-        <StackPanel Grid.Row="4" Spacing="8">
-            <TextBlock Text="FOCUS SESSION" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="30 min" Command="{x:Bind ViewModel.StartThirtyCommand}" />
-                <Button Content="60 min" Command="{x:Bind ViewModel.StartSixtyCommand}" />
-                <Button Content="8 hr" Command="{x:Bind ViewModel.StartEightHoursCommand}" />
-            </StackPanel>
-        </StackPanel>
+        <!-- Extended-titlebar drag region (transparent; SetTitleBar in code-behind). -->
+        <Border x:Name="AppTitleBar" Grid.Row="0" Height="40" Background="Transparent" />
 
-        <!-- Sleep timer -->
-        <StackPanel Grid.Row="5" Spacing="8">
-            <TextBlock Text="SLEEP TIMER" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <Button Content="15 min" Command="{x:Bind ViewModel.StartSleepFifteenCommand}" />
-                <Button Content="30 min" Command="{x:Bind ViewModel.StartSleepThirtyCommand}" />
-                <Button Content="1 hr" Command="{x:Bind ViewModel.StartSleepSixtyCommand}" />
-                <HyperlinkButton
-                    Content="Cancel timer"
-                    Command="{x:Bind ViewModel.CancelTimerCommand}"
-                    Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
-            </StackPanel>
-        </StackPanel>
+        <!-- ===================================================== content column -->
+        <ScrollViewer Grid.Row="1"
+                      VerticalScrollBarVisibility="Auto"
+                      HorizontalScrollBarVisibility="Disabled"
+                      VerticalScrollMode="Auto">
+            <Grid Padding="32,8,32,48">
+                <StackPanel MaxWidth="520" HorizontalAlignment="Center" Spacing="40">
 
-        <!-- Stopwatch -->
-        <StackPanel Grid.Row="6" Spacing="8">
-            <TextBlock Text="STOPWATCH" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
-            <Button Content="Start stopwatch" Command="{x:Bind ViewModel.StartStopwatchCommand}" />
-        </StackPanel>
+                    <!-- Header -->
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="Auto" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Grid.Column="0" Text="CASCADE" Style="{StaticResource BrandMarkTextStyle}"
+                                   VerticalAlignment="Bottom" />
+                        <TextBlock Grid.Column="1"
+                                   Text="{x:Bind ViewModel.Snapshot.Subtitle, Mode=OneWay}"
+                                   Style="{StaticResource SubTextStyle}"
+                                   VerticalAlignment="Bottom" />
+                    </Grid>
 
-        <!-- Custom duration -->
-        <StackPanel Grid.Row="7" Spacing="8">
-            <TextBlock Text="CUSTOM" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
-            <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
-                <RadioButton x:Name="CustomFocusRadio" Content="Focus" GroupName="CustomMode" IsChecked="True" />
-                <RadioButton x:Name="CustomSleepRadio" Content="Sleep" GroupName="CustomMode" />
-                <NumberBox
-                    x:Name="CustomMinutes"
-                    Value="45"
-                    Minimum="1"
-                    Maximum="1440"
-                    SpinButtonPlacementMode="Inline"
-                    Width="140" />
-                <Button Content="Start" Click="OnStartCustom" />
-            </StackPanel>
-        </StackPanel>
+                    <!-- Main: timer readout, play button, volume -->
+                    <StackPanel HorizontalAlignment="Center" Spacing="36">
 
-        <!-- Listening time -->
-        <Grid Grid.Row="8" ColumnSpacing="12">
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="*" />
-                <ColumnDefinition Width="Auto" />
-            </Grid.ColumnDefinitions>
-            <StackPanel Grid.Column="0" Spacing="2">
-                <TextBlock
-                    Text="{x:Bind ViewModel.Snapshot.Listening.TotalLabel, Mode=OneWay}"
-                    FontSize="18"
-                    FontWeight="Light" />
-                <TextBlock Text="LIFETIME LISTENING" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
-            </StackPanel>
-            <HyperlinkButton
-                Grid.Column="1"
-                VerticalAlignment="Center"
-                Command="{x:Bind ViewModel.ToggleListeningTrackingCommand}"
-                Content="{x:Bind local:Converters.TrackingLabel(ViewModel.Snapshot.Listening.TrackingEnabled), Mode=OneWay}" />
-        </Grid>
+                        <!-- Timer readout -->
+                        <StackPanel HorizontalAlignment="Center" Spacing="8">
+                            <TextBlock
+                                Text="{x:Bind ViewModel.Snapshot.Timer.RemainingLabel, Mode=OneWay}"
+                                Style="{StaticResource TimerReadoutTextStyle}"
+                                HorizontalAlignment="Center" />
+                            <ProgressBar
+                                Value="{x:Bind ViewModel.Snapshot.Timer.Progress, Mode=OneWay}"
+                                Minimum="0" Maximum="1"
+                                Width="240" Height="2"
+                                CornerRadius="1"
+                                Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+                        </StackPanel>
 
-        <!-- Account / sync -->
-        <StackPanel
-            Grid.Row="9"
-            Spacing="8"
-            Visibility="{x:Bind local:Converters.VisibleIf(ViewModel.SyncAvailable)}">
-            <TextBlock Text="SYNC ACROSS DEVICES" Style="{ThemeResource CaptionTextBlockStyle}" Opacity="0.6" />
+                        <!-- Circular play / pause with glow + rotating outer ring -->
+                        <Grid Width="200" Height="200" HorizontalAlignment="Center">
+                            <!-- Glow halo (fades in while playing; driven in code-behind). -->
+                            <Ellipse x:Name="PlayGlow" Margin="-24" Opacity="0">
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush>
+                                        <GradientStop Color="#736EC9E2" Offset="0" />
+                                        <GradientStop Color="#006EC9E2" Offset="0.65" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                            </Ellipse>
+                            <!-- Dashed outer ring (slow rotation). -->
+                            <Ellipse x:Name="PlayOuterRing" Margin="-14"
+                                     Stroke="#1F6EC9E2" StrokeThickness="1"
+                                     StrokeDashArray="2 4" RenderTransformOrigin="0.5,0.5">
+                                <Ellipse.RenderTransform><RotateTransform x:Name="OuterRingRotation" /></Ellipse.RenderTransform>
+                            </Ellipse>
+                            <!-- Soft top-lit base. -->
+                            <Ellipse>
+                                <Ellipse.Fill>
+                                    <RadialGradientBrush Center="0.5,0.35" GradientOrigin="0.5,0.35" RadiusX="0.5" RadiusY="0.5">
+                                        <GradientStop Color="#14FFFFFF" Offset="0" />
+                                        <GradientStop Color="#00FFFFFF" Offset="0.7" />
+                                    </RadialGradientBrush>
+                                </Ellipse.Fill>
+                            </Ellipse>
+                            <!-- Inner ring (brightens to full accent while playing). -->
+                            <Ellipse x:Name="PlayInnerRing" Stroke="#596EC9E2" StrokeThickness="1" />
+                            <!-- Hit target + icon. Custom template avoids the default button plate. -->
+                            <Button Command="{x:Bind ViewModel.TogglePlaybackCommand}"
+                                    HorizontalAlignment="Stretch" VerticalAlignment="Stretch"
+                                    Background="Transparent"
+                                    ToolTipService.ToolTip="{x:Bind ViewModel.Snapshot.PrimaryButtonLabel, Mode=OneWay}">
+                                <Button.Template>
+                                    <ControlTemplate TargetType="Button">
+                                        <Grid Background="Transparent">
+                                            <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center"
+                                                              Content="{TemplateBinding Content}" />
+                                        </Grid>
+                                    </ControlTemplate>
+                                </Button.Template>
+                                <FontIcon Glyph="{x:Bind local:Converters.PrimaryGlyph(ViewModel.Snapshot.IsPlaying), Mode=OneWay}"
+                                          FontSize="44" Foreground="{StaticResource InkBrush}" />
+                            </Button>
+                        </Grid>
 
-            <!-- Signed out -->
-            <StackPanel
-                Spacing="6"
-                Visibility="{x:Bind ViewModel.SignedOutVisibility, Mode=OneWay}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBox
-                        PlaceholderText="you@example.com"
-                        Width="240"
-                        Text="{x:Bind ViewModel.EmailInput, Mode=TwoWay}" />
-                    <Button Content="Email me a link" Command="{x:Bind ViewModel.RequestLinkCommand}" />
+                        <!-- Volume: label row (mute · VOLUME · readout) over a
+                             full-width slider, matching the web layout. -->
+                        <StackPanel MaxWidth="360" Width="360" HorizontalAlignment="Center" Spacing="8">
+                            <Grid>
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="Auto" />
+                                </Grid.ColumnDefinitions>
+                                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                                    <Button Command="{x:Bind ViewModel.ToggleMuteCommand}"
+                                            Style="{StaticResource GhostChipButtonStyle}"
+                                            Width="30" Height="30" Padding="0" CornerRadius="15"
+                                            VerticalAlignment="Center"
+                                            ToolTipService.ToolTip="Mute (keeps the timer running)">
+                                        <FontIcon Glyph="{x:Bind local:Converters.MuteGlyph(ViewModel.Snapshot.IsMuted), Mode=OneWay}" FontSize="14" />
+                                    </Button>
+                                    <TextBlock Text="VOLUME" Style="{StaticResource VolumeLabelTextStyle}" VerticalAlignment="Center" />
+                                </StackPanel>
+                                <TextBlock
+                                    Grid.Column="1"
+                                    Text="{x:Bind local:Converters.VolumeReadout(ViewModel.Snapshot.VolumePercent, ViewModel.Snapshot.IsMuted), Mode=OneWay}"
+                                    VerticalAlignment="Center"
+                                    MinWidth="46"
+                                    TextAlignment="Right"
+                                    Foreground="{StaticResource InkBrush}"
+                                    FontFamily="Consolas" />
+                            </Grid>
+                            <Slider
+                                Value="{x:Bind ViewModel.Snapshot.VolumePercent, Mode=OneWay}"
+                                Minimum="0" Maximum="100"
+                                ValueChanged="OnVolumeChanged" />
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Timer controls. The web collapses every preset section to a
+                         single centered "Cancel timer" while a timer runs; mirror
+                         that by gating the whole preset block on the timer kind. -->
+                    <StackPanel Spacing="40"
+                                Visibility="{x:Bind local:Converters.TimerInactiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}">
+
+                        <!-- Focus session: solid chips. -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="FOCUS SESSION" Style="{StaticResource SectionHeadingTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="30 min" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartThirtyCommand}" />
+                                <Button Content="1 hr" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartSixtyCommand}" />
+                                <Button Content="8 hr" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartEightHoursCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Sleep timer: ghost (outline) chips. -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="SLEEP TIMER" Style="{StaticResource SectionHeadingTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <Button Content="15 min" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepFifteenCommand}" />
+                                <Button Content="30 min" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepThirtyCommand}" />
+                                <Button Content="1 hr" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepSixtyCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Stopwatch: ghost chip. -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="STOPWATCH" Style="{StaticResource SectionHeadingTextStyle}" />
+                            <Button Content="Start stopwatch" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartStopwatchCommand}" />
+                        </StackPanel>
+
+                        <!-- Custom duration: hidden behind a "Custom…" toggle (web). -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="CUSTOM" Style="{StaticResource SectionHeadingTextStyle}" />
+                            <Button x:Name="CustomToggle" Content="Custom…" Style="{StaticResource GhostChipButtonStyle}" Click="OnToggleCustom" />
+                            <Border x:Name="CustomPanel" Visibility="Collapsed"
+                                    Background="{StaticResource PaperBrush}" CornerRadius="14" Padding="14">
+                                <StackPanel Orientation="Horizontal" Spacing="12" VerticalAlignment="Center">
+                                    <RadioButton x:Name="CustomFocusRadio" Content="Focus" GroupName="CustomMode" IsChecked="True" Checked="OnCustomModeChanged" />
+                                    <RadioButton x:Name="CustomSleepRadio" Content="Sleep" GroupName="CustomMode" Checked="OnCustomModeChanged" />
+                                    <NumberBox
+                                        x:Name="CustomMinutes"
+                                        Value="45" Minimum="1" Maximum="1440"
+                                        SpinButtonPlacementMode="Inline"
+                                        Width="140" />
+                                    <Button x:Name="StartCustomButton" Content="Start session" Style="{StaticResource PrimaryChipButtonStyle}" Click="OnStartCustom" />
+                                </StackPanel>
+                            </Border>
+                        </StackPanel>
+                    </StackPanel>
+
+                    <!-- Lone Cancel while a timer runs (web collapses to just this). -->
+                    <Button Content="Cancel timer"
+                            Style="{StaticResource GhostChipButtonStyle}"
+                            HorizontalAlignment="Center"
+                            Command="{x:Bind ViewModel.CancelTimerCommand}"
+                            Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+
+                    <!-- Listening time card: centered total + caption over a
+                         "Track my listening time" checkbox, matching the web. -->
+                    <Border Background="{StaticResource PaperBrush}"
+                            BorderBrush="{StaticResource PaperStrongBrush}" BorderThickness="1"
+                            CornerRadius="14" Padding="20,18" MaxWidth="320" HorizontalAlignment="Center">
+                        <StackPanel Spacing="12" HorizontalAlignment="Stretch">
+                            <StackPanel Spacing="2" HorizontalAlignment="Center">
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    Text="{x:Bind ViewModel.Snapshot.Listening.TotalLabel, Mode=OneWay}"
+                                    Foreground="{x:Bind local:Converters.ListeningValueBrush(ViewModel.Snapshot.Listening.TrackingEnabled), Mode=OneWay}"
+                                    Style="{StaticResource ListeningValueTextStyle}" />
+                                <TextBlock
+                                    HorizontalAlignment="Center"
+                                    Text="{x:Bind local:Converters.ListeningCaption(ViewModel.Snapshot.Listening.TrackingEnabled), Mode=OneWay}"
+                                    Style="{StaticResource CaptionTextStyle}" />
+                            </StackPanel>
+                            <CheckBox
+                                HorizontalAlignment="Center"
+                                Content="Track my listening time"
+                                FontSize="13"
+                                Foreground="{StaticResource InkDimBrush}"
+                                IsChecked="{x:Bind ViewModel.Snapshot.Listening.TrackingEnabled, Mode=OneWay}"
+                                Click="OnToggleTracking" />
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Account / sync -->
+                    <StackPanel
+                        Spacing="8"
+                        Visibility="{x:Bind local:Converters.VisibleIf(ViewModel.SyncAvailable)}">
+                        <TextBlock Text="SYNC ACROSS DEVICES" Style="{StaticResource SectionHeadingTextStyle}" />
+
+                        <!-- Signed out -->
+                        <StackPanel Spacing="8" Visibility="{x:Bind ViewModel.SignedOutVisibility, Mode=OneWay}">
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBox PlaceholderText="you@example.com" Width="240" CornerRadius="9"
+                                         Text="{x:Bind ViewModel.EmailInput, Mode=TwoWay}" />
+                                <Button Content="Email me a link" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.RequestLinkCommand}" />
+                            </StackPanel>
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <TextBox PlaceholderText="paste the sign-in link" Width="240" CornerRadius="9"
+                                         Text="{x:Bind ViewModel.SignInLinkInput, Mode=TwoWay}" />
+                                <Button Content="Sign in" Style="{StaticResource PrimaryChipButtonStyle}" Command="{x:Bind ViewModel.CompleteSignInCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <!-- Signed in -->
+                        <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.SignedInVisibility, Mode=OneWay}">
+                            <TextBlock Text="{x:Bind local:Converters.SyncingLabel(ViewModel.AccountEmail), Mode=OneWay}" Style="{StaticResource CaptionTextStyle}" />
+                            <StackPanel Orientation="Horizontal" Spacing="8">
+                                <HyperlinkButton Content="Sign out" Style="{StaticResource QuietLinkButtonStyle}" Command="{x:Bind ViewModel.SignOutCommand}" />
+                                <HyperlinkButton Content="Delete data" Style="{StaticResource QuietLinkButtonStyle}" Command="{x:Bind ViewModel.DeleteListeningDataCommand}" />
+                                <HyperlinkButton Content="Delete account" Style="{StaticResource QuietLinkButtonStyle}" Command="{x:Bind ViewModel.DeleteAccountCommand}" />
+                            </StackPanel>
+                        </StackPanel>
+
+                        <TextBlock
+                            Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
+                            Foreground="{StaticResource InkDimBrush}"
+                            FontSize="12"
+                            TextWrapping="Wrap" />
+                    </StackPanel>
+
+                    <!-- Error -->
+                    <InfoBar
+                        IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
+                        Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
+                        Severity="Error" />
+
+                    <!-- Footer -->
+                    <TextBlock Text="CASCADE · LOOPED"
+                               Style="{StaticResource FooterTextStyle}"
+                               HorizontalAlignment="Center"
+                               Margin="0,8,0,0" />
                 </StackPanel>
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBox
-                        PlaceholderText="paste the sign-in link"
-                        Width="240"
-                        Text="{x:Bind ViewModel.SignInLinkInput, Mode=TwoWay}" />
-                    <Button Content="Sign in" Command="{x:Bind ViewModel.CompleteSignInCommand}" />
-                </StackPanel>
-            </StackPanel>
-
-            <!-- Signed in -->
-            <StackPanel
-                Spacing="6"
-                Visibility="{x:Bind ViewModel.SignedInVisibility, Mode=OneWay}">
-                <TextBlock Text="{x:Bind ViewModel.AccountEmail, Mode=OneWay}" />
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <HyperlinkButton Content="Sign out" Command="{x:Bind ViewModel.SignOutCommand}" />
-                    <HyperlinkButton Content="Delete data" Command="{x:Bind ViewModel.DeleteListeningDataCommand}" />
-                    <HyperlinkButton Content="Delete account" Command="{x:Bind ViewModel.DeleteAccountCommand}" />
-                </StackPanel>
-            </StackPanel>
-
-            <TextBlock
-                Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
-                Opacity="0.7"
-                TextWrapping="Wrap" />
-        </StackPanel>
-
-        <!-- Error -->
-        <InfoBar
-            Grid.Row="10"
-            VerticalAlignment="Bottom"
-            IsOpen="{x:Bind local:Converters.HasText(ViewModel.ErrorMessage), Mode=OneWay}"
-            Message="{x:Bind ViewModel.ErrorMessage, Mode=OneWay}"
-            Severity="Error" />
+            </Grid>
+        </ScrollViewer>
     </Grid>
 </Window>
