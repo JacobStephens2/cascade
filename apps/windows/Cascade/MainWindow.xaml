@@ -16,96 +16,15 @@
             <RowDefinition Height="*" />
         </Grid.RowDefinitions>
 
-        <!-- Drifting-blob storyboards (started in code-behind on Loaded). The
-             soft radial blobs fading to transparent approximate the web's
-             blur(60px); CompositeTransform translate/scale are composition-thread
-             animations, so no EnableDependentAnimation needed. -->
         <Grid.Resources>
-            <!-- Soft cyan ring (transparent core, glowing mid-radius, fading edge)
-                 used by every ripple pulse; shared since only each Ellipse's
-                 Opacity/scale is animated, never the brush itself. -->
-            <RadialGradientBrush x:Key="RippleRingBrush">
-                <GradientStop Color="#006EC9E2" Offset="0.0" />
-                <GradientStop Color="#006EC9E2" Offset="0.42" />
-                <GradientStop Color="#806EC9E2" Offset="0.60" />
-                <GradientStop Color="#006EC9E2" Offset="0.80" />
-            </RadialGradientBrush>
-
-            <Storyboard x:Key="DriftA" RepeatBehavior="Forever" AutoReverse="True">
-                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="TranslateX"
-                                 From="-70" To="30" Duration="0:0:14">
-                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="TranslateY"
-                                 From="-40" To="40" Duration="0:0:14">
-                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="ScaleX"
-                                 From="1" To="1.12" Duration="0:0:14" />
-                <DoubleAnimation Storyboard.TargetName="LayerATransform" Storyboard.TargetProperty="ScaleY"
-                                 From="1" To="1.12" Duration="0:0:14" />
-            </Storyboard>
-            <Storyboard x:Key="DriftB" RepeatBehavior="Forever" AutoReverse="True">
-                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="TranslateX"
-                                 From="80" To="-20" Duration="0:0:18">
-                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="TranslateY"
-                                 From="50" To="-30" Duration="0:0:18">
-                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="ScaleX"
-                                 From="1" To="1.18" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="LayerBTransform" Storyboard.TargetProperty="ScaleY"
-                                 From="1" To="1.18" Duration="0:0:18" />
-            </Storyboard>
-            <Storyboard x:Key="DriftC" RepeatBehavior="Forever" AutoReverse="True">
-                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="TranslateY"
-                                 From="120" To="-40" Duration="0:0:11">
-                    <DoubleAnimation.EasingFunction><SineEase EasingMode="EaseInOut" /></DoubleAnimation.EasingFunction>
-                </DoubleAnimation>
-                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="ScaleX"
-                                 From="1" To="1.22" Duration="0:0:11" />
-                <DoubleAnimation Storyboard.TargetName="LayerCTransform" Storyboard.TargetProperty="ScaleY"
-                                 From="1" To="1.22" Duration="0:0:11" />
-            </Storyboard>
+            <!-- Slow rotation for the play button's dashed outer ring. -->
             <Storyboard x:Key="RingSpin" RepeatBehavior="Forever">
                 <DoubleAnimation Storyboard.TargetName="OuterRingRotation" Storyboard.TargetProperty="Angle"
                                  From="0" To="360" Duration="0:1:0" />
             </Storyboard>
-
-            <!-- Water-ripple pulses: each phase expands a soft ring out of the
-                 left + right glow blobs while fading it, on a 6s loop. The three
-                 phases are seeked to 0/2/4s in code-behind so a fresh ripple
-                 emanates every 2s. Scale/Opacity are composition-thread, so no
-                 EnableDependentAnimation is needed. -->
-            <Storyboard x:Key="RippleP1" RepeatBehavior="Forever">
-                <DoubleAnimation Storyboard.TargetName="RippleL1T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL1T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL1" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR1T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR1T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR1" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-            </Storyboard>
-            <Storyboard x:Key="RippleP2" RepeatBehavior="Forever">
-                <DoubleAnimation Storyboard.TargetName="RippleL2T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL2T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL2" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR2T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR2T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR2" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-            </Storyboard>
-            <Storyboard x:Key="RippleP3" RepeatBehavior="Forever">
-                <DoubleAnimation Storyboard.TargetName="RippleL3T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL3T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleL3" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR3T" Storyboard.TargetProperty="ScaleX" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR3T" Storyboard.TargetProperty="ScaleY" From="0.25" To="1.5" Duration="0:0:18" />
-                <DoubleAnimation Storyboard.TargetName="RippleR3" Storyboard.TargetProperty="Opacity" From="0.55" To="0" Duration="0:0:18" />
-            </Storyboard>
         </Grid.Resources>
 
-        <!-- ============================================ animated waterfall backdrop -->
+        <!-- ============================================ static waterfall backdrop -->
         <Grid x:Name="BackdropRoot" Grid.RowSpan="2" Opacity="0.55" IsHitTestVisible="False">
             <!-- Cyan top-glow wash (web: radial-gradient ellipse at 50% 0%). -->
             <Rectangle>
@@ -119,8 +38,7 @@
             <!-- Layer A: deep teal tint. -->
             <Ellipse x:Name="BackdropLayerA" Width="640" Height="640"
                      HorizontalAlignment="Left" VerticalAlignment="Top"
-                     Margin="-120,-120,0,0" RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerATransform" /></Ellipse.RenderTransform>
+                     Margin="-120,-120,0,0">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
                         <GradientStop Color="#FF0B3A4B" Offset="0" />
@@ -131,8 +49,7 @@
             <!-- Layer B: accent cyan. -->
             <Ellipse x:Name="BackdropLayerB" Width="560" Height="560"
                      HorizontalAlignment="Right" VerticalAlignment="Center"
-                     Margin="0,0,-100,0" RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerBTransform" /></Ellipse.RenderTransform>
+                     Margin="0,0,-100,0">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
                         <GradientStop Color="#596EC9E2" Offset="0" />
@@ -140,50 +57,16 @@
                     </RadialGradientBrush>
                 </Ellipse.Fill>
             </Ellipse>
-            <!-- Layer C: pale highlight (drifts up from the bottom). -->
+            <!-- Layer C: pale highlight. -->
             <Ellipse x:Name="BackdropLayerC" Width="520" Height="520"
                      HorizontalAlignment="Center" VerticalAlignment="Bottom"
-                     Margin="0,0,0,-120" RenderTransformOrigin="0.5,0.5">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="LayerCTransform" /></Ellipse.RenderTransform>
+                     Margin="0,0,0,-120">
                 <Ellipse.Fill>
                     <RadialGradientBrush>
                         <GradientStop Color="#2EB4EAF8" Offset="0" />
                         <GradientStop Color="#00B4EAF8" Offset="0.7" />
                     </RadialGradientBrush>
                 </Ellipse.Fill>
-            </Ellipse>
-
-            <!-- Ripple pulses emanating from the left + right glow blobs. Three
-                 phase-staggered rings per side (driven by RippleP1/2/3). -->
-            <Ellipse x:Name="RippleL1" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL1T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="RippleL2" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL2T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="RippleL3" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Left" VerticalAlignment="Center" Margin="-60,0,0,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleL3T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="RippleR1" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR1T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="RippleR2" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR2T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
-            </Ellipse>
-            <Ellipse x:Name="RippleR3" Width="380" Height="380" Opacity="0" IsHitTestVisible="False"
-                     HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,-60,0"
-                     RenderTransformOrigin="0.5,0.5" Fill="{StaticResource RippleRingBrush}">
-                <Ellipse.RenderTransform><CompositeTransform x:Name="RippleR3T" ScaleX="0.25" ScaleY="0.25" /></Ellipse.RenderTransform>
             </Ellipse>
         </Grid>
 
