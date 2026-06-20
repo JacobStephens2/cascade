@@ -27,7 +27,7 @@ settings:
     CODE_SIGN_STYLE: Automatic
     PRODUCT_NAME: Cascade
     MARKETING_VERSION: "0.2.0"
-    CURRENT_PROJECT_VERSION: "1"
+    CURRENT_PROJECT_VERSION: "2"
 
 targets:
   # -------------------------------- macOS ----------------------------------
@@ -46,6 +46,11 @@ targets:
       path: CascadeMac/Info.plist
       properties:
         CFBundleDisplayName: Cascade
+        # Drive the bundle version from the project build settings instead of
+        # XcodeGen's literal "1.0 / 1" defaults, so MARKETING_VERSION /
+        # CURRENT_PROJECT_VERSION bumps actually reach the built app.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         NSHighResolutionCapable: true
         # Required so MPNowPlayingInfoCenter shows up in Control Center.
         MPNowPlayingInfoPropertyMediaType: 1
@@ -95,6 +100,12 @@ targets:
       path: CascadeiOS/Info.plist
       properties:
         CFBundleDisplayName: Cascade
+        # Drive the bundle version from the project build settings instead of
+        # XcodeGen's literal "1.0 / 1" defaults, so MARKETING_VERSION /
+        # CURRENT_PROJECT_VERSION bumps actually reach the built app (and each
+        # TestFlight upload gets a unique build number).
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         UIRequiresFullScreen: false
         UILaunchScreen:
           UIColorName: LaunchBackground
@@ -112,6 +123,9 @@ targets:
         # Required so MPNowPlayingInfoCenter shows on the lock screen / Control
         # Center for AirPods / headphone-button control.
         MPNowPlayingInfoPropertyMediaType: 1
+        # No custom/non-standard encryption → declare export-compliance exempt
+        # so TestFlight/App Store uploads don't re-ask the question each build.
+        ITSAppUsesNonExemptEncryption: false
         NSHumanReadableCopyright: "© 2026 Jacob Stephens"
     entitlements:
       path: CascadeiOS/Cascade.entitlements
@@ -163,6 +177,9 @@ targets:
       path: CascadeWatch/Info.plist
       properties:
         CFBundleDisplayName: Cascade
+        # Keep the embedded watch's version in lockstep with the iOS host.
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         # Marks this as a (modern, single-target) watchOS app. Without it,
         # installd rejects the embedded watch bundle ("no WKApplication key").
         WKApplication: true

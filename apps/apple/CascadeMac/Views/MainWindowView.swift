@@ -34,7 +34,7 @@ struct MainWindowView: View {
                 if let message = snapshot.errorMessage ?? store.lastError {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(CascadeTheme.danger)
                         .multilineTextAlignment(.center)
                 }
             }
@@ -45,6 +45,10 @@ struct MainWindowView: View {
         // mode — otherwise Light-mode label colors (.primary/.secondary)
         // render dark-on-dark and become unreadable.
         .preferredColorScheme(.dark)
+        // Match the web shell: cyan brand accent on every control + near-white
+        // ink as the default text color.
+        .tint(CascadeTheme.accent)
+        .foregroundStyle(CascadeTheme.ink)
     }
 }
 
@@ -54,10 +58,13 @@ private struct Header: View {
         HStack {
             Text("Cascade")
                 .font(.title2.weight(.semibold))
+                .textCase(.uppercase)
+                .tracking(4)
+                .foregroundStyle(CascadeTheme.accent)
             Spacer()
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CascadeTheme.inkDim)
                 .textCase(.uppercase)
                 .tracking(2)
         }
@@ -72,7 +79,7 @@ private struct TimerReadout: View {
             if timer.kind == .off {
                 Text("NO TIMER RUNNING")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkFaint)
                     .tracking(3)
                     .frame(height: 38)
             } else {
@@ -95,19 +102,35 @@ private struct PlayButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Mirror the web play control: a translucent disc with a glowing
+            // accent ring (brighter while playing) and a light glyph, rather
+            // than a solid blue button.
             ZStack {
+                Circle().fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.08), Color.white.opacity(0)],
+                        center: UnitPoint(x: 0.5, y: 0.35),
+                        startRadius: 0,
+                        endRadius: 92
+                    )
+                )
                 Circle()
-                    .fill(isPlaying
-                          ? AnyShapeStyle(.tint.opacity(0.18))
-                          : AnyShapeStyle(.tint))
+                    .strokeBorder(
+                        CascadeTheme.accent.opacity(isPlaying ? 0.9 : 0.35),
+                        lineWidth: 1.5
+                    )
+                    .shadow(color: CascadeTheme.accent.opacity(isPlaying ? 0.45 : 0),
+                            radius: 22)
                 Circle()
-                    .stroke(.tint.opacity(0.5), lineWidth: 1.5)
+                    .strokeBorder(style: StrokeStyle(lineWidth: 1, dash: [4, 6]))
+                    .foregroundStyle(CascadeTheme.accent.opacity(isPlaying ? 0.28 : 0.12))
+                    .padding(-12)
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 36, weight: .medium))
-                    .foregroundStyle(isPlaying ? AnyShapeStyle(.tint) : AnyShapeStyle(.white))
+                    .foregroundStyle(CascadeTheme.ink)
+                    .shadow(color: CascadeTheme.accent.opacity(0.5), radius: 14)
             }
             .frame(width: 132, height: 132)
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -127,11 +150,11 @@ private struct VolumeSlider: View {
                     Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                 }
                 .buttonStyle(.borderless)
-                .foregroundStyle(isMuted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(isMuted ? AnyShapeStyle(CascadeTheme.accent) : AnyShapeStyle(CascadeTheme.inkDim))
                 .accessibilityLabel(isMuted ? "Unmute" : "Mute")
                 Text("Volume")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
                 Spacer()
                 Text(isMuted ? "Muted" : "\(percent)%")
@@ -160,7 +183,7 @@ private struct ListeningRow: View {
                     .monospacedDigit()
                 Text(listening.trackingEnabled ? "LIFETIME LISTENING" : "TRACKING PAUSED")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
             }
             Spacer()
@@ -206,7 +229,7 @@ private struct TimerControls: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Stopwatch")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
                 Button("Start stopwatch") { store.dispatch(.startStopwatch) }
                     .buttonStyle(.bordered)
@@ -260,7 +283,7 @@ private struct TimerControls: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CascadeTheme.inkDim)
                 .tracking(2)
             HStack(spacing: 8) {
                 ForEach(presets, id: \.self) { mins in

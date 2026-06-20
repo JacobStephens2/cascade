@@ -12,7 +12,7 @@ struct AccountControlsView: View {
             VStack(alignment: .leading, spacing: 8) {
                 Text("SYNC ACROSS DEVICES")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
 
                 if let account = store.account {
@@ -46,7 +46,7 @@ struct AccountControlsView: View {
                 }
 
                 if let status = store.syncStatus {
-                    Text(status).font(.caption).foregroundStyle(.secondary)
+                    Text(status).font(.caption).foregroundStyle(CascadeTheme.inkDim)
                 }
             }
         }

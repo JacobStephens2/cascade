@@ -37,7 +37,7 @@ struct CascadeScreen: View {
                 if let message = snapshot.errorMessage ?? store.lastError {
                     Text(message)
                         .font(.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(CascadeTheme.danger)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal)
                 }
@@ -45,6 +45,12 @@ struct CascadeScreen: View {
             .padding(.horizontal, 24)
             .padding(.vertical, 16)
         }
+        // Match the web shell: cyan brand accent on every control, and pin to
+        // dark mode so SwiftUI's label colors don't render dark-on-dark and
+        // vanish against the always-dark backdrop.
+        .tint(CascadeTheme.accent)
+        .foregroundStyle(CascadeTheme.ink)
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -54,9 +60,12 @@ private struct Header: View {
         VStack(spacing: 4) {
             Text("Cascade")
                 .font(.title.weight(.semibold))
+                .textCase(.uppercase)
+                .tracking(4)
+                .foregroundStyle(CascadeTheme.accent)
             Text(subtitle)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CascadeTheme.inkDim)
                 .textCase(.uppercase)
                 .tracking(2)
         }
@@ -71,7 +80,7 @@ private struct TimerReadout: View {
                 Text("NO TIMER RUNNING")
                     .font(.caption)
                     .tracking(3)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkFaint)
                     .frame(height: 40)
             } else {
                 VStack(spacing: 6) {
@@ -94,19 +103,37 @@ private struct PlayButton: View {
 
     var body: some View {
         Button(action: action) {
+            // Mirror the web play control: a translucent disc with a glowing
+            // accent ring (brighter while playing) and a light glyph, rather
+            // than a solid blue button.
             ZStack {
-                Circle().fill(isPlaying
-                              ? AnyShapeStyle(.tint.opacity(0.18))
-                              : AnyShapeStyle(.tint))
-                Circle().stroke(.tint.opacity(0.5), lineWidth: 1.5)
+                Circle().fill(
+                    RadialGradient(
+                        colors: [Color.white.opacity(0.08), Color.white.opacity(0)],
+                        center: UnitPoint(x: 0.5, y: 0.35),
+                        startRadius: 0,
+                        endRadius: 110
+                    )
+                )
+                Circle()
+                    .strokeBorder(
+                        CascadeTheme.accent.opacity(isPlaying ? 0.9 : 0.35),
+                        lineWidth: 1.5
+                    )
+                    .shadow(color: CascadeTheme.accent.opacity(isPlaying ? 0.45 : 0),
+                            radius: 24)
+                Circle()
+                    .strokeBorder(
+                        style: StrokeStyle(lineWidth: 1, dash: [4, 6])
+                    )
+                    .foregroundStyle(CascadeTheme.accent.opacity(isPlaying ? 0.28 : 0.12))
+                    .padding(-14)
                 Image(systemName: isPlaying ? "pause.fill" : "play.fill")
                     .font(.system(size: 40, weight: .medium))
-                    .foregroundStyle(isPlaying
-                                     ? AnyShapeStyle(.tint)
-                                     : AnyShapeStyle(.background))
+                    .foregroundStyle(CascadeTheme.ink)
+                    .shadow(color: CascadeTheme.accent.opacity(0.5), radius: 16)
             }
             .frame(width: 160, height: 160)
-            .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label)
@@ -125,11 +152,11 @@ private struct VolumeSlider: View {
                     Image(systemName: isMuted ? "speaker.slash.fill" : "speaker.wave.2.fill")
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(isMuted ? AnyShapeStyle(.tint) : AnyShapeStyle(.secondary))
+                .foregroundStyle(isMuted ? AnyShapeStyle(CascadeTheme.accent) : AnyShapeStyle(CascadeTheme.inkDim))
                 .accessibilityLabel(isMuted ? "Unmute" : "Mute")
                 Text("Volume")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
                 Spacer()
                 Text(isMuted ? "Muted" : "\(percent)%")
@@ -158,7 +185,7 @@ private struct ListeningRow: View {
                     .monospacedDigit()
                 Text(listening.trackingEnabled ? "LIFETIME LISTENING" : "TRACKING PAUSED")
                     .font(.caption2)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
             }
             Spacer()
@@ -203,7 +230,7 @@ private struct TimerControls: View {
             VStack(alignment: .leading, spacing: 6) {
                 Text("Stopwatch")
                     .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(CascadeTheme.inkDim)
                     .tracking(2)
                 Button("Start stopwatch") { store.dispatch(.startStopwatch) }
                     .buttonStyle(.bordered)
@@ -221,7 +248,7 @@ private struct TimerControls: View {
         VStack(alignment: .leading, spacing: 8) {
             Text("Custom")
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CascadeTheme.inkDim)
                 .tracking(2)
             Picker("Mode", selection: $customMode) {
                 ForEach(CustomMode.allCases) { Text($0.rawValue).tag($0) }
@@ -252,7 +279,7 @@ private struct TimerControls: View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
                 .font(.caption)
-                .foregroundStyle(.secondary)
+                .foregroundStyle(CascadeTheme.inkDim)
                 .tracking(2)
             HStack(spacing: 8) {
                 ForEach(presets, id: \.self) { mins in
