@@ -17,6 +17,8 @@ import kotlinx.coroutines.withContext
 import page.stephens.cascade.core.CascadeBridgeHolder
 import page.stephens.cascade.core.Command
 import page.stephens.cascade.core.Effect
+import page.stephens.cascade.core.Snapshot
+import page.stephens.cascade.core.TimerKind
 
 /**
  * Translates the Rust core's [Effect]s into Media3 commands.
@@ -37,6 +39,11 @@ class PlaybackController(
 
     private var controller: MediaController? = null
     private var collectJob: Job? = null
+    private var metadataJob: Job? = null
+    // Last artist line pushed to the session, so we only refresh the lock-screen
+    // metadata when the text actually changes (the snapshot ticks far more often
+    // than the displayed mm:ss does).
+    private var lastArtist: String? = null
 
     // Report *confirmed* playback back to the core. Listening time accrues on
     // these signals, not on intent, so an audio-focus loss or a failed start
@@ -66,15 +73,41 @@ class PlaybackController(
             collectJob = scope.launch {
                 bridge.effects.collectLatest { applyEffects(it) }
             }
+            // Keep the lock-screen now-playing text in sync with the core: the
+            // track name and, while a timer runs, its remaining time.
+            metadataJob = scope.launch {
+                bridge.snapshot.collect { updateNowPlaying(it) }
+            }
         }, MoreExecutors.directExecutor())
     }
 
     fun stop() {
         collectJob?.cancel()
         collectJob = null
+        metadataJob?.cancel()
+        metadataJob = null
+        lastArtist = null
         controller?.removeListener(playerListener)
         controller?.release()
         controller = null
+    }
+
+    /**
+     * Refresh the session's now-playing metadata from the snapshot. The artist
+     * line carries the track name plus the live timer, so it shows on the lock
+     * screen / media shade. Replacing the item with the same URI updates the
+     * metadata without interrupting the loop.
+     */
+    private fun updateNowPlaying(snap: Snapshot) {
+        val c = controller ?: return
+        val artist = when (snap.timer.kind) {
+            TimerKind.OFF -> snap.subtitle
+            TimerKind.STOPWATCH -> "${snap.subtitle} · ${snap.timer.remainingLabel}"
+            else -> "${snap.subtitle} · ${snap.timer.remainingLabel} left"
+        }
+        if (artist == lastArtist) return
+        lastArtist = artist
+        c.replaceMediaItem(0, CascadePlaybackService.nowPlayingItem(artist))
     }
 
     /** Replay the snapshot's intent so a freshly-built controller catches up. */
