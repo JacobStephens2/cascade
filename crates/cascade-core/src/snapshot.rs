@@ -123,7 +123,7 @@ impl Snapshot {
 
         Snapshot {
             title: "Cascade".to_string(),
-            subtitle: "Waterfall loop".to_string(),
+            subtitle: "The Falls".to_string(),
             is_playing: state.intent.is_playing(),
             volume_percent: state.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT),
             is_muted: state.muted,
