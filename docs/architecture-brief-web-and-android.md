@@ -1802,4 +1802,4 @@ If you want me to pick for you based on your stated goal (“a simple tool I’l
 
 The clave-tech-stack.md file is at docs/clave-tech-stack.md.
 
-The audio files are in the assets folder. The_Falls_v3 is available in three formats: MP3, OGG, and WAV there.
+The audio files are in the assets folder. The_Falls is available in three formats: MP3, OGG, and WAV there.
