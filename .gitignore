@@ -48,3 +48,4 @@ apps/web/public/downloads/*.zip
 
 # Private: Clave game-design doc — kept locally, never tracked (game IP + personal refs)
 docs/clave-tech-stack.md
+docs/research/cascade-time-played-tracker-model-council/cascade-windows-key.pem
