@@ -622,9 +622,9 @@ public enum CascadeError: Swift.Error {
 
     
     
-    case BadJson(message: String
+    case BadJson(reason: String
     )
-    case Core(message: String
+    case Core(reason: String
     )
 }
 
@@ -643,10 +643,10 @@ public struct FfiConverterTypeCascadeError: FfiConverterRustBuffer {
 
         
         case 1: return .BadJson(
-            message: try FfiConverterString.read(from: &buf)
+            reason: try FfiConverterString.read(from: &buf)
             )
         case 2: return .Core(
-            message: try FfiConverterString.read(from: &buf)
+            reason: try FfiConverterString.read(from: &buf)
             )
 
          default: throw UniffiInternalError.unexpectedEnumCase
@@ -660,14 +660,14 @@ public struct FfiConverterTypeCascadeError: FfiConverterRustBuffer {
 
         
         
-        case let .BadJson(message):
+        case let .BadJson(reason):
             writeInt(&buf, Int32(1))
-            FfiConverterString.write(message, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
             
         
-        case let .Core(message):
+        case let .Core(reason):
             writeInt(&buf, Int32(2))
-            FfiConverterString.write(message, into: &buf)
+            FfiConverterString.write(reason, into: &buf)
             
         }
     }
