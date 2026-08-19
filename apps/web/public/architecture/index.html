@@ -53,6 +53,7 @@
         display: flex;
         align-items: baseline;
         justify-content: space-between;
+        flex-wrap: wrap;
         gap: 16px;
         margin-bottom: clamp(28px, 6vh, 56px);
       }
@@ -69,7 +70,9 @@
         text-decoration: none;
         font-size: 14px;
         margin-left: 20px;
+        white-space: nowrap;
       }
+      .nav a:first-child { margin-left: 0; }
       .nav a:hover { color: var(--accent); }
       .eyebrow {
         color: var(--accent);
@@ -159,6 +162,7 @@
         <a class="mark" href="/">Cascade</a>
         <nav class="nav">
           <a href="/">Player</a>
+          <a href="/apps">Get the app</a>
           <a href="https://github.com/JacobStephens2/cascade" target="_blank" rel="noopener">Source</a>
         </nav>
       </header>
@@ -200,6 +204,7 @@
 
         <div class="cta">
           <a class="primary" href="/">Open the player</a>
+          <a class="ghost" href="/apps">Get the app</a>
           <a class="ghost" href="https://github.com/JacobStephens2/cascade" target="_blank" rel="noopener">Source on GitHub</a>
         </div>
       </main>

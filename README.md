@@ -12,6 +12,8 @@ one file, reliably, everywhere — without depending on a streaming service.
 
 **Live web app: <https://cascade.stephens.page>** (installable PWA)
 
+**Get Cascade (end-user installs): <https://cascade.stephens.page/apps>**
+
 [![Windows build](https://github.com/JacobStephens2/cascade/actions/workflows/windows.yml/badge.svg)](https://github.com/JacobStephens2/cascade/actions/workflows/windows.yml)
 [![Apple build](https://github.com/JacobStephens2/cascade/actions/workflows/apple.yml/badge.svg)](https://github.com/JacobStephens2/cascade/actions/workflows/apple.yml)
 
@@ -19,17 +21,17 @@ one file, reliably, everywhere — without depending on a streaming service.
 
 | Platform | Stack | Rust binding | Status |
 |---|---|---|---|
-| **Web** | React + Vite PWA, Web Audio API | `wasm-bindgen` | Deployed & verified ([live](https://cascade.stephens.page)) |
-| **Android** | Kotlin + Compose, Media3 `MediaSessionService` | UniFFI (Kotlin) | Builds (debug APK) |
-| **Windows** | WinUI 3 / C# / .NET, `MediaPlayer` + SMTC | C ABI + P/Invoke | Builds in CI (artifact) |
-| **macOS** | SwiftUI, `MenuBarExtra`, AVAudioEngine | UniFFI (Swift) | Scaffolded; CI compile |
-| **iOS** | SwiftUI, AVAudioSession background audio | UniFFI (Swift) | Scaffolded; CI compile |
-| **watchOS** | SwiftUI thin remote over WatchConnectivity | — (talks to iPhone) | Scaffolded; CI compile |
+| **Web** | React + Vite PWA, Web Audio API | `wasm-bindgen` | Live player ([cascade.stephens.page](https://cascade.stephens.page)); installable PWA |
+| **Android** | Kotlin + Compose, Media3 `MediaSessionService` | UniFFI (Kotlin) | Sideload APK ([get it](https://cascade.stephens.page/apps)) |
+| **Windows** | WinUI 3 / C# / .NET, `MediaPlayer` + SMTC | C ABI + P/Invoke | Unsigned zip ([get it](https://cascade.stephens.page/apps)) |
+| **macOS** | SwiftUI, `MenuBarExtra`, AVAudioEngine | UniFFI (Swift) | Notarized DMG ([get it](https://cascade.stephens.page/apps)) |
+| **iOS** | SwiftUI, AVAudioSession background audio | UniFFI (Swift) | TestFlight beta ([get it](https://cascade.stephens.page/apps)) |
+| **watchOS** | SwiftUI thin remote over WatchConnectivity | — (talks to iPhone) | Comes with the iPhone app |
 
-The web and Android shells are built and verified on the Linux dev host;
-Windows is built by GitHub Actions; the three Apple shells require a Mac and
-are compiled in the Apple CI workflow (see the badge). "Scaffolded" means the
-code is written and wired but the build is only verified via CI.
+End-user installs live on [cascade.stephens.page/apps](https://cascade.stephens.page/apps).
+The web app is deployed; native apps are GitHub (or TestFlight) releases, not
+store listings. CI still compiles every shell (see the badges). Building from
+source is the section below.
 
 ## Features
 

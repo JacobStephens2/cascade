@@ -65,8 +65,13 @@ export function App() {
       <WaterfallBackdrop active={isPlaying} progress={snapshot.timer.progress} />
 
       <header className="cascade-header">
-        <span className="cascade-mark">Cascade</span>
-        <span className="cascade-sub">{snapshot.subtitle}</span>
+        <div className="cascade-header__brand">
+          <span className="cascade-mark">Cascade</span>
+          <span className="cascade-sub">{snapshot.subtitle}</span>
+        </div>
+        <a className="cascade-header__link" href="/apps">
+          Get the app
+        </a>
       </header>
 
       <main className="cascade-main">

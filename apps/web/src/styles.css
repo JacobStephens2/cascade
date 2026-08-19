@@ -124,9 +124,17 @@ body {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
+  flex-wrap: wrap;
   gap: 16px;
   position: relative;
   z-index: 2;
+}
+
+.cascade-header__brand {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
 }
 
 .cascade-mark {
@@ -142,6 +150,21 @@ body {
   font-size: 13px;
   letter-spacing: 0.04em;
   color: var(--ink-dim);
+}
+
+.cascade-header__link {
+  flex: none;
+  font-size: 13px;
+  letter-spacing: 0.04em;
+  color: var(--ink-dim);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color 0.2s ease, border-color 0.2s ease;
+}
+.cascade-header__link:hover,
+.cascade-header__link:focus-visible {
+  color: var(--accent);
+  border-color: var(--accent);
 }
 
 .cascade-footer {

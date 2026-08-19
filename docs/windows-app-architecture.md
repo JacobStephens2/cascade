@@ -914,7 +914,7 @@ Background playback	Foreground process with MediaPlayer + SMTC; not a service	Wi
 System tray	NotifyIcon via Win32 P/Invoke using H.NotifyIcon.WinUI (or hand-rolled via Vanara)	WinUI 3 has no first-party tray API yet; H.NotifyIcon is the established community library.
 Settings persistence	Same settings.json format as web/Android/macOS, in %LOCALAPPDATA%\Cascade\settings.json	Single cross-platform schema owned by the Rust core.
 Audio asset	cascade.mp3 packaged inside the MSIX as a Content asset	Identical to the asset used by cascade-android and cascade-macos.
-Distribution	MSIX, sideload via .appinstaller URL on cascade.stephens.page first; Microsoft Store later	Lowest-friction install path that still gets you signed installs and auto-update.
+Distribution	MSIX, sideload via .appinstaller URL on cascade.stephens.page first; Microsoft Store later	Lowest-friction install path that still gets you signed installs and auto-update. **Not built:** `cascade.stephens.page/windows/` does not exist. Current Windows zip is on [cascade.stephens.page/apps](https://cascade.stephens.page/apps).
 Code signing	Self-signed for personal sideload now; Authenticode cert (~$300–500/yr) before public sideload	Matches your Clave doc's signing budget line.
 Bundle ID	page.stephens.cascade	Reverse-DNS of your domain, consistent with macOS bundle ID.
 2. Repo Layout — Windows Slice
@@ -1436,6 +1436,8 @@ Cascade.csproj → Package and Publish → Create App Packages → Sideloading.
 Output: Cascade_1.0.0.0_x64_arm64.msixbundle + Cascade.appinstaller.
 
 Host both files at https://cascade.stephens.page/windows/ (alongside the existing web app).
+**Not built** — that URL does not exist. Until it does, the unsigned zip is on
+https://cascade.stephens.page/apps.
 
 Install once by double-clicking the .appinstaller URL — Windows checks for updates on every launch.
 
@@ -1448,6 +1450,7 @@ Optionally also publish on Steam (the Clave doc lists this as a target for the f
 
 Auto-update story
 .appinstaller polls the URL on launch — same model the Microsoft Store uses internally. Bump version, regenerate package, drop on cascade.stephens.page/windows/, and every install of Cascade Windows updates within one launch.
+(`cascade.stephens.page/windows/` is **not built**; current zip is on https://cascade.stephens.page/apps.)
 
 12. Entitlements & Capabilities
 Package.appxmanifest:
@@ -1506,7 +1509,7 @@ W6	SmtcController — Now Playing in the volume flyout, media keys work
 W7	H.NotifyIcon.WinUI tray icon with flyout; MainWindow.Closed hides instead of exits
 W8	PowerController (SetThreadExecutionState), StartupTask, keyboard accelerators
 W9	Mica backdrop, Fluent visuals, Settings page
-W10	MSIX packaging + self-signed sideload via cascade.stephens.page/windows/
+W10	MSIX packaging + self-signed sideload via cascade.stephens.page/windows/ (not built; zip is on /apps)
 W0–W4 is enough for daily use; W5–W10 is what makes Cascade belong on Windows rather than just run on it — exactly the bar your Clave doc sets for the Microsoft side of the mission.
 
 15. What This Validates for Clave

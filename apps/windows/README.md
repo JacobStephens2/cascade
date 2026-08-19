@@ -2,6 +2,10 @@
 
 Native WinUI 3 / C# / .NET shell over `cascade-core` via a hand-rolled C ABI.
 
+End users: install from
+[cascade.stephens.page/apps](https://cascade.stephens.page/apps)
+(unsigned zip). This README is for building from source.
+
 ## What's here
 
 ```
@@ -110,8 +114,10 @@ curve matching the web / macOS shells).
   the planned follow-up.
 - Unpackaged build outputs the .exe + DLLs side by side. For real
   distribution, switch the csproj to `<WindowsPackageType>MSIX</WindowsPackageType>`
-  and add a Package Project, then sign with a self-signed cert for
-  sideload via `cascade.stephens.page/windows/`.
+  and add a Package Project, then sign with a self-signed cert.
+  Hosting an `.appinstaller` at `cascade.stephens.page/windows/` is
+  **not built**. Until then, the unsigned zip is on
+  [cascade.stephens.page/apps](https://cascade.stephens.page/apps).
 - App icons are placeholders generated from the existing web icon at
   scaffold time; replace with proper Windows asset sizes before
   publishing.

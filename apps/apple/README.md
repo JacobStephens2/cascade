@@ -5,6 +5,11 @@ line of non-UI code through `CascadeShared/`. watchOS is a thin remote
 (Mode A) that talks to the iPhone over `WCSession`; it doesn't link the
 Rust core.
 
+End users: install from
+[cascade.stephens.page/apps](https://cascade.stephens.page/apps)
+(notarized macOS DMG, iOS TestFlight; the watch app comes with the
+iPhone app). This README is for building from source.
+
 ## Layout
 
 ```
@@ -108,5 +113,6 @@ For iOS-only iteration on a Mac that's only used to develop iOS:
   polish per the architecture council doc.
 - The iOS app has no separate Settings UI; macOS still has the standard
   Settings scene.
-- No App Store / TestFlight pipeline yet — for personal-device install,
-  Xcode's free signing is enough.
+- No App Store pipeline yet. A public TestFlight beta is on
+  [cascade.stephens.page/apps](https://cascade.stephens.page/apps).
+  For personal-device install from source, Xcode's free signing is enough.

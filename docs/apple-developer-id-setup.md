@@ -1,5 +1,9 @@
 # Getting Cascade notarized (Developer ID) — runbook
 
+Superseded for downloaders: current macOS builds are on
+[cascade.stephens.page/apps](https://cascade.stephens.page/apps)
+(notarized 0.2.0). The commands below are the 0.1.0 notarize log.
+
 Goal: replace the ad-hoc/un-notarized macOS release with a **Developer ID-signed +
 notarized** build so downloaders get no Gatekeeper warning. Split into **(A) web
 steps for a browser agent** and **(B) local CLI steps** on this Mac.
