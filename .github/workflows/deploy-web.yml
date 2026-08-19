@@ -1,0 +1,70 @@
+name: Deploy web
+
+# Build the PWA (wasm-pack + Vite) and rsync `apps/web/dist` to the droplet
+# Apache already serves. Every push to main deploys; no approval gate.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-web
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: Build and rsync
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust (wasm32)
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install wasm-pack
+        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
+
+      - name: Build WASM bindings
+        run: |
+          wasm-pack build crates/cascade-wasm --target web \
+            --out-dir ../../apps/web/src/wasm --release
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Build the web app
+        working-directory: apps/web
+        run: |
+          npm ci
+          npm run build
+
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          echo "${{ secrets.SSH_KNOWN_HOSTS }}" > ~/.ssh/known_hosts
+
+      - name: Rsync dist to the server
+        run: |
+          rsync -az --delete \
+            -e "ssh -i $HOME/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
+            apps/web/dist/ \
+            "jacob@${{ secrets.DEPLOY_HOST }}:/var/www/cascade.stephens.page/apps/web/dist/"
+
+      - name: Smoke-check the live site
+        run: |
+          curl -fsS -o /dev/null https://cascade.stephens.page/
+          curl -fsS https://cascade.stephens.page/apps/ | grep -q "Get Cascade"

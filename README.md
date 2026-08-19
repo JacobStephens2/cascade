@@ -10,7 +10,8 @@ side effects — audio playback, OS integration, and UI.
 The sound is a 13-minute recording of a waterfall. Cascade exists to play that
 one file, reliably, everywhere — without depending on a streaming service.
 
-**Live web app: <https://cascade.stephens.page>** (installable PWA)
+**Live web app: <https://cascade.stephens.page>** (installable PWA).
+Pushes to `main` deploy it via [`.github/workflows/deploy-web.yml`](.github/workflows/deploy-web.yml).
 
 **Get Cascade (end-user installs): <https://cascade.stephens.page/apps>**
 
