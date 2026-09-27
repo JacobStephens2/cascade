@@ -19,7 +19,10 @@ pub mod timer;
 
 pub use command::Command;
 pub use effect::Effect;
-pub use listening::{ListeningLedger, PersistedListening, LISTENING_VERSION, MAX_TICK_ACCRUAL_MS};
+pub use listening::{
+    ListeningLedger, PersistedListening, SyncReason, LISTENING_SYNC_THRESHOLD_MS,
+    LISTENING_VERSION, MAX_TICK_ACCRUAL_MS,
+};
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
 pub use snapshot::{ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind};
 pub use state::{PlaybackIntent, State, TimerMode};

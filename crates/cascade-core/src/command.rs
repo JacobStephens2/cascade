@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::listening::SyncReason;
+
 /// Everything that can happen to the core. User actions, platform reports,
 /// and wall-clock ticks all funnel through here.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -61,19 +63,36 @@ pub enum Command {
     /// the core owns its schema, so the shell stores and returns it verbatim.
     /// A missing or unparseable blob is ignored (the in-memory ledger keeps its
     /// defaults) — restore never *lowers* a live counter.
-    RestoreListening { json: String },
-    /// Record a successful sync. The server accepted everything up to
-    /// `synced_through_ms` and reports `server_total_ms` as the cross-device
-    /// aggregate. Moves the display baseline only; never lowers the device slot.
-    ApplySyncedTotal {
-        synced_through_ms: u64,
-        server_total_ms: u64,
+    ///
+    /// The core owns the device id but has no randomness, so the shell supplies
+    /// `fallback_device_id`: a fresh random id (or, once, the id the shell
+    /// used to store itself, so an existing server slot carries over). It is
+    /// adopted — and persisted — only if the blob carries no id.
+    RestoreListening {
+        json: String,
+        fallback_device_id: String,
     },
-    /// "Delete my listening data": zero this device's slot and forget the server
-    /// aggregate. The shell must rotate its `device_id` alongside this so a
-    /// stale offline write can't resurrect the deleted total. Leaves the
-    /// tracking toggle untouched.
-    ResetListeningData,
+    /// The shell is able to talk to the server (online, signed in) and asks
+    /// whether there is anything to send. If so, the update carries one
+    /// [`crate::Effect::PushListening`]; the shell PUTs exactly that and
+    /// reports back with [`Command::ListeningSyncSucceeded`] or
+    /// [`Command::ListeningSyncFailed`]. No effect means nothing to send, or a
+    /// sync is already in flight.
+    BeginListeningSync { reason: SyncReason },
+    /// The in-flight listening PUT succeeded; `server_total_ms` is the
+    /// cross-device aggregate it returned. The core marks exactly what it sent
+    /// as synced. Moves the display baseline only; never lowers the device slot.
+    ListeningSyncSucceeded { server_total_ms: u64 },
+    /// The in-flight listening PUT failed. `unauthorized` is true for an HTTP
+    /// 401: the session is gone, and the core answers with
+    /// [`crate::Effect::ClearSession`]. Listening stays local either way.
+    ListeningSyncFailed { unauthorized: bool },
+    /// "Delete my listening data": zero this device's slot, forget the server
+    /// aggregate, and rotate to `new_device_id` (a fresh random id from the
+    /// shell) — all in one persisted write, so a crash can't leave a fresh id
+    /// holding the old total, and a stale offline write can't resurrect the
+    /// deleted one. Leaves the tracking toggle untouched.
+    ResetListeningData { new_device_id: String },
 }
 
 #[cfg(test)]

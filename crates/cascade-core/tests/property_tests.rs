@@ -4,7 +4,7 @@
 //! for *any* input — the cheap insurance the architecture brief asked for,
 //! especially now that custom durations let the user pick any minute count.
 
-use cascade_core::{Command, Core, Effect, TimerSnapshotKind};
+use cascade_core::{Command, Core, Effect, SyncReason, TimerSnapshotKind};
 use proptest::prelude::*;
 
 const MAX_VOLUME: u8 = 100;
@@ -197,5 +197,58 @@ proptest! {
             .any(|e| matches!(e, Effect::StartPlayback { .. }));
         prop_assert!(!started);
         prop_assert!(!update.snapshot.is_playing);
+    }
+}
+
+/// Listening accrual interleaved with every step of the sync protocol, in any
+/// order a shell (or the network) could produce.
+fn sync_command_strategy() -> impl Strategy<Value = Command> {
+    prop_oneof![
+        (0u64..=10_000).prop_map(|elapsed_ms| Command::Tick { elapsed_ms }),
+        Just(Command::BeginListeningSync {
+            reason: SyncReason::Threshold
+        }),
+        Just(Command::BeginListeningSync {
+            reason: SyncReason::Flush
+        }),
+        Just(Command::BeginListeningSync {
+            reason: SyncReason::Refresh
+        }),
+        any::<u64>()
+            .prop_map(|server_total_ms| Command::ListeningSyncSucceeded { server_total_ms }),
+        any::<bool>().prop_map(|unauthorized| Command::ListeningSyncFailed { unauthorized }),
+        Just(Command::ResetListeningData {
+            new_device_id: "rotated".into()
+        }),
+    ]
+}
+
+proptest! {
+    /// Whatever the order of ticks, syncs, acks, failures and resets, the
+    /// synced high-water mark never runs past what the device has actually
+    /// counted — so the server is never told a slot was delivered that wasn't
+    /// — and every push carries the live device id and total.
+    #[test]
+    fn synced_mark_never_exceeds_device_total(
+        cmds in prop::collection::vec(sync_command_strategy(), 1..80),
+    ) {
+        let mut core = Core::new();
+        core.dispatch(Command::RestoreListening {
+            json: String::new(),
+            fallback_device_id: "original".into(),
+        });
+        core.dispatch(Command::Play);
+        core.dispatch(Command::PlatformPlaybackStarted);
+        for cmd in cmds {
+            let update = core.dispatch(cmd);
+            let l = &core.state().listening;
+            prop_assert!(l.synced_through_ms <= l.device_total_ms);
+            for e in &update.effects {
+                if let Effect::PushListening { device_id, device_total_ms } = e {
+                    prop_assert_eq!(Some(device_id), l.device_id.as_ref());
+                    prop_assert_eq!(*device_total_ms, l.device_total_ms);
+                }
+            }
+        }
     }
 }

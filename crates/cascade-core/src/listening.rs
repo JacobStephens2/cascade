@@ -29,6 +29,26 @@ pub const LISTENING_VERSION: u32 = 1;
 /// has — the per-tick delta the merge consumes.
 pub const MAX_TICK_ACCRUAL_MS: u64 = 5_000;
 
+/// How much unsynced listening a [`SyncReason::Threshold`] sync waits for
+/// before it is worth a PUT. One definition for every shell.
+pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
+
+/// Why a shell is asking to sync. The shell decides *when it can* talk
+/// (reachability, lifecycle, auth); the reason lets the core decide *whether
+/// there is anything to say*.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum SyncReason {
+    /// Routine check (e.g. on every snapshot): send only once at least
+    /// [`LISTENING_SYNC_THRESHOLD_MS`] is unsynced.
+    Threshold,
+    /// The app is backgrounding or closing: send any unsynced time at all.
+    Flush,
+    /// Just signed in or launched with an account: always send, so the
+    /// cross-device aggregate comes back even with nothing new to report.
+    Refresh,
+}
+
 /// The in-memory listening ledger. Held inside [`crate::State`].
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ListeningLedger {
@@ -44,6 +64,13 @@ pub struct ListeningLedger {
     pub server_total_ms: Option<u64>,
     /// Whether listening-time tracking is on. Defaults to `true` (opt-out).
     pub tracking_enabled: bool,
+    /// This device's opaque id — the key of its server slot. Owned here, in
+    /// the same blob as `device_total_ms`, so rotating it and zeroing the slot
+    /// are one persisted write. `None` until [`Self::adopt_device_id`].
+    pub device_id: Option<String>,
+    /// `device_total_ms` as sent by the PUT currently in flight, if any.
+    /// Transient — never persisted; a restart simply forgets the request.
+    pub in_flight_ms: Option<u64>,
 }
 
 impl Default for ListeningLedger {
@@ -53,6 +80,8 @@ impl Default for ListeningLedger {
             synced_through_ms: 0,
             server_total_ms: None,
             tracking_enabled: true,
+            device_id: None,
+            in_flight_ms: None,
         }
     }
 }
@@ -84,37 +113,86 @@ impl ListeningLedger {
         self.device_total_ms = self.device_total_ms.saturating_add(delta);
     }
 
-    /// Record a successful sync: the server has accepted everything up to
-    /// `synced_through_ms` and reports `server_total_ms` as the cross-device
-    /// aggregate. This only moves the display baseline forward — it never
-    /// touches `device_total_ms`. Monotonic in `synced_through_ms` so an
-    /// out-of-order ack can't rewind the high-water mark.
-    pub fn apply_synced(&mut self, synced_through_ms: u64, server_total_ms: u64) {
-        self.synced_through_ms = self.synced_through_ms.max(synced_through_ms);
-        self.server_total_ms = Some(server_total_ms);
+    /// Decide whether to sync, and if so what to send: `(device_id,
+    /// device_total_ms)`. Marks that total as in flight, so a second call
+    /// returns `None` until [`Self::sync_succeeded`] or [`Self::sync_failed`]
+    /// settles it — the one re-entrancy guard every shell shares.
+    pub fn begin_sync(&mut self, reason: SyncReason) -> Option<(String, u64)> {
+        if self.in_flight_ms.is_some() {
+            return None;
+        }
+        let device_id = self.device_id.clone()?;
+        let worth_sending = match reason {
+            SyncReason::Threshold => self.unsynced_ms() >= LISTENING_SYNC_THRESHOLD_MS,
+            SyncReason::Flush => self.unsynced_ms() > 0,
+            SyncReason::Refresh => true,
+        };
+        if !worth_sending {
+            return None;
+        }
+        self.in_flight_ms = Some(self.device_total_ms);
+        Some((device_id, self.device_total_ms))
     }
 
-    /// Zero the local slot for a "delete my listening data" request. The shell
-    /// is responsible for rotating its `device_id` alongside this so a stale
-    /// offline write can't later resurrect the deleted total against the old
-    /// slot. `tracking_enabled` is left as-is — deleting data is not the same
-    /// as turning the feature off.
-    pub fn reset(&mut self) {
+    /// The in-flight PUT succeeded. The server has accepted exactly what was
+    /// sent — not whatever accrued while the request was out — and reports
+    /// `server_total_ms` as the cross-device aggregate. This only moves the
+    /// display baseline forward; it never touches `device_total_ms`, and is
+    /// monotonic so an out-of-order ack can't rewind the high-water mark.
+    /// Returns `false` (and changes nothing) if no sync was in flight.
+    pub fn sync_succeeded(&mut self, server_total_ms: u64) -> bool {
+        let Some(sent) = self.in_flight_ms.take() else {
+            return false;
+        };
+        self.synced_through_ms = self.synced_through_ms.max(sent);
+        self.server_total_ms = Some(server_total_ms);
+        true
+    }
+
+    /// The in-flight PUT failed. Nothing was acknowledged; the next trigger
+    /// may try again.
+    pub fn sync_failed(&mut self) {
+        self.in_flight_ms = None;
+    }
+
+    /// Take `fallback` as this device's id if it doesn't have one yet.
+    /// Returns whether it was adopted (and so needs persisting).
+    pub fn adopt_device_id(&mut self, fallback: String) -> bool {
+        if self.device_id.is_some() {
+            return false;
+        }
+        self.device_id = Some(fallback);
+        true
+    }
+
+    /// Zero the local slot for a "delete my listening data" request and move to
+    /// `new_device_id`, so a stale offline write can't later resurrect the
+    /// deleted total against the old slot. Rotation and zeroing happen in the
+    /// same state change, so they reach disk in the same persisted write. Any
+    /// in-flight sync belonged to the old slot and is forgotten.
+    /// `tracking_enabled` is left as-is — deleting data is not the same as
+    /// turning the feature off.
+    pub fn reset(&mut self, new_device_id: String) {
         self.device_total_ms = 0;
         self.synced_through_ms = 0;
         self.server_total_ms = None;
+        self.device_id = Some(new_device_id);
+        self.in_flight_ms = None;
     }
 
     /// Adopt a restored ledger without ever *lowering* the live counters. A
     /// best-effort writer (Windows/macOS) can leave a partially-written blob,
     /// and a restore must never regress a lifetime total — so the grow-only
     /// fields take the max. `server_total_ms` and `tracking_enabled` are
-    /// authoritative from the blob.
+    /// authoritative from the blob, as is `device_id` when the blob has one.
     pub fn restore_from(&mut self, restored: &ListeningLedger) {
         self.device_total_ms = self.device_total_ms.max(restored.device_total_ms);
         self.synced_through_ms = self.synced_through_ms.max(restored.synced_through_ms);
         self.server_total_ms = restored.server_total_ms;
         self.tracking_enabled = restored.tracking_enabled;
+        if restored.device_id.is_some() {
+            self.device_id = restored.device_id.clone();
+        }
     }
 
     pub fn to_persisted(&self) -> PersistedListening {
@@ -124,6 +202,7 @@ impl ListeningLedger {
             synced_through_ms: self.synced_through_ms,
             server_total_ms: self.server_total_ms,
             tracking_enabled: self.tracking_enabled,
+            device_id: self.device_id.clone(),
         }
     }
 
@@ -133,6 +212,8 @@ impl ListeningLedger {
             synced_through_ms: p.synced_through_ms.min(p.device_total_ms),
             server_total_ms: p.server_total_ms,
             tracking_enabled: p.tracking_enabled,
+            device_id: p.device_id.clone(),
+            in_flight_ms: None,
         }
     }
 }
@@ -152,6 +233,10 @@ pub struct PersistedListening {
     #[serde(default)]
     pub server_total_ms: Option<u64>,
     pub tracking_enabled: bool,
+    /// The device's server-slot id. `#[serde(default)]` keeps blobs written
+    /// before the core owned the id loadable; the shell's fallback fills it.
+    #[serde(default)]
+    pub device_id: Option<String>,
 }
 
 /// Format a millisecond total as a coarse human label: `"12h 34m"`, `"59m"`,
@@ -172,6 +257,14 @@ pub fn format_listening_total(total_ms: u64) -> String {
 mod tests {
     use super::*;
 
+    /// Send whatever is unsynced and have the server accept it.
+    fn sync(l: &mut ListeningLedger, server_total_ms: u64) {
+        l.device_id.get_or_insert_with(|| "device".into());
+        l.begin_sync(SyncReason::Refresh)
+            .expect("nothing in flight");
+        assert!(l.sync_succeeded(server_total_ms));
+    }
+
     #[test]
     fn accrue_clamps_per_tick_to_neutralize_clock_jumps() {
         let mut l = ListeningLedger::default();
@@ -187,11 +280,10 @@ mod tests {
         let mut l = ListeningLedger::default();
         l.accrue(3_000);
         assert_eq!(l.unsynced_ms(), 3_000);
-        l.apply_synced(3_000, 10_000);
+        sync(&mut l, 10_000);
         assert_eq!(l.unsynced_ms(), 0);
-        // A stale, smaller ack can't rewind the high-water mark or underflow.
-        l.apply_synced(1_000, 10_000);
-        assert_eq!(l.synced_through_ms, 3_000);
+        // A partially-written blob with synced > device can't underflow.
+        l.synced_through_ms = 5_000;
         assert_eq!(l.unsynced_ms(), 0);
     }
 
@@ -203,18 +295,18 @@ mod tests {
         assert_eq!(l.displayed_total_ms(), 5_000);
         // After a sync that reports a 1h aggregate across devices, the live
         // display is aggregate + whatever we've accrued since.
-        l.apply_synced(5_000, 3_600_000);
+        sync(&mut l, 3_600_000);
         l.accrue(2_000);
         assert_eq!(l.displayed_total_ms(), 3_600_000 + 2_000);
     }
 
     #[test]
-    fn apply_synced_never_lowers_device_slot() {
+    fn sync_never_lowers_device_slot() {
         let mut l = ListeningLedger::default();
         l.accrue(4_000);
         // Even if the server somehow reports a smaller aggregate, the local
         // grow-only slot is untouched.
-        l.apply_synced(4_000, 1_000);
+        sync(&mut l, 1_000);
         assert_eq!(l.device_total_ms, 4_000);
     }
 
@@ -222,12 +314,13 @@ mod tests {
     fn reset_zeros_local_state_but_leaves_tracking_flag() {
         let mut l = ListeningLedger::default();
         l.accrue(4_000);
-        l.apply_synced(4_000, 9_000);
+        sync(&mut l, 9_000);
         l.tracking_enabled = true;
-        l.reset();
+        l.reset("rotated".into());
         assert_eq!(l.device_total_ms, 0);
         assert_eq!(l.synced_through_ms, 0);
         assert_eq!(l.server_total_ms, None);
+        assert_eq!(l.device_id.as_deref(), Some("rotated"));
         assert!(l.tracking_enabled, "deleting data must not flip the toggle");
     }
 
@@ -241,6 +334,8 @@ mod tests {
             synced_through_ms: 0,
             server_total_ms: None,
             tracking_enabled: false,
+            device_id: None,
+            in_flight_ms: None,
         };
         live.restore_from(&stale);
         assert_eq!(live.device_total_ms, 5_000);
@@ -253,8 +348,9 @@ mod tests {
     #[test]
     fn persisted_round_trips() {
         let mut l = ListeningLedger::default();
-        l.accrue(1_234);
-        l.apply_synced(1_000, 8_000);
+        l.accrue(1_000);
+        sync(&mut l, 8_000);
+        l.accrue(234);
         let json = serde_json::to_string(&l.to_persisted()).unwrap();
         let back: PersistedListening = serde_json::from_str(&json).unwrap();
         assert_eq!(back, l.to_persisted());
@@ -268,12 +364,16 @@ mod tests {
             synced_through_ms: 3,
             server_total_ms: Some(9),
             tracking_enabled: true,
+            device_id: Some("d".into()),
+            in_flight_ms: Some(7),
         };
         let json = serde_json::to_string(&l.to_persisted()).unwrap();
         assert!(json.contains(r#""deviceTotalMs":7"#));
         assert!(json.contains(r#""syncedThroughMs":3"#));
         assert!(json.contains(r#""serverTotalMs":9"#));
         assert!(json.contains(r#""trackingEnabled":true"#));
+        assert!(json.contains(r#""deviceId":"d""#));
+        assert!(!json.contains("inFlight"), "in-flight state is transient");
     }
 
     #[test]

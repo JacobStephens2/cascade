@@ -26,6 +26,17 @@ pub enum Effect {
     /// fail independently. The platform stores the string verbatim and hands it
     /// back via [`crate::Command::RestoreListening`] on the next launch.
     PersistListening { json: String },
+    /// PUT this device's slot to the listening endpoint, exactly as given.
+    /// Emitted only in answer to [`crate::Command::BeginListeningSync`]; the
+    /// shell must settle it with `ListeningSyncSucceeded` or
+    /// `ListeningSyncFailed`, or no further sync will start.
+    PushListening {
+        device_id: String,
+        device_total_ms: u64,
+    },
+    /// The server rejected the session (401). The shell drops its stored
+    /// session token and tells the user to sign in again.
+    ClearSession,
 }
 
 #[cfg(test)]
