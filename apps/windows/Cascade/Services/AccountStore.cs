@@ -7,10 +7,11 @@ namespace Cascade.Services;
 public sealed record Account(string SessionToken, string Email);
 
 /// <summary>
-/// Persists the optional sync account (session token + email) and a stable
-/// per-device id as JSON files under %LOCALAPPDATA%\Cascade. The device id is
-/// rotated on "delete data" so a stale offline write can't resurrect a deleted
-/// G-Counter slot. (This app ships unpackaged, so we use plain files rather
+/// Persists the optional sync account (session token + email) as JSON under
+/// %LOCALAPPDATA%\Cascade. The device id is owned by the core (it lives in the
+/// listening blob, so rotating it and zeroing the slot are one write); this
+/// store only reads the id it used to persist, so an existing install keeps
+/// its server slot. (This app ships unpackaged, so we use plain files rather
 /// than ApplicationData; Credential Locker / DPAPI is the on-device hardening
 /// follow-up.)
 /// </summary>
@@ -55,25 +56,22 @@ public sealed class AccountStore
         catch { /* best-effort */ }
     }
 
-    public string DeviceId()
+    /// <summary>
+    /// The device id older builds persisted here, if any — handed to the core
+    /// once as its fallback id so the existing server slot carries over. Never
+    /// written; the core owns the id from here on.
+    /// </summary>
+    public string? ReadLegacyDeviceId()
     {
         try
         {
-            if (File.Exists(_devicePath))
-            {
-                var existing = File.ReadAllText(_devicePath).Trim();
-                if (!string.IsNullOrEmpty(existing)) return existing;
-            }
+            if (!File.Exists(_devicePath)) return null;
+            var existing = File.ReadAllText(_devicePath).Trim();
+            return string.IsNullOrEmpty(existing) ? null : existing;
         }
-        catch { /* fall through to create */ }
-        return RotateDeviceId();
-    }
-
-    public string RotateDeviceId()
-    {
-        var id = Guid.NewGuid().ToString();
-        try { File.WriteAllText(_devicePath, id); }
-        catch { /* best-effort */ }
-        return id;
+        catch
+        {
+            return null;
+        }
     }
 }

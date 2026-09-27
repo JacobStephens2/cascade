@@ -36,7 +36,9 @@ public static class CascadeJson
 [JsonDerivedType(typeof(PlatformPlaybackErrorCommand), "platformPlaybackError")]
 [JsonDerivedType(typeof(SetListeningTrackingCommand), "setListeningTracking")]
 [JsonDerivedType(typeof(RestoreListeningCommand), "restoreListening")]
-[JsonDerivedType(typeof(ApplySyncedTotalCommand), "applySyncedTotal")]
+[JsonDerivedType(typeof(BeginListeningSyncCommand), "beginListeningSync")]
+[JsonDerivedType(typeof(ListeningSyncSucceededCommand), "listeningSyncSucceeded")]
+[JsonDerivedType(typeof(ListeningSyncFailedCommand), "listeningSyncFailed")]
 [JsonDerivedType(typeof(ResetListeningDataCommand), "resetListeningData")]
 public abstract record CascadeCommand;
 
@@ -54,9 +56,41 @@ public sealed record PlatformPlaybackStartedCommand : CascadeCommand;
 public sealed record PlatformPlaybackPausedCommand : CascadeCommand;
 public sealed record PlatformPlaybackErrorCommand(string Message) : CascadeCommand;
 public sealed record SetListeningTrackingCommand(bool Enabled) : CascadeCommand;
-public sealed record RestoreListeningCommand(string Json) : CascadeCommand;
-public sealed record ApplySyncedTotalCommand(ulong SyncedThroughMs, ulong ServerTotalMs) : CascadeCommand;
-public sealed record ResetListeningDataCommand : CascadeCommand;
+public sealed record RestoreListeningCommand(string Json, string FallbackDeviceId) : CascadeCommand;
+public sealed record BeginListeningSyncCommand(SyncReason Reason) : CascadeCommand;
+public sealed record ListeningSyncSucceededCommand(ulong ServerTotalMs) : CascadeCommand;
+public sealed record ListeningSyncFailedCommand(bool Unauthorized) : CascadeCommand;
+public sealed record ResetListeningDataCommand(string NewDeviceId) : CascadeCommand;
+
+/// <summary>
+/// Why the shell is asking to sync. The shell decides when it can talk; the
+/// reason lets the core decide whether there is anything to say.
+/// </summary>
+[JsonConverter(typeof(SyncReasonConverter))]
+public enum SyncReason { Threshold, Flush, Refresh }
+
+internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonConverter<SyncReason>
+{
+    public override SyncReason Read(ref System.Text.Json.Utf8JsonReader reader,
+        System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) =>
+        reader.GetString() switch
+        {
+            "threshold" => SyncReason.Threshold,
+            "flush" => SyncReason.Flush,
+            "refresh" => SyncReason.Refresh,
+            var other => throw new System.Text.Json.JsonException($"unknown SyncReason '{other}'"),
+        };
+
+    public override void Write(System.Text.Json.Utf8JsonWriter writer, SyncReason value,
+        System.Text.Json.JsonSerializerOptions options) =>
+        writer.WriteStringValue(value switch
+        {
+            SyncReason.Threshold => "threshold",
+            SyncReason.Flush => "flush",
+            SyncReason.Refresh => "refresh",
+            _ => "threshold",
+        });
+}
 
 // ---------- Effects ----------
 
@@ -66,6 +100,8 @@ public sealed record ResetListeningDataCommand : CascadeCommand;
 [JsonDerivedType(typeof(SetPlatformVolumeEffect), "setPlatformVolume")]
 [JsonDerivedType(typeof(PersistSettingsEffect), "persistSettings")]
 [JsonDerivedType(typeof(PersistListeningEffect), "persistListening")]
+[JsonDerivedType(typeof(PushListeningEffect), "pushListening")]
+[JsonDerivedType(typeof(ClearSessionEffect), "clearSession")]
 public abstract record CascadeEffect;
 
 public sealed record StartPlaybackEffect(int VolumePercent) : CascadeEffect;
@@ -73,6 +109,8 @@ public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(int VolumePercent) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
+public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs) : CascadeEffect;
+public sealed record ClearSessionEffect : CascadeEffect;
 
 // ---------- Snapshot ----------
 

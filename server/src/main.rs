@@ -421,8 +421,9 @@ async fn listening_put(
     let server_total_ms = aggregate_total_ms(&state.pool, user_id).await?;
     Ok(Json(ListeningResponse {
         server_total_ms,
-        // Echo back what we accepted so the client can advance its synced
-        // high-water mark to exactly this.
+        // Echo back what we accepted. Current clients advance their synced
+        // high-water mark from their own record of what they sent (the core
+        // tracks it); the echo stays for compatibility.
         synced_through_ms: body.device_total_ms,
     }))
 }

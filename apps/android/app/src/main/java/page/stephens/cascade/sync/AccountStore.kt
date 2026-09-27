@@ -5,16 +5,16 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
-import java.util.UUID
 
 private val Context.accountDataStore by preferencesDataStore("cascade-account")
 
 data class Account(val sessionToken: String, val email: String)
 
 /**
- * Persists the optional sync account (session token + email) and the stable
- * per-device id used as this device's G-Counter slot. The device id is rotated
- * on "delete data" so a stale offline write can't resurrect a deleted total.
+ * Persists the optional sync account (session token + email). The per-device
+ * id (this device's G-Counter slot) now lives in the core's listening blob;
+ * this store only exposes the id older builds kept here, so the core can adopt
+ * it once and an existing server slot carries over.
  */
 class AccountStore(private val context: Context) {
     private val tokenKey = stringPreferencesKey("session_token")
@@ -42,19 +42,10 @@ class AccountStore(private val context: Context) {
         }
     }
 
-    /** Stable device id, created on first use. */
-    suspend fun deviceId(): String {
-        val existing = context.accountDataStore.data.first()[deviceKey]
-        if (existing != null) return existing
-        val id = UUID.randomUUID().toString()
-        context.accountDataStore.edit { it[deviceKey] = id }
-        return id
-    }
-
-    /** New device id; returns it. Call when deleting listening data. */
-    suspend fun rotateDeviceId(): String {
-        val id = UUID.randomUUID().toString()
-        context.accountDataStore.edit { it[deviceKey] = id }
-        return id
-    }
+    /**
+     * The device id older builds generated and stored here, or null. Read-only:
+     * handed to the core as the restore fallback; the core owns (and rotates)
+     * the id from then on.
+     */
+    suspend fun legacyDeviceId(): String? = context.accountDataStore.data.first()[deviceKey]
 }

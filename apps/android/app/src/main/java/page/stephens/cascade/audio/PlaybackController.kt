@@ -130,6 +130,7 @@ class PlaybackController(
                 is Effect.SetPlatformVolume -> c.volume = perceptualVolume(effect.volumePercent)
                 is Effect.PersistSettings -> { /* handled by CascadeBridgeHolder */ }
                 is Effect.PersistListening -> { /* handled by CascadeBridgeHolder */ }
+                is Effect.PushListening, Effect.ClearSession -> { /* handled by SyncManager */ }
             }
         }
     }

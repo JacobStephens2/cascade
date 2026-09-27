@@ -1,6 +1,6 @@
 # ADR 0001 — Cross-platform listening-time tracking: a pure-core G-Counter with data-minimizing sync
 
-- **Status:** Accepted
+- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18)
 - **Date:** 2026-06-05
 - **Context:** Cascade is one headless Rust core (`cascade-core`) driving six native shells (web, Android, macOS, Windows, iOS, watchOS). We want to show a user the total time they've spent listening, aggregated across every device they use, with an optional account to centralize it — without turning a white-noise app into a surveillance liability.
 
@@ -26,13 +26,22 @@ Two devices listening concurrently must **add**, not overwrite. LWW silently des
 
 The account stores an email and **one integer per device** — no timestamps, no session log, no event stream. The schema literally cannot express *when* someone listened, only *how much*. This is the difference between "we choose not to store your timeline" and "we cannot": the stronger, checkable claim, and the reason default-on tracking is defensible.
 
-### 5. Sync cadence lives in the shells, not the core
+### 5. The shell decides when it *can* talk; the core decides whether there is anything to say, and what
 
-The core never emits a "sync now" effect. It exposes `unsyncedMs`; each shell decides when to talk to the server based on what only it knows — lifecycle, reachability, auth state (web Service Worker / `pagehide`, Android `WorkManager`/`onStop`, etc.). The core stays free of network policy.
+*Amended 2026-09-27 (issue #18).* Originally "sync cadence lives in the shells, not the core", which conflated two things. Knowledge only a shell has — lifecycle, reachability, auth state (web `pagehide`, Android `onStop`, etc.) — stays in the shell, as does the HTTP transport. Protocol rules the core already has every input for now live in the core, defined once:
+
+- **Threshold and payload.** The shell dispatches `BeginListeningSync { reason }` (`threshold` / `flush` / `refresh`). If there is something worth sending (≥ 30 s unsynced for `threshold`, anything for `flush`, always for `refresh`) the core answers with one `PushListening { deviceId, deviceTotalMs }`, and the shell PUTs exactly that.
+- **High-water mark.** The shell reports `ListeningSyncSucceeded { serverTotalMs }` or `ListeningSyncFailed { unauthorized }`. The core marks as synced exactly the total it sent — never a shell-reconstructed value — so accrual during the request stays unsynced.
+- **Re-entrancy.** A sync in flight blocks the next `BeginListeningSync` until it is settled.
+- **401 rule.** `unauthorized: true` makes the core emit `ClearSession`; the shell drops its token.
+
+Six shells running decision 5 as first written produced ~20 copies of these four rules, with no test on any shell; they are now one tested module (`crates/cascade-core/tests/listening_sync.rs`) and four thin adapters.
 
 ### 6. Opaque tokens + magic-link, and `device_id` rotation on delete
 
 Auth is email magic-link (no passwords) with **opaque server-side session tokens** (not JWT), so logout / delete-account revoke instantly with one `DELETE`. Tokens are stored only as SHA-256 hashes. "Delete my data" rotates the client's `device_id`, closing the one loophole inherent to grow-only counters: a forgotten offline device can't later resurrect a deleted total by pushing a stale higher counter — it lands in a fresh slot.
+
+*Amended 2026-09-27 (issue #18).* The core owns `device_id`, inside the persisted listening blob. `ResetListeningData { newDeviceId }` zeroes the slot and rotates the id in the same state change, so both reach disk in one `PersistListening` write: a crash can no longer leave a fresh id holding the old total (which the next sync would write into a new server slot — exactly the resurrection this decision exists to prevent). The server cannot enforce this — deletes are by `user_id` only — so the client-side atomicity is the whole guarantee. The core has no randomness, so shells supply ids: a fresh UUID on reset, and a `fallbackDeviceId` on `RestoreListening` that the core adopts only when the blob has none (shells pass their previously stored id once, so existing server slots carry over).
 
 ## Consequences
 
@@ -53,7 +62,8 @@ Auth is email magic-link (no passwords) with **opaque server-side session tokens
 - **Server-side session events with timestamps** — rejected: richer analytics, but reintroduces the timeline we specifically refuse to store.
 - **JWT sessions** — rejected: revocation requires either short expiries or a denylist; opaque tokens make logout/delete a single `DELETE` on a single VPS.
 - **OAuth / passwords** — rejected: disproportionate for an opt-in counter; magic-link is the smallest cross-platform path with the least PII.
-- **Sync orchestration in the core** — rejected: the core can't know reachability/lifecycle/auth; that knowledge (and the policy) belongs in each shell.
+- **Sync orchestration in the core** — rejected: the core can't know reachability/lifecycle/auth; that knowledge belongs in each shell. (Sync *policy* — threshold, payload, 401 rule, device-id lifecycle — was later moved into the core; see the decision 5 amendment.)
+- **Transport in the core** (a Rust HTTP client) — rejected in the amendment: it would drag an async HTTP stack into the wasm build and fight each platform's lifecycle.
 
 ## Validation
 

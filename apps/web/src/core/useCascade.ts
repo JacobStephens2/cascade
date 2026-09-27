@@ -11,6 +11,9 @@ const SESSION_STORAGE_KEY = "cascade.session.v1";
 // Lifetime listening-time ledger (a grow-only counter). Its own blob, owned by
 // the Rust core — the shell stores the opaque string and hands it back verbatim.
 const LISTENING_STORAGE_KEY = "cascade.listening.v1";
+// Where this shell kept its device id before the core owned it. Read once, as
+// the restore fallback, so an existing server slot carries over.
+const LEGACY_DEVICE_KEY = "cascade.device.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
 // Fine cadence while a timer is counting; coarse cadence when we're only
 // accruing listening time during plain playback, to keep the loop cheap.
@@ -29,7 +32,9 @@ interface UseCascadeResult {
   ready: boolean;
   snapshot: Snapshot | null;
   loadError: string | null;
-  dispatch: (command: Command) => void;
+  /** Dispatches and returns the effects of that one command, so a caller can
+   * act on an answer (e.g. `pushListening`) it asked for. */
+  dispatch: (command: Command) => Effect[];
 }
 
 /**
@@ -150,9 +155,9 @@ export function useCascade(): UseCascadeResult {
   // `dispatch` from inside async effects needs a stable reference; the
   // exported `dispatch` (below) just delegates.
   const dispatchInternal = useCallback(
-    (command: Command) => {
+    (command: Command): Effect[] => {
       const core = coreRef.current;
-      if (!core) return;
+      if (!core) return [];
       const updateJson = core.dispatch(JSON.stringify(command));
       const update = JSON.parse(updateJson) as {
         snapshot: Snapshot;
@@ -160,14 +165,13 @@ export function useCascade(): UseCascadeResult {
       };
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
+      return update.effects;
     },
     [runEffects],
   );
 
   const dispatch = useCallback(
-    (command: Command) => {
-      dispatchInternal(command);
-    },
+    (command: Command) => dispatchInternal(command),
     [dispatchInternal],
   );
 
@@ -202,15 +206,26 @@ export function useCascade(): UseCascadeResult {
     return () => window.clearTimeout(frame);
   }, [ready, isTimerActive, isPlaying, dispatchInternal]);
 
-  // Restore the listening ledger once, after the core is ready. The core
-  // ignores a missing/incompatible blob and never lets a restore lower the
-  // live counter.
+  // Restore the listening ledger once, after the core is ready — always, even
+  // with no blob, because this is also where the core gets its device id. The
+  // core ignores a missing/incompatible blob, never lets a restore lower the
+  // live counter, and only adopts the fallback id if the blob has none.
   useEffect(() => {
     if (!ready || listeningRestoredRef.current) return;
     listeningRestoredRef.current = true;
-    const json = pendingListeningRef.current;
+    const json = pendingListeningRef.current ?? "";
     pendingListeningRef.current = null;
-    if (json) dispatchInternal({ type: "restoreListening", json });
+    let fallbackDeviceId: string | null = null;
+    try {
+      fallbackDeviceId = localStorage.getItem(LEGACY_DEVICE_KEY);
+    } catch {
+      // Storage unavailable — a fresh id is fine.
+    }
+    dispatchInternal({
+      type: "restoreListening",
+      json,
+      fallbackDeviceId: fallbackDeviceId ?? crypto.randomUUID(),
+    });
   }, [ready, dispatchInternal]);
 
   // Media Session: lets macOS route the keyboard's play/pause media key (and

@@ -47,14 +47,14 @@ class CascadeViewModel(
         }
     }
 
-    fun togglePlayback() = bridge.dispatch(Command.TogglePlayback)
-    fun setVolume(percent: Int) = bridge.dispatch(Command.SetVolume(percent.coerceIn(0, 100)))
-    fun toggleMute() = bridge.dispatch(Command.ToggleMute)
-    fun startSleepTimer(minutes: Int) = bridge.dispatch(Command.StartSleepTimer(minutes))
-    fun startPomodoro(minutes: Int) = bridge.dispatch(Command.StartPomodoro(minutes))
-    fun startStopwatch() = bridge.dispatch(Command.StartStopwatch)
-    fun cancelTimer() = bridge.dispatch(Command.CancelTimer)
-    fun setListeningTracking(enabled: Boolean) = bridge.dispatch(Command.SetListeningTracking(enabled))
+    fun togglePlayback() { bridge.dispatch(Command.TogglePlayback) }
+    fun setVolume(percent: Int) { bridge.dispatch(Command.SetVolume(percent.coerceIn(0, 100))) }
+    fun toggleMute() { bridge.dispatch(Command.ToggleMute) }
+    fun startSleepTimer(minutes: Int) { bridge.dispatch(Command.StartSleepTimer(minutes)) }
+    fun startPomodoro(minutes: Int) { bridge.dispatch(Command.StartPomodoro(minutes)) }
+    fun startStopwatch() { bridge.dispatch(Command.StartStopwatch) }
+    fun cancelTimer() { bridge.dispatch(Command.CancelTimer) }
+    fun setListeningTracking(enabled: Boolean) { bridge.dispatch(Command.SetListeningTracking(enabled)) }
 
     fun signIn(email: String) = syncManager.signIn(email)
     fun completeSignInFromLink(input: String) = syncManager.completeSignInFromLink(input)

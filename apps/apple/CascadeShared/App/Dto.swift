@@ -19,12 +19,15 @@ enum Command: Codable {
     case platformPlaybackPaused
     case platformPlaybackError(message: String)
     case setListeningTracking(enabled: Bool)
-    case restoreListening(json: String)
-    case applySyncedTotal(syncedThroughMs: UInt64, serverTotalMs: UInt64)
-    case resetListeningData
+    case restoreListening(json: String, fallbackDeviceId: String)
+    case beginListeningSync(reason: SyncReason)
+    case listeningSyncSucceeded(serverTotalMs: UInt64)
+    case listeningSyncFailed(unauthorized: Bool)
+    case resetListeningData(newDeviceId: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, percent, minutes, elapsedMs, message, enabled, json, syncedThroughMs, serverTotalMs
+        case type, percent, minutes, elapsedMs, message, enabled, json, fallbackDeviceId, reason,
+             serverTotalMs, unauthorized, newDeviceId
     }
 
     func encode(to encoder: Encoder) throws {
@@ -56,15 +59,22 @@ enum Command: Codable {
         case .setListeningTracking(let enabled):
             try c.encode("setListeningTracking", forKey: .type)
             try c.encode(enabled, forKey: .enabled)
-        case .restoreListening(let json):
+        case .restoreListening(let json, let fallbackDeviceId):
             try c.encode("restoreListening", forKey: .type)
             try c.encode(json, forKey: .json)
-        case .applySyncedTotal(let syncedThroughMs, let serverTotalMs):
-            try c.encode("applySyncedTotal", forKey: .type)
-            try c.encode(syncedThroughMs, forKey: .syncedThroughMs)
+            try c.encode(fallbackDeviceId, forKey: .fallbackDeviceId)
+        case .beginListeningSync(let reason):
+            try c.encode("beginListeningSync", forKey: .type)
+            try c.encode(reason, forKey: .reason)
+        case .listeningSyncSucceeded(let serverTotalMs):
+            try c.encode("listeningSyncSucceeded", forKey: .type)
             try c.encode(serverTotalMs, forKey: .serverTotalMs)
-        case .resetListeningData:
+        case .listeningSyncFailed(let unauthorized):
+            try c.encode("listeningSyncFailed", forKey: .type)
+            try c.encode(unauthorized, forKey: .unauthorized)
+        case .resetListeningData(let newDeviceId):
             try c.encode("resetListeningData", forKey: .type)
+            try c.encode(newDeviceId, forKey: .newDeviceId)
         }
     }
 
@@ -87,16 +97,36 @@ enum Command: Codable {
         case "platformPlaybackPaused": self = .platformPlaybackPaused
         case "platformPlaybackError": self = .platformPlaybackError(message: try c.decode(String.self, forKey: .message))
         case "setListeningTracking": self = .setListeningTracking(enabled: try c.decode(Bool.self, forKey: .enabled))
-        case "restoreListening": self = .restoreListening(json: try c.decode(String.self, forKey: .json))
-        case "applySyncedTotal":
-            self = .applySyncedTotal(
-                syncedThroughMs: try c.decode(UInt64.self, forKey: .syncedThroughMs),
-                serverTotalMs: try c.decode(UInt64.self, forKey: .serverTotalMs))
-        case "resetListeningData": self = .resetListeningData
+        case "restoreListening":
+            self = .restoreListening(
+                json: try c.decode(String.self, forKey: .json),
+                fallbackDeviceId: try c.decode(String.self, forKey: .fallbackDeviceId))
+        case "beginListeningSync":
+            self = .beginListeningSync(reason: try c.decode(SyncReason.self, forKey: .reason))
+        case "listeningSyncSucceeded":
+            self = .listeningSyncSucceeded(serverTotalMs: try c.decode(UInt64.self, forKey: .serverTotalMs))
+        case "listeningSyncFailed":
+            self = .listeningSyncFailed(unauthorized: try c.decode(Bool.self, forKey: .unauthorized))
+        case "resetListeningData":
+            self = .resetListeningData(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown command type: \(type)")
         }
     }
+}
+
+/// Why the shell is asking the core to sync (`SyncReason` in the core). The
+/// shell decides *when it can* talk; the core decides whether there is
+/// anything to say.
+enum SyncReason: String, Codable {
+    /// Routine check on every snapshot: the core sends only once enough
+    /// unsynced time has accrued.
+    case threshold
+    /// Backgrounding / closing: send any unsynced time at all.
+    case flush
+    /// Launched with an account or just signed in: always send, to fetch the
+    /// cross-device aggregate.
+    case refresh
 }
 
 enum Effect: Decodable {
@@ -105,8 +135,10 @@ enum Effect: Decodable {
     case setPlatformVolume(volumePercent: Int)
     case persistSettings(json: String)
     case persistListening(json: String)
+    case pushListening(deviceId: String, deviceTotalMs: UInt64)
+    case clearSession
 
-    private enum CodingKeys: String, CodingKey { case type, volumePercent, json }
+    private enum CodingKeys: String, CodingKey { case type, volumePercent, json, deviceId, deviceTotalMs }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -122,6 +154,12 @@ enum Effect: Decodable {
             self = .persistSettings(json: try c.decode(String.self, forKey: .json))
         case "persistListening":
             self = .persistListening(json: try c.decode(String.self, forKey: .json))
+        case "pushListening":
+            self = .pushListening(
+                deviceId: try c.decode(String.self, forKey: .deviceId),
+                deviceTotalMs: try c.decode(UInt64.self, forKey: .deviceTotalMs))
+        case "clearSession":
+            self = .clearSession
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown effect type: \(type)")
         }
