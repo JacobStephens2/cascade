@@ -104,6 +104,10 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         }
     }
 
+    /// <summary>
+    /// Dispatch a command from the UI, then offer the core a threshold sync
+    /// (see <see cref="Dispatch"/> for the plain form the sync flow uses).
+    /// </summary>
     public void Send(CascadeCommand command)
     {
         Dispatch(command);

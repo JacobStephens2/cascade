@@ -20,7 +20,7 @@ pub mod timer;
 pub use command::Command;
 pub use effect::Effect;
 pub use listening::{
-    ListeningLedger, PersistedListening, SyncReason, LISTENING_SYNC_THRESHOLD_MS,
+    InFlight, ListeningLedger, PersistedListening, SyncReason, LISTENING_SYNC_THRESHOLD_MS,
     LISTENING_VERSION, MAX_TICK_ACCRUAL_MS,
 };
 pub use settings::{PersistedSettings, SETTINGS_VERSION};

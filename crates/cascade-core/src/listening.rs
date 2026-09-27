@@ -68,9 +68,21 @@ pub struct ListeningLedger {
     /// the same blob as `device_total_ms`, so rotating it and zeroing the slot
     /// are one persisted write. `None` until [`Self::adopt_device_id`].
     pub device_id: Option<String>,
-    /// `device_total_ms` as sent by the PUT currently in flight, if any.
-    /// Transient — never persisted; a restart simply forgets the request.
-    pub in_flight_ms: Option<u64>,
+    /// The PUT currently in flight, if any. Transient — never persisted; a
+    /// restart simply forgets the request.
+    pub in_flight: Option<InFlight>,
+}
+
+/// A listening PUT the shell has been told to send and hasn't settled yet.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum InFlight {
+    /// Sent for the current slot, carrying this `device_total_ms`.
+    Sent(u64),
+    /// Sent for a slot a reset has since replaced. Its ack says nothing about
+    /// the current slot and is dropped — but it still blocks the next sync,
+    /// because acks carry no request identity and it could otherwise settle
+    /// a newer PUT.
+    Superseded,
 }
 
 impl Default for ListeningLedger {
@@ -81,7 +93,7 @@ impl Default for ListeningLedger {
             server_total_ms: None,
             tracking_enabled: true,
             device_id: None,
-            in_flight_ms: None,
+            in_flight: None,
         }
     }
 }
@@ -118,7 +130,7 @@ impl ListeningLedger {
     /// returns `None` until [`Self::sync_succeeded`] or [`Self::sync_failed`]
     /// settles it — the one re-entrancy guard every shell shares.
     pub fn begin_sync(&mut self, reason: SyncReason) -> Option<(String, u64)> {
-        if self.in_flight_ms.is_some() {
+        if self.in_flight.is_some() {
             return None;
         }
         let device_id = self.device_id.clone()?;
@@ -130,7 +142,7 @@ impl ListeningLedger {
         if !worth_sending {
             return None;
         }
-        self.in_flight_ms = Some(self.device_total_ms);
+        self.in_flight = Some(InFlight::Sent(self.device_total_ms));
         Some((device_id, self.device_total_ms))
     }
 
@@ -139,9 +151,10 @@ impl ListeningLedger {
     /// `server_total_ms` as the cross-device aggregate. This only moves the
     /// display baseline forward; it never touches `device_total_ms`, and is
     /// monotonic so an out-of-order ack can't rewind the high-water mark.
-    /// Returns `false` (and changes nothing) if no sync was in flight.
+    /// Returns `false` (and changes nothing else) if no sync for the current
+    /// slot was in flight.
     pub fn sync_succeeded(&mut self, server_total_ms: u64) -> bool {
-        let Some(sent) = self.in_flight_ms.take() else {
+        let Some(InFlight::Sent(sent)) = self.in_flight.take() else {
             return false;
         };
         self.synced_through_ms = self.synced_through_ms.max(sent);
@@ -152,7 +165,7 @@ impl ListeningLedger {
     /// The in-flight PUT failed. Nothing was acknowledged; the next trigger
     /// may try again.
     pub fn sync_failed(&mut self) {
-        self.in_flight_ms = None;
+        self.in_flight = None;
     }
 
     /// Take `fallback` as this device's id if it doesn't have one yet.
@@ -169,7 +182,8 @@ impl ListeningLedger {
     /// `new_device_id`, so a stale offline write can't later resurrect the
     /// deleted total against the old slot. Rotation and zeroing happen in the
     /// same state change, so they reach disk in the same persisted write. Any
-    /// in-flight sync belonged to the old slot and is forgotten.
+    /// in-flight sync belonged to the old slot and becomes
+    /// [`InFlight::Superseded`].
     /// `tracking_enabled` is left as-is — deleting data is not the same as
     /// turning the feature off.
     pub fn reset(&mut self, new_device_id: String) {
@@ -177,7 +191,9 @@ impl ListeningLedger {
         self.synced_through_ms = 0;
         self.server_total_ms = None;
         self.device_id = Some(new_device_id);
-        self.in_flight_ms = None;
+        if self.in_flight.is_some() {
+            self.in_flight = Some(InFlight::Superseded);
+        }
     }
 
     /// Adopt a restored ledger without ever *lowering* the live counters. A
@@ -213,7 +229,7 @@ impl ListeningLedger {
             server_total_ms: p.server_total_ms,
             tracking_enabled: p.tracking_enabled,
             device_id: p.device_id.clone(),
-            in_flight_ms: None,
+            in_flight: None,
         }
     }
 }
@@ -335,7 +351,7 @@ mod tests {
             server_total_ms: None,
             tracking_enabled: false,
             device_id: None,
-            in_flight_ms: None,
+            in_flight: None,
         };
         live.restore_from(&stale);
         assert_eq!(live.device_total_ms, 5_000);
@@ -365,7 +381,7 @@ mod tests {
             server_total_ms: Some(9),
             tracking_enabled: true,
             device_id: Some("d".into()),
-            in_flight_ms: Some(7),
+            in_flight: Some(InFlight::Sent(7)),
         };
         let json = serde_json::to_string(&l.to_persisted()).unwrap();
         assert!(json.contains(r#""deviceTotalMs":7"#));

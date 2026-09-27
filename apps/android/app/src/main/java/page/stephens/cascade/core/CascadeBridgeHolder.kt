@@ -3,6 +3,7 @@ package page.stephens.cascade.core
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -28,6 +29,15 @@ class CascadeBridgeHolder(
     private val legacyDeviceId: suspend () -> String?,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+
+    /** Persist writes, run one at a time in dispatch order. A later blob must
+     *  never be overwritten by an earlier one — in particular the single write
+     *  that rotates the device id and zeroes the slot (ResetListeningData) must
+     *  not be undone by a tick's write landing after it. */
+    private val writes = Channel<suspend () -> Unit>(Channel.UNLIMITED).also { queue ->
+        scope.launch { for (write in queue) write() }
+    }
+    private val dispatchLock = Any()
 
     private val bridge: CascadeBridge = run {
         // Block once during app startup to load persisted settings. The reads
@@ -60,7 +70,9 @@ class CascadeBridgeHolder(
      *  effects, so a caller can act on the ones it asked for (e.g. the sync
      *  loop reading PushListening). Effect handlers also receive them via
      *  [effects]. */
-    fun dispatch(command: Command): List<Effect> {
+    fun dispatch(command: Command): List<Effect> = synchronized(dispatchLock) {
+        // Locked so writes are queued in the same order the core produced them,
+        // even when dispatches race in from different threads.
         val commandJson = cascadeJson.encodeToString(Command.serializer(), command)
         val updateJson = bridge.dispatch(commandJson)
         val update = cascadeJson.decodeFromString<Update>(updateJson)
@@ -71,12 +83,12 @@ class CascadeBridgeHolder(
             // own coalescing, so flooding it on every slider tick is fine.
             for (effect in update.effects) {
                 when (effect) {
-                    is Effect.PersistSettings -> scope.launch { settingsStore.write(effect.json) }
-                    is Effect.PersistListening -> scope.launch { settingsStore.writeListening(effect.json) }
+                    is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
+                    is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
                     else -> {}
                 }
             }
         }
-        return update.effects
+        update.effects
     }
 }

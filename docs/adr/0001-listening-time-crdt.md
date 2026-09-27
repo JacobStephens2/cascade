@@ -32,7 +32,7 @@ The account stores an email and **one integer per device** — no timestamps, no
 
 - **Threshold and payload.** The shell dispatches `BeginListeningSync { reason }` (`threshold` / `flush` / `refresh`). If there is something worth sending (≥ 30 s unsynced for `threshold`, anything for `flush`, always for `refresh`) the core answers with one `PushListening { deviceId, deviceTotalMs }`, and the shell PUTs exactly that.
 - **High-water mark.** The shell reports `ListeningSyncSucceeded { serverTotalMs }` or `ListeningSyncFailed { unauthorized }`. The core marks as synced exactly the total it sent — never a shell-reconstructed value — so accrual during the request stays unsynced.
-- **Re-entrancy.** A sync in flight blocks the next `BeginListeningSync` until it is settled.
+- **Re-entrancy.** A sync in flight blocks the next `BeginListeningSync` until it is settled — including one sent for a slot a reset has since replaced, whose ack is then dropped.
 - **401 rule.** `unauthorized: true` makes the core emit `ClearSession`; the shell drops its token.
 
 Six shells running decision 5 as first written produced ~20 copies of these four rules, with no test on any shell; they are now one tested module (`crates/cascade-core/tests/listening_sync.rs`) and four thin adapters.
@@ -41,7 +41,7 @@ Six shells running decision 5 as first written produced ~20 copies of these four
 
 Auth is email magic-link (no passwords) with **opaque server-side session tokens** (not JWT), so logout / delete-account revoke instantly with one `DELETE`. Tokens are stored only as SHA-256 hashes. "Delete my data" rotates the client's `device_id`, closing the one loophole inherent to grow-only counters: a forgotten offline device can't later resurrect a deleted total by pushing a stale higher counter — it lands in a fresh slot.
 
-*Amended 2026-09-27 (issue #18).* The core owns `device_id`, inside the persisted listening blob. `ResetListeningData { newDeviceId }` zeroes the slot and rotates the id in the same state change, so both reach disk in one `PersistListening` write: a crash can no longer leave a fresh id holding the old total (which the next sync would write into a new server slot — exactly the resurrection this decision exists to prevent). The server cannot enforce this — deletes are by `user_id` only — so the client-side atomicity is the whole guarantee. The core has no randomness, so shells supply ids: a fresh UUID on reset, and a `fallbackDeviceId` on `RestoreListening` that the core adopts only when the blob has none (shells pass their previously stored id once, so existing server slots carry over).
+*Amended 2026-09-27 (issue #18).* The core owns `device_id`, inside the persisted listening blob. `ResetListeningData { newDeviceId }` zeroes the slot and rotates the id in the same state change, so both reach disk in one `PersistListening` write: a crash can no longer leave a fresh id holding the old total (which the next sync would write into a new server slot — exactly the resurrection this decision exists to prevent). The server cannot enforce this — deletes are by `user_id` only — so the client-side atomicity is the whole guarantee. The core has no randomness, so shells supply ids: a fresh UUID on reset, and a `fallbackDeviceId` on `RestoreListening` that the core adopts only when the blob has none (shells pass the id they used to store themselves; the core takes it only on the first launch after upgrading, so existing server slots carry over).
 
 ## Consequences
 
@@ -67,4 +67,4 @@ Auth is email magic-link (no passwords) with **opaque server-side session tokens
 
 ## Validation
 
-Core: 49 Rust unit/property tests + 12 assertions against the wasm build (gating, clamp, restore monotonicity, sync baseline, wire shape). Backend: end-to-end against Postgres (single-use magic links, `GREATEST` merge keeping the higher slot, `SUM`, delete-cascade session revocation, 401 without a token). Web↔backend: a real headless-Chrome magic-link sign-in. A focused security review of the branch found no newly-introduced vulnerabilities (see `server/docs/threat-model.md`).
+Core: 49 Rust unit/property tests (since grown by the listening-sync suite in `crates/cascade-core/tests/listening_sync.rs`) + 12 assertions against the wasm build (gating, clamp, restore monotonicity, sync baseline, wire shape). Backend: end-to-end against Postgres (single-use magic links, `GREATEST` merge keeping the higher slot, `SUM`, delete-cascade session revocation, 401 without a token). Web↔backend: a real headless-Chrome magic-link sign-in. A focused security review of the branch found no newly-introduced vulnerabilities (see `server/docs/threat-model.md`).

@@ -360,3 +360,28 @@ fn sync_effects_serialize_camel_case() {
         r#"{"type":"clearSession"}"#
     );
 }
+
+#[test]
+fn a_new_sync_waits_for_the_old_slots_put_to_settle_after_a_reset() {
+    let mut core = core_with_listening(40_000);
+    begin(&mut core, SyncReason::Threshold);
+    core.dispatch(Command::ResetListeningData {
+        new_device_id: DEVICE_B.into(),
+    });
+    core.dispatch(Command::Tick { elapsed_ms: 1_000 });
+
+    // Acks carry no request identity, so the old PUT's ack must not be able
+    // to settle a new one: nothing starts until it comes back.
+    assert_eq!(begin(&mut core, SyncReason::Refresh), None);
+
+    let snap = core
+        .dispatch(Command::ListeningSyncSucceeded {
+            server_total_ms: 1_000_000,
+        })
+        .snapshot;
+    assert_eq!(snap.listening.unsynced_ms, 1_000);
+    assert_eq!(
+        begin(&mut core, SyncReason::Refresh),
+        Some((DEVICE_B.into(), 1_000))
+    );
+}
