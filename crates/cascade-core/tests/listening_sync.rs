@@ -48,25 +48,12 @@ fn begin(core: &mut Core, reason: SyncReason) -> Option<(String, u64)> {
     )
 }
 
-#[test]
-fn synced_through_is_exactly_what_was_sent() {
-    let mut core = core_with_listening(40_000);
-    let (device_id, sent) = begin(&mut core, SyncReason::Threshold).expect("40s is past threshold");
-    assert_eq!(device_id, DEVICE_A);
-    assert_eq!(sent, 40_000);
-
-    // More listening lands while the PUT is in flight.
-    core.dispatch(Command::Tick { elapsed_ms: 2_000 });
-
-    let snap = core
-        .dispatch(Command::ListeningSyncSucceeded {
-            server_total_ms: 1_000_000,
-        })
-        .snapshot;
-    // Only what was sent is acknowledged; the 2s accrued mid-flight stays
-    // unsynced rather than being silently marked as delivered.
-    assert_eq!(snap.listening.unsynced_ms, 2_000);
-    assert_eq!(snap.listening.displayed_total_ms, 1_000_000 + 2_000);
+/// The `PersistListening` JSON in `effects`, if any.
+fn persisted_json(effects: &[Effect]) -> Option<String> {
+    effects.iter().find_map(|e| match e {
+        Effect::PersistListening { json } => Some(json.clone()),
+        _ => None,
+    })
 }
 
 // ---- threshold -------------------------------------------------------------
@@ -111,6 +98,27 @@ fn nothing_is_sent_before_the_core_has_a_device_id() {
 }
 
 // ---- payload / high-water mark ---------------------------------------------
+
+#[test]
+fn synced_through_is_exactly_what_was_sent() {
+    let mut core = core_with_listening(40_000);
+    let (device_id, sent) = begin(&mut core, SyncReason::Threshold).expect("40s is past threshold");
+    assert_eq!(device_id, DEVICE_A);
+    assert_eq!(sent, 40_000);
+
+    // More listening lands while the PUT is in flight.
+    core.dispatch(Command::Tick { elapsed_ms: 2_000 });
+
+    let snap = core
+        .dispatch(Command::ListeningSyncSucceeded {
+            server_total_ms: 1_000_000,
+        })
+        .snapshot;
+    // Only what was sent is acknowledged; the 2s accrued mid-flight stays
+    // unsynced rather than being silently marked as delivered.
+    assert_eq!(snap.listening.unsynced_ms, 2_000);
+    assert_eq!(snap.listening.displayed_total_ms, 1_000_000 + 2_000);
+}
 
 #[test]
 fn a_sync_is_not_reentrant_until_the_first_settles() {
@@ -180,14 +188,6 @@ fn unauthorized_clears_the_session_and_keeps_local_listening() {
 }
 
 // ---- device-id lifecycle ---------------------------------------------------
-
-/// The `PersistListening` JSON in `effects`, if any.
-fn persisted_json(effects: &[Effect]) -> Option<String> {
-    effects.iter().find_map(|e| match e {
-        Effect::PersistListening { json } => Some(json.clone()),
-        _ => None,
-    })
-}
 
 #[test]
 fn restore_without_a_stored_id_adopts_and_persists_the_fallback() {
@@ -292,6 +292,31 @@ fn an_ack_for_the_old_slot_is_dropped_after_a_reset() {
     assert_eq!(snap.listening.displayed_total_ms, 1_000);
 }
 
+#[test]
+fn a_new_sync_waits_for_the_old_slots_put_to_settle_after_a_reset() {
+    let mut core = core_with_listening(40_000);
+    begin(&mut core, SyncReason::Threshold);
+    core.dispatch(Command::ResetListeningData {
+        new_device_id: DEVICE_B.into(),
+    });
+    core.dispatch(Command::Tick { elapsed_ms: 1_000 });
+
+    // Acks carry no request identity, so the old PUT's ack must not be able
+    // to settle a new one: nothing starts until it comes back.
+    assert_eq!(begin(&mut core, SyncReason::Refresh), None);
+
+    let snap = core
+        .dispatch(Command::ListeningSyncSucceeded {
+            server_total_ms: 1_000_000,
+        })
+        .snapshot;
+    assert_eq!(snap.listening.unsynced_ms, 1_000);
+    assert_eq!(
+        begin(&mut core, SyncReason::Refresh),
+        Some((DEVICE_B.into(), 1_000))
+    );
+}
+
 // ---- wire shape ------------------------------------------------------------
 //
 // Every shell hand-writes these JSON shapes. Lock them.
@@ -358,30 +383,5 @@ fn sync_effects_serialize_camel_case() {
     assert_eq!(
         serde_json::to_string(&Effect::ClearSession).unwrap(),
         r#"{"type":"clearSession"}"#
-    );
-}
-
-#[test]
-fn a_new_sync_waits_for_the_old_slots_put_to_settle_after_a_reset() {
-    let mut core = core_with_listening(40_000);
-    begin(&mut core, SyncReason::Threshold);
-    core.dispatch(Command::ResetListeningData {
-        new_device_id: DEVICE_B.into(),
-    });
-    core.dispatch(Command::Tick { elapsed_ms: 1_000 });
-
-    // Acks carry no request identity, so the old PUT's ack must not be able
-    // to settle a new one: nothing starts until it comes back.
-    assert_eq!(begin(&mut core, SyncReason::Refresh), None);
-
-    let snap = core
-        .dispatch(Command::ListeningSyncSucceeded {
-            server_total_ms: 1_000_000,
-        })
-        .snapshot;
-    assert_eq!(snap.listening.unsynced_ms, 1_000);
-    assert_eq!(
-        begin(&mut core, SyncReason::Refresh),
-        Some((DEVICE_B.into(), 1_000))
     );
 }

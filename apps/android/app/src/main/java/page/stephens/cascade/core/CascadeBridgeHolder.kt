@@ -50,8 +50,8 @@ class CascadeBridgeHolder(
     private val _snapshot = MutableStateFlow(cascadeJson.decodeFromString<Snapshot>(bridge.snapshot()))
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
 
-    /** Latest effects emitted by the most recent dispatch — consumers
-     *  (PlaybackController, settings persister) collect this. */
+    /** Playback effects from the most recent dispatch that had any —
+     *  PlaybackController collects this. */
     private val _effects = MutableStateFlow<List<Effect>>(emptyList())
     val effects: StateFlow<List<Effect>> = _effects.asStateFlow()
 
@@ -77,18 +77,24 @@ class CascadeBridgeHolder(
         val updateJson = bridge.dispatch(commandJson)
         val update = cascadeJson.decodeFromString<Update>(updateJson)
         _snapshot.value = update.snapshot
-        if (update.effects.isNotEmpty()) {
-            _effects.value = update.effects
-            // Persist any settings effect immediately — DataStore handles its
-            // own coalescing, so flooding it on every slider tick is fine.
-            for (effect in update.effects) {
-                when (effect) {
-                    is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
-                    is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
-                    else -> {}
-                }
+        // Persist any settings effect immediately — DataStore handles its
+        // own coalescing, so flooding it on every slider tick is fine.
+        for (effect in update.effects) {
+            when (effect) {
+                is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
+                is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
+                else -> {}
             }
         }
+        // Publish only what the effect handlers act on. [effects] is a StateFlow
+        // and keeps just the latest value, so the sync loop's per-snapshot
+        // BeginListeningSync must not replace a StartPlayback before it's
+        // applied. Sync effects reach their caller via the return value.
+        val forHandlers = update.effects.filter {
+            it !is Effect.PersistSettings && it !is Effect.PersistListening &&
+                it !is Effect.PushListening && it != Effect.ClearSession
+        }
+        if (forHandlers.isNotEmpty()) _effects.value = forHandlers
         update.effects
     }
 }

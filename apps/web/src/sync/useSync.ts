@@ -88,7 +88,7 @@ export function useSync(
         if (effects.some((e) => e.type === "clearSession")) {
           // Session no longer valid — drop it; tracking continues locally.
           persistAccount(null);
-          setStatus("Signed out — please sign in again to sync.");
+          setStatus("Signed out — sign in again to sync.");
         }
       }
     },

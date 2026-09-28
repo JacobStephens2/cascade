@@ -77,7 +77,7 @@ pub struct ListeningLedger {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InFlight {
     /// Sent for the current slot, carrying this `device_total_ms`.
-    Sent(u64),
+    Sent { device_total_ms: u64 },
     /// Sent for a slot a reset has since replaced. Its ack says nothing about
     /// the current slot and is dropped — but it still blocks the next sync,
     /// because acks carry no request identity and it could otherwise settle
@@ -142,7 +142,9 @@ impl ListeningLedger {
         if !worth_sending {
             return None;
         }
-        self.in_flight = Some(InFlight::Sent(self.device_total_ms));
+        self.in_flight = Some(InFlight::Sent {
+            device_total_ms: self.device_total_ms,
+        });
         Some((device_id, self.device_total_ms))
     }
 
@@ -154,7 +156,10 @@ impl ListeningLedger {
     /// Returns `false` (and changes nothing else) if no sync for the current
     /// slot was in flight.
     pub fn sync_succeeded(&mut self, server_total_ms: u64) -> bool {
-        let Some(InFlight::Sent(sent)) = self.in_flight.take() else {
+        let Some(InFlight::Sent {
+            device_total_ms: sent,
+        }) = self.in_flight.take()
+        else {
             return false;
         };
         self.synced_through_ms = self.synced_through_ms.max(sent);
@@ -381,7 +386,7 @@ mod tests {
             server_total_ms: Some(9),
             tracking_enabled: true,
             device_id: Some("d".into()),
-            in_flight: Some(InFlight::Sent(7)),
+            in_flight: Some(InFlight::Sent { device_total_ms: 7 }),
         };
         let json = serde_json::to_string(&l.to_persisted()).unwrap();
         assert!(json.contains(r#""deviceTotalMs":7"#));
