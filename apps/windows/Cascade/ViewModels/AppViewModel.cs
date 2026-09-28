@@ -38,8 +38,6 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     // ---- account / sync ----
     private readonly AccountStore _accountStore = new();
     private readonly SyncApi _syncApi = new();
-    private bool _syncing;
-    private const long SyncThresholdMs = 30_000;
 
     public bool SyncAvailable => SyncConfig.Available;
 
@@ -90,22 +88,47 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         _smtc.BindDispatch(Send);
         _smtc.Update(snapshot);
 
-        // Restore the listening ledger once at startup. The core ignores a
-        // missing/incompatible blob and never lets a restore lower the counter.
-        var listeningJson = _settings.ReadListeningSafely();
-        if (!string.IsNullOrEmpty(listeningJson))
-        {
-            Send(new RestoreListeningCommand(listeningJson));
-        }
+        // Restore the listening ledger once at startup — always, even with no
+        // blob, because the core owns the device id but has no randomness: it
+        // adopts the fallback id only if the blob carries none. The id older
+        // builds stored themselves goes first, so an existing server slot
+        // carries over. The core ignores a missing/incompatible blob and never
+        // lets a restore lower the counter.
+        var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? Guid.NewGuid().ToString();
+        Send(new RestoreListeningCommand(_settings.ReadListeningSafely() ?? "", fallbackDeviceId));
 
         Account = _accountStore.ReadAccount();
         if (Account is not null)
         {
-            _ = SyncAsync();
+            _ = SyncAsync(SyncReason.Refresh);
         }
     }
 
+    /// <summary>
+    /// Dispatch a command from the UI, then offer the core a threshold sync
+    /// (see <see cref="Dispatch"/> for the plain form the sync flow uses).
+    /// </summary>
     public void Send(CascadeCommand command)
+    {
+        Dispatch(command);
+
+        // Routine check after every update: the shell only says it *can* talk
+        // (signed in); the core decides whether enough unsynced time has
+        // accrued, and answers with nothing while a sync is already in flight.
+        if (Account is not null)
+        {
+            _ = SyncAsync(SyncReason.Threshold);
+        }
+    }
+
+    /// <summary>
+    /// Dispatch one command, apply its update, and hand the update back so the
+    /// caller can read the effects of *this* dispatch (the sync flow needs its
+    /// PushListening / ClearSession synchronously). Null if the dispatch threw.
+    /// Unlike <see cref="Send"/>, never triggers a sync itself — the sync flow
+    /// dispatches through here so it can't recurse into another begin.
+    /// </summary>
+    private CascadeUpdate? Dispatch(CascadeCommand command)
     {
         try
         {
@@ -114,10 +137,12 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             var update = JsonSerializer.Deserialize<CascadeUpdate>(updateJson, CascadeJson.Options)!;
             Apply(update);
             ErrorMessage = update.Snapshot.ErrorMessage;
+            return update;
         }
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
+            return null;
         }
     }
 
@@ -167,14 +192,6 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         }
 
         _smtc.Update(update.Snapshot);
-
-        // Sync cadence lives in the shell: push once enough unsynced time has
-        // accrued. Started on the UI thread, so the await continuation (and the
-        // ApplySyncedTotal dispatch) resume on it too.
-        if (Account is not null && update.Snapshot.Listening.UnsyncedMs >= (ulong)SyncThresholdMs)
-        {
-            _ = SyncAsync();
-        }
     }
 
     // ---- Relay commands wired into XAML ----
@@ -226,37 +243,54 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     // ---- account / sync commands ----
 
-    private async Task SyncAsync()
+    /// <summary>
+    /// The shell decides when it can talk; the core decides whether there is
+    /// anything to say, and what. Ask the core to begin a sync, PUT exactly the
+    /// slot its PushListening names, and settle the result — every begun sync
+    /// must be settled (success or failure) or the core never starts another.
+    /// </summary>
+    private async Task SyncAsync(SyncReason reason)
     {
-        if (_syncing || Account is null) return;
-        _syncing = true;
+        var account = Account;
+        if (account is null) return;
+        var push = Dispatch(new BeginListeningSyncCommand(reason))?
+            .Effects.OfType<PushListeningEffect>().FirstOrDefault();
+        if (push is null) return;
+
+        ulong serverTotalMs;
         try
         {
-            var deviceTotal = (long)Snapshot.Listening.DeviceTotalMs;
             var res = await _syncApi.PutListeningAsync(
-                Account.SessionToken, _accountStore.DeviceId(), deviceTotal);
-            Send(new ApplySyncedTotalCommand((ulong)deviceTotal, (ulong)res.ServerTotalMs));
+                account.SessionToken, push.DeviceId, (long)push.DeviceTotalMs);
+            serverTotalMs = (ulong)Math.Max(0L, res.ServerTotalMs);
         }
-        catch (SyncHttpException e) when (e.Status == 401)
+        catch (Exception e)
         {
-            // The await above may resume off the UI thread; marshal the account
-            // mutation back so the bound visibility actually updates (and we
-            // never touch observable state from a background thread).
-            _dispatcher.TryEnqueue(() =>
+            // Offline / transient / rejected: settle it so the next trigger can
+            // retry. Whether a 401 ends the session is the core's call.
+            var unauthorized = e is SyncHttpException { Status: 401 };
+            OnUiThread(() =>
             {
-                Account = null;
-                _accountStore.ClearAccount();
-                SyncStatus = "Signed out — sign in again to sync.";
+                var failed = Dispatch(new ListeningSyncFailedCommand(unauthorized));
+                if (failed?.Effects.OfType<ClearSessionEffect>().Any() == true)
+                {
+                    Account = null;
+                    _accountStore.ClearAccount();
+                    SyncStatus = "Signed out — sign in again to sync.";
+                }
             });
+            return;
         }
-        catch
-        {
-            // offline / transient — retry on the next trigger
-        }
-        finally
-        {
-            _syncing = false;
-        }
+        OnUiThread(() => Dispatch(new ListeningSyncSucceededCommand(serverTotalMs)));
+    }
+
+    /// Started on the UI thread, so await continuations normally resume on it;
+    /// marshal back defensively so the settle dispatch and the bound account
+    /// state are never touched from a background thread.
+    private void OnUiThread(Action action)
+    {
+        if (_dispatcher.HasThreadAccess) action();
+        else _dispatcher.TryEnqueue(() => action());
     }
 
     [RelayCommand]
@@ -298,7 +332,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             _accountStore.WriteAccount(Account);
             SignInLinkInput = "";
             SyncStatus = $"Signed in as {res.Email}.";
-            await SyncAsync();
+            await SyncAsync(SyncReason.Refresh);
         }
         catch
         {
@@ -326,8 +360,9 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         try
         {
             await _syncApi.DeleteListeningAsync(Account.SessionToken);
-            _accountStore.RotateDeviceId();
-            Send(new ResetListeningDataCommand());
+            // One dispatch rotates the id and zeroes the slot, so they land in
+            // the same persisted write.
+            Send(new ResetListeningDataCommand(Guid.NewGuid().ToString()));
             SyncStatus = "Listening data deleted.";
         }
         catch { SyncStatus = "Couldn't delete listening data."; }
@@ -340,8 +375,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         try
         {
             await _syncApi.DeleteAccountAsync(Account.SessionToken);
-            _accountStore.RotateDeviceId();
-            Send(new ResetListeningDataCommand());
+            Send(new ResetListeningDataCommand(Guid.NewGuid().ToString()));
             Account = null;
             _accountStore.ClearAccount();
             SyncStatus = "Account deleted.";

@@ -1,13 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Command, Snapshot } from "../core/types";
+import type { Command, Effect, Snapshot, SyncReason } from "../core/types";
 import * as api from "./api";
 
 const ACCOUNT_KEY = "cascade.account.v1";
-const DEVICE_KEY = "cascade.device.v1";
-// How much unsynced listening time to accumulate before pushing to the server.
-// Sync cadence lives in the shell, not the core (the core has no idea whether
-// we're online or signed in).
-const SYNC_THRESHOLD_MS = 30_000;
 
 export interface Account {
   sessionToken: string;
@@ -36,32 +31,15 @@ function loadAccount(): Account | null {
   }
 }
 
-/** Stable opaque per-device id; rotated when the user deletes their data so a
- * stale offline write can't resurrect a deleted G-Counter slot. */
-function getDeviceId(): string {
-  let id = localStorage.getItem(DEVICE_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(DEVICE_KEY, id);
-  }
-  return id;
-}
-
-function rotateDeviceId(): string {
-  const id = crypto.randomUUID();
-  localStorage.setItem(DEVICE_KEY, id);
-  return id;
-}
-
 /**
- * Owns the optional account + the listening-time sync loop. The core stays
- * pure: this hook reads `snapshot.listening` (deviceTotalMs / unsyncedMs),
- * decides when to talk to the server, and feeds results back in via
- * `applySyncedTotal`.
+ * Owns the optional account + the listening-time sync transport. This hook
+ * decides when it *can* talk to the server (signed in, page lifecycle); the
+ * core decides whether there is anything to say, and what — via the
+ * `pushListening` it answers `beginListeningSync` with.
  */
 export function useSync(
   snapshot: Snapshot | null,
-  dispatch: (command: Command) => void,
+  dispatch: (command: Command) => Effect[],
 ): SyncState {
   const [account, setAccount] = useState<Account | null>(() =>
     api.syncAvailable ? loadAccount() : null,
@@ -71,12 +49,6 @@ export function useSync(
   // A cascade:// deep link when this page is handing a sign-in off to the
   // Windows desktop app (links minted with &app=windows); null otherwise.
   const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
-  const syncingRef = useRef(false);
-  // Latest listening figures, kept in a ref so the sync callback is stable.
-  const deviceTotalRef = useRef(0);
-  const unsyncedRef = useRef(0);
-  deviceTotalRef.current = snapshot?.listening.deviceTotalMs ?? 0;
-  unsyncedRef.current = snapshot?.listening.unsyncedMs ?? 0;
 
   const persistAccount = useCallback((next: Account | null) => {
     setAccount(next);
@@ -88,32 +60,36 @@ export function useSync(
     }
   }, []);
 
-  // Push this device's slot and fold the server aggregate back into the core.
+  // Ask the core whether to sync; if it answers with a push, PUT exactly that
+  // and report back. Every push must be settled, or the core won't start
+  // another.
   const sync = useCallback(
-    async (acct: Account, keepalive = false) => {
-      if (syncingRef.current) return;
-      syncingRef.current = true;
-      const deviceTotalMs = deviceTotalRef.current;
+    async (acct: Account, reason: SyncReason, keepalive = false) => {
+      const push = dispatch({ type: "beginListeningSync", reason }).find(
+        (e): e is Extract<Effect, { type: "pushListening" }> =>
+          e.type === "pushListening",
+      );
+      if (!push) return;
       try {
         const res = await api.putListening(
           acct.sessionToken,
-          getDeviceId(),
-          deviceTotalMs,
+          push.deviceId,
+          push.deviceTotalMs,
           keepalive,
         );
         dispatch({
-          type: "applySyncedTotal",
-          syncedThroughMs: deviceTotalMs,
+          type: "listeningSyncSucceeded",
           serverTotalMs: res.serverTotalMs,
         });
       } catch (err) {
-        if (err instanceof api.HttpError && err.status === 401) {
+        const unauthorized =
+          err instanceof api.HttpError && err.status === 401;
+        const effects = dispatch({ type: "listeningSyncFailed", unauthorized });
+        if (effects.some((e) => e.type === "clearSession")) {
           // Session no longer valid — drop it; tracking continues locally.
           persistAccount(null);
-          setStatus("Signed out — please sign in again to sync.");
+          setStatus("Signed out — sign in again to sync.");
         }
-      } finally {
-        syncingRef.current = false;
       }
     },
     [dispatch, persistAccount],
@@ -158,32 +134,34 @@ export function useSync(
       .finally(() => setBusy(false));
   }, [persistAccount]);
 
-  // On sign-in, do an immediate sync so the cross-device total shows right away.
+  // On sign-in (or launch with an account), do an immediate sync so the
+  // cross-device total shows right away. Waits for the core, whose listening
+  // restore — and so its device id — lands in the same commit as the first
+  // snapshot.
+  const coreReady = snapshot !== null;
   const lastSyncedAccountRef = useRef<string | null>(null);
   useEffect(() => {
     if (!account) {
       lastSyncedAccountRef.current = null;
       return;
     }
+    if (!coreReady) return;
     if (lastSyncedAccountRef.current === account.sessionToken) return;
     lastSyncedAccountRef.current = account.sessionToken;
-    void sync(account);
-  }, [account, sync]);
+    void sync(account, "refresh");
+  }, [account, coreReady, sync]);
 
-  // Threshold-driven sync: once enough unsynced time accrues, push it.
+  // As listening accrues, offer the core a sync; it sends once enough is
+  // unsynced.
   useEffect(() => {
     if (!account) return;
-    if (unsyncedRef.current >= SYNC_THRESHOLD_MS) {
-      void sync(account);
-    }
+    void sync(account, "threshold");
   }, [account, sync, snapshot?.listening.unsyncedMs]);
 
   // Flush on the way out so a closing tab doesn't strand recent listening.
   useEffect(() => {
     if (!account) return;
-    const flush = () => {
-      if (unsyncedRef.current > 0) void sync(account, true);
-    };
+    const flush = () => void sync(account, "flush", true);
     const onHide = () => {
       if (document.visibilityState === "hidden") flush();
     };
@@ -226,10 +204,9 @@ export function useSync(
     setBusy(true);
     try {
       await api.deleteListening(account.sessionToken);
-      // Rotate the device id and zero the local slot together, so a stale
-      // offline write can't resurrect the deleted total.
-      rotateDeviceId();
-      dispatch({ type: "resetListeningData" });
+      // The core rotates the device id and zeroes the slot in one persisted
+      // write, so a stale offline write can't resurrect the deleted total.
+      dispatch({ type: "resetListeningData", newDeviceId: crypto.randomUUID() });
       setStatus("Listening data deleted.");
     } catch {
       setStatus("Couldn't delete listening data. Try again.");
@@ -243,8 +220,7 @@ export function useSync(
     setBusy(true);
     try {
       await api.deleteAccount(account.sessionToken);
-      rotateDeviceId();
-      dispatch({ type: "resetListeningData" });
+      dispatch({ type: "resetListeningData", newDeviceId: crypto.randomUUID() });
       persistAccount(null);
       setStatus("Account deleted.");
     } catch {

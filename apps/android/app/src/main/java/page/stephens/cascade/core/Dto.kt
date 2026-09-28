@@ -35,9 +35,19 @@ sealed class Command {
     @Serializable @SerialName("platformPlaybackPaused") data object PlatformPlaybackPaused : Command()
     @Serializable @SerialName("platformPlaybackError") data class PlatformPlaybackError(val message: String) : Command()
     @Serializable @SerialName("setListeningTracking") data class SetListeningTracking(val enabled: Boolean) : Command()
-    @Serializable @SerialName("restoreListening") data class RestoreListening(val json: String) : Command()
-    @Serializable @SerialName("applySyncedTotal") data class ApplySyncedTotal(val syncedThroughMs: Long, val serverTotalMs: Long) : Command()
-    @Serializable @SerialName("resetListeningData") data object ResetListeningData : Command()
+    @Serializable @SerialName("restoreListening") data class RestoreListening(val json: String, val fallbackDeviceId: String) : Command()
+    @Serializable @SerialName("beginListeningSync") data class BeginListeningSync(val reason: SyncReason) : Command()
+    @Serializable @SerialName("listeningSyncSucceeded") data class ListeningSyncSucceeded(val serverTotalMs: Long) : Command()
+    @Serializable @SerialName("listeningSyncFailed") data class ListeningSyncFailed(val unauthorized: Boolean) : Command()
+    @Serializable @SerialName("resetListeningData") data class ResetListeningData(val newDeviceId: String) : Command()
+}
+
+/** Why the shell is asking to sync; the core decides whether it's worth a PUT. */
+@Serializable
+enum class SyncReason {
+    @SerialName("threshold") THRESHOLD,
+    @SerialName("flush") FLUSH,
+    @SerialName("refresh") REFRESH,
 }
 
 @Serializable
@@ -48,6 +58,8 @@ sealed class Effect {
     @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val volumePercent: Int) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
     @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
+    @Serializable @SerialName("pushListening") data class PushListening(val deviceId: String, val deviceTotalMs: Long) : Effect()
+    @Serializable @SerialName("clearSession") data object ClearSession : Effect()
 }
 
 @Serializable

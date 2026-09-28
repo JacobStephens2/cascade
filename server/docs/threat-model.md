@@ -43,7 +43,7 @@ one. This bounds the blast radius of every other threat below.
 | T5 | **CSRF** | API authenticates with a `Bearer` header, not cookies, so cross-site requests can't ride ambient credentials. |
 | T6 | **SQL injection** | All queries are parameterized (`sqlx` bind); no string interpolation into SQL. |
 | T7 | **Cross-origin abuse** | CORS allow-list is exactly the web origin; other origins get no `Access-Control-Allow-Origin`. |
-| T8 | **Counter resurrection after deletion** | "Delete my data" rotates the client `device_id`, so a stale offline write lands in a fresh slot instead of restoring a deleted total. |
+| T8 | **Counter resurrection after deletion** | "Delete my data" rotates the client `device_id`, so a stale offline write lands in a fresh slot instead of restoring a deleted total. The core rotates the id and zeroes the slot in one persisted write, so a crash can't split them (ADR-0001, decision 6). |
 | T9 | **Metrics disclosure** | `/metrics` is localhost-bound and blocked at Apache; it carries only operational counters — no PII, no per-user data. |
 | T10 | **Host compromise via the service** | systemd hardening: unprivileged user, `ProtectSystem=strict`, empty `CapabilityBoundingSet`, `MemoryDenyWriteExecute`, restricted address families, `PrivateTmp`. The service writes nothing to disk. |
 | T11 | **Secret exposure** | DB password + SMTP creds live in a `0640` env file owned by the service user (vault-encrypted in the repo); the DO token is env-only. Nothing secret is committed. |

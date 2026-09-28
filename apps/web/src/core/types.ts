@@ -19,16 +19,23 @@ export type Command =
   | { type: "platformPlaybackPaused" }
   | { type: "platformPlaybackError"; message: string }
   | { type: "setListeningTracking"; enabled: boolean }
-  | { type: "restoreListening"; json: string }
-  | { type: "applySyncedTotal"; syncedThroughMs: number; serverTotalMs: number }
-  | { type: "resetListeningData" };
+  | { type: "restoreListening"; json: string; fallbackDeviceId: string }
+  | { type: "beginListeningSync"; reason: SyncReason }
+  | { type: "listeningSyncSucceeded"; serverTotalMs: number }
+  | { type: "listeningSyncFailed"; unauthorized: boolean }
+  | { type: "resetListeningData"; newDeviceId: string };
+
+/** Why the shell is asking to sync; the core decides whether to send. */
+export type SyncReason = "threshold" | "flush" | "refresh";
 
 export type Effect =
   | { type: "startPlayback"; volumePercent: number }
   | { type: "pausePlayback" }
   | { type: "setPlatformVolume"; volumePercent: number }
   | { type: "persistSettings"; json: string }
-  | { type: "persistListening"; json: string };
+  | { type: "persistListening"; json: string }
+  | { type: "pushListening"; deviceId: string; deviceTotalMs: number }
+  | { type: "clearSession" };
 
 export type TimerKind =
   | "off"

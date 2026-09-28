@@ -16,16 +16,15 @@ final class AppStore {
     private(set) var snapshot: Snapshot
     private(set) var lastError: String?
 
-    // Optional account + sync. The core stays pure; this layer reads
-    // snapshot.listening and decides when to talk to the server.
+    // Optional account + sync. The shell decides when it can talk (signed
+    // in, a lifecycle trigger) and owns the HTTP; the core decides whether
+    // there is anything to say, and what.
     private(set) var account: SyncAccount?
     private(set) var syncStatus: String?
     var syncAvailable: Bool { SyncConfig.available }
 
     private let accountStore = AccountStore()
     private let syncApi = SyncApi()
-    private var syncing = false
-    private static let syncThresholdMs: UInt64 = 30_000
 
     /// Side-channel observer for non-SwiftUI consumers (the iPhone's
     /// `PhoneConnectivityService` uses this to push every snapshot down to
@@ -51,14 +50,18 @@ final class AppStore {
         let json = settings.readSafely()
         let bridge = CoreBridge(persistedSettings: json)
         let store = AppStore(bridge: bridge, settings: settings)
-        // Restore the listening ledger once at startup. The core ignores a
+        // Restore the listening ledger once at startup — always, even with no
+        // blob, so the core can adopt a device id. The core ignores a
         // missing/incompatible blob and never lets a restore lower the counter.
-        if let listeningJson = settings.readListeningSafely() {
-            store.dispatch(.restoreListening(json: listeningJson))
-        }
+        // The fallback id is the one this shell used to store itself (so an
+        // existing server slot carries over), else a fresh one; the core only
+        // adopts it if the blob carries no id.
+        store.dispatch(.restoreListening(
+            json: settings.readListeningSafely() ?? "",
+            fallbackDeviceId: store.accountStore.legacyDeviceId() ?? UUID().uuidString))
         store.account = store.accountStore.readAccount()
         if store.account != nil {
-            Task { await store.sync() }
+            Task { await store.sync(reason: .refresh) }
         }
         return store
     }
@@ -89,12 +92,17 @@ final class AppStore {
         nowPlaying.update(snapshot: initial)
     }
 
-    func dispatch(_ command: Command) {
+    /// Returns the effects of this dispatch, so a caller (sync) can read the
+    /// answer to its own command synchronously.
+    @discardableResult
+    func dispatch(_ command: Command) -> [Effect] {
         do {
             let update = try bridge.dispatch(command)
             apply(update)
+            return update.effects
         } catch {
             lastError = "\(error)"
+            return []
         }
     }
 
@@ -118,6 +126,10 @@ final class AppStore {
                 settings.writeSafely(json)
             case .persistListening(let json):
                 settings.writeListeningSafely(json)
+            case .pushListening, .clearSession:
+                // Answers to sync commands; `sync(reason:)` reads them off its
+                // own dispatch.
+                break
             }
         }
 
@@ -134,35 +146,40 @@ final class AppStore {
         }
 
         nowPlaying.update(snapshot: update.snapshot)
-
-        // Sync cadence lives in the shell: push once enough unsynced time has
-        // accrued.
-        if account != nil, update.snapshot.listening.unsyncedMs >= Self.syncThresholdMs {
-            Task { await sync() }
-        }
     }
 
     // MARK: - Sync
 
-    func sync() async {
-        guard !syncing, let account else { return }
-        syncing = true
-        defer { syncing = false }
-        let deviceTotal = Int64(snapshot.listening.deviceTotalMs)
+    /// Ask the core whether there is anything to send and, if so, PUT exactly
+    /// what it says. The core owns the threshold, the payload, the device id,
+    /// the in-flight guard, and the 401 rule; this only carries the request.
+    func sync(reason: SyncReason) async {
+        guard let account else { return }
+        let effects = dispatch(.beginListeningSync(reason: reason))
+        var push: (deviceId: String, deviceTotalMs: UInt64)?
+        for case let .pushListening(deviceId, deviceTotalMs) in effects {
+            push = (deviceId, deviceTotalMs)
+        }
+        // No effect: nothing worth sending, or a sync is already in flight.
+        guard let push else { return }
+        // Every begun sync must be settled, or the core never starts another.
         do {
             let res = try await syncApi.putListening(
                 token: account.sessionToken,
-                deviceId: accountStore.deviceId(),
-                deviceTotalMs: deviceTotal)
-            dispatch(.applySyncedTotal(
-                syncedThroughMs: UInt64(deviceTotal),
-                serverTotalMs: UInt64(max(0, res.serverTotalMs))))
-        } catch let error as SyncError where error.status == 401 {
-            self.account = nil
-            accountStore.clearAccount()
-            syncStatus = "Signed out — sign in again to sync."
+                deviceId: push.deviceId,
+                deviceTotalMs: Int64(clamping: push.deviceTotalMs))
+            dispatch(.listeningSyncSucceeded(serverTotalMs: UInt64(max(0, res.serverTotalMs))))
         } catch {
-            // offline / transient — retry on the next trigger
+            // Offline / transient failures retry on the next trigger; a 401
+            // comes back as clearSession.
+            let unauthorized = (error as? SyncError)?.status == 401
+            let failure = dispatch(.listeningSyncFailed(unauthorized: unauthorized))
+            if failure.contains(where: { if case .clearSession = $0 { return true } else { return false } }),
+               self.account == account {
+                self.account = nil
+                accountStore.clearAccount()
+                syncStatus = "Signed out — sign in again to sync."
+            }
         }
     }
 
@@ -190,7 +207,7 @@ final class AppStore {
             accountStore.writeAccount(acct)
             account = acct
             syncStatus = "Signed in as \(res.email)."
-            await sync()
+            await sync(reason: .refresh)
         } catch {
             syncStatus = "That sign-in link was invalid or expired."
         }
@@ -215,8 +232,9 @@ final class AppStore {
         guard let account else { return }
         do {
             try await syncApi.deleteListening(token: account.sessionToken)
-            accountStore.rotateDeviceId()
-            dispatch(.resetListeningData)
+            // One dispatch rotates the device id and zeroes the ledger in a
+            // single persisted write.
+            dispatch(.resetListeningData(newDeviceId: UUID().uuidString))
             syncStatus = "Listening data deleted."
         } catch {
             syncStatus = "Couldn't delete listening data."
@@ -227,8 +245,7 @@ final class AppStore {
         guard let account else { return }
         do {
             try await syncApi.deleteAccount(token: account.sessionToken)
-            accountStore.rotateDeviceId()
-            dispatch(.resetListeningData)
+            dispatch(.resetListeningData(newDeviceId: UUID().uuidString))
             self.account = nil
             accountStore.clearAccount()
             syncStatus = "Account deleted."
@@ -268,6 +285,11 @@ final class AppStore {
                 let elapsedMs = UInt64(now.timeIntervalSince(last) * 1000)
                 last = now
                 self.dispatch(.tick(elapsedMs: elapsedMs))
+                // Routine check: the core sends only once enough unsynced
+                // time has accrued (ticks are the only thing that accrues it).
+                if self.account != nil {
+                    await self.sync(reason: .threshold)
+                }
             }
         }
         // Schedule on the common run-loop modes so menu interaction doesn't

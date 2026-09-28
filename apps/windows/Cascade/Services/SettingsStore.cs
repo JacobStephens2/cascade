@@ -51,13 +51,22 @@ public sealed class SettingsStore
 
     private static void WriteFile(string path, string json)
     {
+        // Write a sibling temp file and swap it in, so a crash mid-write leaves
+        // the previous blob intact rather than a torn one. Matters most for the
+        // listening blob: the one write that rotates the device id and zeroes
+        // the slot must land whole or not at all (same as the Apple shell's
+        // `.atomic` write).
+        var tmp = path + ".tmp";
         try
         {
-            File.WriteAllText(path, json);
+            File.WriteAllText(tmp, json);
+            File.Move(tmp, path, overwrite: true);
         }
-        catch
+        catch (Exception e)
         {
-            // Persistence is best-effort; never block the dispatch loop on disk IO.
+            // Persistence is best-effort; never block the dispatch loop on disk
+            // IO. But don't fail silently.
+            System.Diagnostics.Debug.WriteLine($"[Cascade] write to {path} failed: {e}");
         }
     }
 }

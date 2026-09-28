@@ -247,7 +247,10 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.listening.tracking_enabled = enabled;
             push_persist_listening(state, effects);
         }
-        Command::RestoreListening { json } => {
+        Command::RestoreListening {
+            json,
+            fallback_device_id,
+        } => {
             // The shell hands back the opaque blob it stored. A missing or
             // unparseable/unknown-version blob is ignored — restore must never
             // lower a live counter, and the defaults are already correct.
@@ -257,18 +260,33 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                     state.listening.restore_from(&ledger);
                 }
             }
+            // Persist a newly adopted id right away, so the next launch sees
+            // the same slot rather than another fallback.
+            if state.listening.adopt_device_id(fallback_device_id) {
+                push_persist_listening(state, effects);
+            }
         }
-        Command::ApplySyncedTotal {
-            synced_through_ms,
-            server_total_ms,
-        } => {
-            state
-                .listening
-                .apply_synced(synced_through_ms, server_total_ms);
-            push_persist_listening(state, effects);
+        Command::BeginListeningSync { reason } => {
+            if let Some((device_id, device_total_ms)) = state.listening.begin_sync(reason) {
+                effects.push(Effect::PushListening {
+                    device_id,
+                    device_total_ms,
+                });
+            }
         }
-        Command::ResetListeningData => {
-            state.listening.reset();
+        Command::ListeningSyncSucceeded { server_total_ms } => {
+            if state.listening.sync_succeeded(server_total_ms) {
+                push_persist_listening(state, effects);
+            }
+        }
+        Command::ListeningSyncFailed { unauthorized } => {
+            state.listening.sync_failed();
+            if unauthorized {
+                effects.push(Effect::ClearSession);
+            }
+        }
+        Command::ResetListeningData { new_device_id } => {
+            state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
         }
     }
@@ -576,32 +594,20 @@ mod tests {
             synced_through_ms: 3_600_000,
             server_total_ms: Some(10_000_000),
             tracking_enabled: false,
+            device_id: Some("stored".into()),
         })
         .unwrap();
-        dispatch(&mut s, Command::RestoreListening { json: blob });
+        dispatch(
+            &mut s,
+            Command::RestoreListening {
+                json: blob,
+                fallback_device_id: "fallback".into(),
+            },
+        );
         assert_eq!(s.listening.device_total_ms, 7_200_000);
         assert_eq!(s.listening.server_total_ms, Some(10_000_000));
         assert!(!s.listening.tracking_enabled);
-    }
-
-    #[test]
-    fn apply_synced_total_moves_baseline_and_persists() {
-        let mut s = State::default();
-        dispatch(&mut s, Command::Play);
-        dispatch(&mut s, Command::PlatformPlaybackStarted);
-        dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
-        let effects = dispatch(
-            &mut s,
-            Command::ApplySyncedTotal {
-                synced_through_ms: 5_000,
-                server_total_ms: 9_000_000,
-            },
-        );
-        assert_eq!(s.listening.unsynced_ms(), 0);
-        assert_eq!(s.listening.displayed_total_ms(), 9_000_000);
-        assert!(effects
-            .iter()
-            .any(|e| matches!(e, Effect::PersistListening { .. })));
+        assert_eq!(s.listening.device_id.as_deref(), Some("stored"));
     }
 
     #[test]
@@ -610,7 +616,12 @@ mod tests {
         dispatch(&mut s, Command::Play);
         dispatch(&mut s, Command::PlatformPlaybackStarted);
         dispatch(&mut s, Command::Tick { elapsed_ms: 5_000 });
-        dispatch(&mut s, Command::ResetListeningData);
+        dispatch(
+            &mut s,
+            Command::ResetListeningData {
+                new_device_id: "rotated".into(),
+            },
+        );
         assert_eq!(s.listening.device_total_ms, 0);
         assert!(s.listening.tracking_enabled);
     }
