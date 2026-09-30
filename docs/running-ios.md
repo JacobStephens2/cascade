@@ -67,21 +67,30 @@ In Xcode:
 Free signing (Apple-ID Team) gives you a 7-day install. Plug the phone
 in, ⌘R from Xcode, and the app sticks until the signature expires.
 
-For a permanent install you need a paid developer account ($99/year) and
-TestFlight:
+For TestFlight, increment `CURRENT_PROJECT_VERSION` in
+`apps/apple/project.yml`, run `./scripts/build.sh ios` from `apps/apple`,
+then archive and upload. The Release configuration uses the Cascade iOS and
+Watch App Store provisioning profiles installed in Xcode. The export step
+uploads directly to App Store Connect using the account signed in to Xcode:
 
 ```bash
 xcodebuild -project apps/apple/Cascade.xcodeproj \
     -scheme CascadeiOS \
     -configuration Release \
+    -destination 'generic/platform=iOS' \
+    -allowProvisioningUpdates \
     -archivePath /tmp/CascadeiOS.xcarchive archive
 xcodebuild -exportArchive \
     -archivePath /tmp/CascadeiOS.xcarchive \
     -exportOptionsPlist apps/apple/ios-export.plist \
+    -allowProvisioningUpdates \
     -exportPath /tmp/CascadeiOS-export
-xcrun altool --upload-app -f /tmp/CascadeiOS-export/Cascade.ipa \
-    --apiKey $ASC_KEY_ID --apiIssuer $ASC_ISSUER_ID
 ```
+
+After processing finishes, add the new build to the **Friends & Family**
+external testing group in App Store Connect. The public link on the app site
+points to that group. TestFlight builds expire after 90 days, so upload a new
+build before then to keep the link accepting testers.
 
 ## 6. Troubleshooting
 
