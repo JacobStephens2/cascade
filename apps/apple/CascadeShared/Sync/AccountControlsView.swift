@@ -25,16 +25,18 @@ struct AccountControlsView: View {
                     .buttonStyle(.borderless)
                 } else {
                     HStack {
-                        TextField("you@example.com", text: $email)
+                        TextField("", text: $email, prompt: Text("you@example.com").foregroundColor(.gray))
                             .textFieldStyle(.roundedBorder)
+                            .foregroundStyle(.primary)
                             .frame(maxWidth: 220)
                         Button("Email me a link") {
                             Task { await store.signIn(email: email.trimmingCharacters(in: .whitespaces)) }
                         }
                     }
                     HStack {
-                        TextField("paste the sign-in link", text: $link)
+                        TextField("", text: $link, prompt: Text("paste the sign-in link").foregroundColor(.gray))
                             .textFieldStyle(.roundedBorder)
+                            .foregroundStyle(.primary)
                             .frame(maxWidth: 220)
                         Button("Sign in") {
                             Task {

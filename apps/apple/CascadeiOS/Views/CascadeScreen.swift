@@ -12,39 +12,43 @@ struct CascadeScreen: View {
         ZStack {
             CascadeBackdrop(isPlaying: snapshot.isPlaying)
                 .ignoresSafeArea()
-            VStack(spacing: 24) {
-                Header(subtitle: snapshot.subtitle)
-                Spacer(minLength: 8)
-                TimerReadout(timer: snapshot.timer)
-                PlayButton(
-                    isPlaying: snapshot.isPlaying,
-                    label: snapshot.primaryButtonLabel
-                ) {
-                    store.dispatch(.togglePlayback)
+            ScrollView {
+                VStack(spacing: 24) {
+                    Header(subtitle: snapshot.subtitle)
+                    TimerReadout(timer: snapshot.timer)
+                    PlayButton(
+                        isPlaying: snapshot.isPlaying,
+                        label: snapshot.primaryButtonLabel
+                    ) {
+                        store.dispatch(.togglePlayback)
+                    }
+                    VolumeSlider(
+                        percent: snapshot.volumePercent,
+                        isMuted: snapshot.isMuted,
+                        onChange: { store.dispatch(.setVolume(percent: $0)) },
+                        onToggleMute: { store.dispatch(.toggleMute) }
+                    )
+                    ListeningRow(listening: snapshot.listening) {
+                        store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
+                    }
+                    AccountControlsView()
+                    TimerControls()
+                    if let message = snapshot.errorMessage ?? store.lastError {
+                        Text(message)
+                            .font(.caption)
+                            .foregroundStyle(.red)
+                            .multilineTextAlignment(.center)
+                            .padding(.horizontal)
+                    }
                 }
-                Spacer(minLength: 8)
-                VolumeSlider(
-                    percent: snapshot.volumePercent,
-                    isMuted: snapshot.isMuted,
-                    onChange: { store.dispatch(.setVolume(percent: $0)) },
-                    onToggleMute: { store.dispatch(.toggleMute) }
-                )
-                ListeningRow(listening: snapshot.listening) {
-                    store.dispatch(.setListeningTracking(enabled: !snapshot.listening.trackingEnabled))
-                }
-                AccountControlsView()
-                TimerControls()
-                if let message = snapshot.errorMessage ?? store.lastError {
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.red)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal)
-                }
+                .padding(.horizontal, 24)
+                .padding(.vertical, 32)
+                .frame(maxWidth: 620)
+                .frame(maxWidth: .infinity)
             }
-            .padding(.horizontal, 24)
-            .padding(.vertical, 16)
+            .scrollIndicators(.hidden)
         }
+        .preferredColorScheme(.dark)
     }
 }
 
@@ -103,7 +107,7 @@ private struct PlayButton: View {
                     .font(.system(size: 40, weight: .medium))
                     .foregroundStyle(isPlaying
                                      ? AnyShapeStyle(.tint)
-                                     : AnyShapeStyle(.background))
+                                     : AnyShapeStyle(.white))
             }
             .frame(width: 160, height: 160)
             .shadow(color: .black.opacity(0.25), radius: 12, y: 6)
