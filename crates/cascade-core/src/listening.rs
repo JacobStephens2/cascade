@@ -115,6 +115,15 @@ impl ListeningLedger {
         self.device_total_ms.saturating_sub(self.synced_through_ms)
     }
 
+    /// Unsynced milliseconds that no PUT has carried yet: counted past the
+    /// last failed PUT as well as the synced high-water mark. What the
+    /// threshold measures, so a failure waits for another threshold.
+    fn unsent_ms(&self) -> u64 {
+        let failed_through_ms = self.failed_through_ms.unwrap_or(0);
+        self.device_total_ms
+            .saturating_sub(self.synced_through_ms.max(failed_through_ms))
+    }
+
     /// The lifetime total to show the user. With an account this is the server
     /// aggregate plus any locally-accrued time not yet synced, so the number
     /// climbs live even while listening offline. Without an account it is just
@@ -144,12 +153,7 @@ impl ListeningLedger {
         }
         let device_id = self.device_id.clone()?;
         let worth_sending = match reason {
-            SyncReason::Threshold => {
-                let sent_through = self
-                    .synced_through_ms
-                    .max(self.failed_through_ms.unwrap_or(0));
-                self.device_total_ms.saturating_sub(sent_through) >= LISTENING_SYNC_THRESHOLD_MS
-            }
+            SyncReason::Threshold => self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS,
             SyncReason::Flush => self.unsynced_ms() > 0,
             SyncReason::Refresh => true,
         };

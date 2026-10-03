@@ -259,6 +259,8 @@ fn status_label_when_just_completed_is_the_completion_text() {
 // ---- completion message ---------------------------------------------------
 
 const SLEEP_TIMER_ENDED: &str = "Sleep timer ended";
+/// A stored account, so the core holds a session and may sync.
+const SIGNED_IN: &str = r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#;
 
 /// A core whose one-minute sleep timer has just run out while playing.
 fn sleep_timer_ended() -> Core {
@@ -268,6 +270,7 @@ fn sleep_timer_ended() -> Core {
         Command::Tick { elapsed_ms: 60_000 },
     ]);
     assert_eq!(core.snapshot().timer.status_label, SLEEP_TIMER_ENDED);
+    // A shell still ticking after expiry must not clear it either.
     core.dispatch(Command::Tick { elapsed_ms: 250 });
     core
 }
@@ -323,14 +326,15 @@ fn the_completion_message_survives_everything_the_user_did_not_ask_for() {
 }
 
 #[test]
-fn the_completion_message_survives_a_sync_and_its_settles() {
-    // Signed in, so each begin really sends and each settle really lands.
+fn the_completion_message_survives_sync_and_account_traffic_that_lands() {
+    // Signed in, so each request really goes out and each settle really
+    // lands on a pending request.
     let mut core = Core::new();
     core.dispatch(Command::Restore {
         settings_json: String::new(),
         listening_json: String::new(),
         fallback_device_id: "device".into(),
-        account_json: r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#.into(),
+        account_json: SIGNED_IN.into(),
     });
     core.dispatch(Command::Play);
     core.dispatch(Command::StartSleepTimer { minutes: 1 });
@@ -338,14 +342,45 @@ fn the_completion_message_survives_a_sync_and_its_settles() {
     let refresh = Command::BeginListeningSync {
         reason: SyncReason::Refresh,
     };
-    for command in [
+    let sign_in = [
+        Command::SubmitSignInLink {
+            input: "raw-token".into(),
+        },
+        Command::SignInVerified {
+            session_token: "t2".into(),
+            email: "a@example.com".into(),
+        },
+    ];
+    let traffic = [
         refresh.clone(),
         Command::ListeningSyncSucceeded { server_total_ms: 0 },
         refresh,
         Command::ListeningSyncFailed {
             unauthorized: false,
         },
-    ] {
+        Command::DeleteListeningData,
+        Command::ListeningDataDeleted {
+            new_device_id: "d2".into(),
+        },
+        Command::DeleteListeningData,
+        Command::AccountRequestFailed {
+            unauthorized: false,
+        },
+        Command::DeleteAccount,
+        Command::AccountDeleted {
+            new_device_id: "d3".into(),
+        },
+    ]
+    .into_iter()
+    .chain(sign_in.clone())
+    .chain([Command::ListeningSyncFailed { unauthorized: true }])
+    .chain(sign_in)
+    .chain([
+        Command::ListeningSyncSucceeded { server_total_ms: 0 },
+        Command::DeleteListeningData,
+        Command::AccountRequestFailed { unauthorized: true },
+    ]);
+    for command in traffic {
         let snap = core.dispatch(command.clone()).snapshot;
         assert_eq!(snap.timer.status_label, SLEEP_TIMER_ENDED, "{command:?}");
     }
@@ -380,7 +415,7 @@ fn the_tick_that_ends_a_timer_and_crosses_the_threshold_does_both() {
         settings_json: String::new(),
         listening_json: String::new(),
         fallback_device_id: "device".into(),
-        account_json: r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#.into(),
+        account_json: SIGNED_IN.into(),
     });
     core.dispatch(Command::Play);
     core.dispatch(Command::PlatformPlaybackStarted);

@@ -32,9 +32,10 @@ pub enum Effect {
     /// PUT this device's slot to the listening endpoint, exactly as given.
     /// Emitted in answer to [`crate::Command::BeginListeningSync`], a
     /// [`crate::Command::Tick`] that crosses the sync threshold, or a sign-in's
-    /// refresh ([`crate::Command::SignInVerified`]); the shell must settle it with `ListeningSyncSucceeded` or
-    /// `ListeningSyncFailed`, or no further sync will start. `session_token`
-    /// is the bearer token to send; there is never a push without one.
+    /// refresh ([`crate::Command::SignInVerified`]); the shell must settle it
+    /// with `ListeningSyncSucceeded` or `ListeningSyncFailed`, or no further
+    /// sync will start. `session_token` is the bearer token to send; there is
+    /// never a push without one.
     PushListening {
         device_id: String,
         device_total_ms: u64,

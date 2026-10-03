@@ -199,17 +199,39 @@ fn is_accruing(state: &State) -> bool {
 /// playback and timer commands do: background traffic (ticks, sync and account
 /// settles, platform reports) and small adjustments (volume, mute) leave it on
 /// screen, since after expiry nothing else would ever show it.
+/// Exhaustive on purpose, so a new command has to choose.
 fn clears_timer_completion(command: &Command) -> bool {
-    matches!(
-        command,
+    match command {
         Command::Play
-            | Command::Pause
-            | Command::TogglePlayback
-            | Command::StartSleepTimer { .. }
-            | Command::StartPomodoro { .. }
-            | Command::StartStopwatch
-            | Command::CancelTimer
-    )
+        | Command::Pause
+        | Command::TogglePlayback
+        | Command::StartSleepTimer { .. }
+        | Command::StartPomodoro { .. }
+        | Command::StartStopwatch
+        | Command::CancelTimer => true,
+        Command::SetVolume { .. }
+        | Command::ToggleMute
+        | Command::Tick { .. }
+        | Command::PlatformPlaybackStarted
+        | Command::PlatformPlaybackPaused
+        | Command::PlatformPlaybackError { .. }
+        | Command::SetListeningTracking { .. }
+        | Command::Restore { .. }
+        | Command::BeginListeningSync { .. }
+        | Command::ListeningSyncSucceeded { .. }
+        | Command::ListeningSyncFailed { .. }
+        | Command::ResetListeningData { .. }
+        | Command::RequestSignInLink { .. }
+        | Command::SubmitSignInLink { .. }
+        | Command::SignOut
+        | Command::DeleteListeningData
+        | Command::DeleteAccount
+        | Command::SignInLinkSent
+        | Command::SignInVerified { .. }
+        | Command::ListeningDataDeleted { .. }
+        | Command::AccountDeleted { .. }
+        | Command::AccountRequestFailed { .. } => false,
+    }
 }
 
 /// The reducer. Mutates `state` and appends to `effects`.
