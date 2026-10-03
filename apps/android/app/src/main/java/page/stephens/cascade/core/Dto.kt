@@ -58,10 +58,10 @@ sealed class Command {
     @Serializable @SerialName("accountRequestFailed") data class AccountRequestFailed(val unauthorized: Boolean) : Command()
 }
 
-/** Why the shell is asking to sync; the core decides whether it's worth a PUT. */
+/** Why the shell is asking to sync; the core decides whether it's worth a PUT.
+ *  No `threshold`: the core's tick pushes once enough listening has accrued. */
 @Serializable
 enum class SyncReason {
-    @SerialName("threshold") THRESHOLD,
     @SerialName("flush") FLUSH,
     @SerialName("refresh") REFRESH,
 }
