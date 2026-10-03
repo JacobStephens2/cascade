@@ -5,7 +5,10 @@ use serde::{Deserialize, Serialize};
 
 use crate::listening::format_listening_total;
 use crate::state::{State, DEFAULT_VOLUME_PERCENT};
-use crate::timer::{format_remaining, TimerKind};
+use crate::timer::{
+    clamp_minutes, format_remaining, TimerKind, TimerPreset, DEFAULT_TIMER_MINUTES,
+    FOCUS_PRESET_MINUTES, MAX_TIMER_MINUTES, MIN_TIMER_MINUTES, SLEEP_PRESET_MINUTES,
+};
 
 /// Tick cadence while any timer is active (playing or paused), so the
 /// countdown or stopwatch reads smoothly.
@@ -38,6 +41,41 @@ pub struct TimerSnapshot {
     pub total_ms: u64,
     /// 0.0 → 1.0 for progress UIs. `0.0` when no timer is running.
     pub progress: f32,
+    /// A sleep timer, focus session or stopwatch is running: there is
+    /// something to cancel. False when off and when just completed.
+    pub is_active: bool,
+    /// One-line timer status, e.g. `"Playing · 12:34 left"`,
+    /// `"Muted · no timer"`, `"Stopwatch · 12:34"`, or the completion text.
+    pub status_label: String,
+}
+
+/// The timer choices a shell offers: the timer presets, the custom-duration
+/// limits, and what each custom field opens on.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimerOptions {
+    pub focus_presets: Vec<TimerPreset>,
+    pub sleep_presets: Vec<TimerPreset>,
+    pub min_minutes: u32,
+    pub max_minutes: u32,
+    /// The last-started focus length, clamped; 30 until one has been chosen.
+    pub custom_focus_minutes: u32,
+    /// The last-started sleep length, clamped; 30 until one has been chosen.
+    pub custom_sleep_minutes: u32,
+}
+
+impl TimerOptions {
+    fn from_state(state: &State) -> Self {
+        let custom = |saved: Option<u32>| clamp_minutes(saved.unwrap_or(DEFAULT_TIMER_MINUTES));
+        Self {
+            focus_presets: FOCUS_PRESET_MINUTES.map(TimerPreset::new).to_vec(),
+            sleep_presets: SLEEP_PRESET_MINUTES.map(TimerPreset::new).to_vec(),
+            min_minutes: MIN_TIMER_MINUTES,
+            max_minutes: MAX_TIMER_MINUTES,
+            custom_focus_minutes: custom(state.default_pomodoro_minutes),
+            custom_sleep_minutes: custom(state.default_sleep_minutes),
+        }
+    }
 }
 
 /// Listening-time view for the UI. `displayed_total_ms` is the number to show;
@@ -73,6 +111,7 @@ pub struct Snapshot {
     pub output_gain: f32,
     pub primary_button_label: String,
     pub timer: TimerSnapshot,
+    pub timer_options: TimerOptions,
     pub error_message: Option<String>,
     pub listening: ListeningSnapshot,
     /// How often the shell should send [`crate::Command::Tick`], in ms. `0`
@@ -95,6 +134,8 @@ impl Snapshot {
                 remaining_ms: 0,
                 total_ms: 0,
                 progress: 1.0,
+                is_active: false,
+                status_label: String::new(),
             },
             (Some(t), None) if t.kind == TimerKind::Stopwatch => TimerSnapshot {
                 // Count-up: the time fields carry elapsed, with no total/progress.
@@ -103,6 +144,8 @@ impl Snapshot {
                 remaining_ms: t.elapsed_ms,
                 total_ms: 0,
                 progress: 0.0,
+                is_active: true,
+                status_label: String::new(),
             },
             (Some(t), None) => {
                 let remaining = t.remaining_ms();
@@ -124,6 +167,8 @@ impl Snapshot {
                     remaining_ms: remaining,
                     total_ms: t.total_ms,
                     progress,
+                    is_active: true,
+                    status_label: String::new(),
                 }
             }
             (None, None) => TimerSnapshot {
@@ -132,7 +177,13 @@ impl Snapshot {
                 remaining_ms: 0,
                 total_ms: 0,
                 progress: 0.0,
+                is_active: false,
+                status_label: String::new(),
             },
+        };
+        let timer = TimerSnapshot {
+            status_label: status_label(state, &timer),
+            ..timer
         };
 
         Snapshot {
@@ -148,6 +199,7 @@ impl Snapshot {
                 "Play".to_string()
             },
             timer,
+            timer_options: TimerOptions::from_state(state),
             error_message: state.last_error.clone(),
             listening: ListeningSnapshot {
                 tracking_enabled: state.listening.tracking_enabled,
@@ -158,6 +210,27 @@ impl Snapshot {
             },
             tick_interval_ms: tick_interval_ms(state),
         }
+    }
+}
+
+/// The timer read as one line: playback state plus what the timer shows.
+fn status_label(state: &State, timer: &TimerSnapshot) -> String {
+    // Pausing clears mute, so "Muted" only ever means muted while playing.
+    let playback = if state.muted {
+        "Muted"
+    } else if state.intent.is_playing() {
+        "Playing"
+    } else {
+        "Paused"
+    };
+    match timer.kind {
+        TimerSnapshotKind::Off if state.intent.is_playing() => format!("{playback} · no timer"),
+        TimerSnapshotKind::Off => playback.to_string(),
+        TimerSnapshotKind::Sleep | TimerSnapshotKind::Pomodoro => {
+            format!("{playback} · {} left", timer.remaining_label)
+        }
+        TimerSnapshotKind::Stopwatch => format!("Stopwatch · {}", timer.remaining_label),
+        TimerSnapshotKind::JustCompleted => timer.remaining_label.clone(),
     }
 }
 

@@ -25,10 +25,11 @@ pub use listening::{
 };
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
 pub use snapshot::{
-    ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind, PLAYBACK_TICK_INTERVAL_MS,
-    TIMER_TICK_INTERVAL_MS,
+    ListeningSnapshot, Snapshot, TimerOptions, TimerSnapshot, TimerSnapshotKind,
+    PLAYBACK_TICK_INTERVAL_MS, TIMER_TICK_INTERVAL_MS,
 };
 pub use state::{PlaybackIntent, State, TimerMode};
+pub use timer::{TimerPreset, MAX_TIMER_MINUTES, MIN_TIMER_MINUTES};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;

@@ -29,10 +29,13 @@ pub enum Command {
     ToggleMute,
 
     /// Start a plain sleep timer that pauses playback after `minutes` minutes.
+    /// `minutes` is clamped into 1–1440 (so `0` starts a one-minute timer;
+    /// [`Command::CancelTimer`] is what cancels) and saved as the new default.
     StartSleepTimer { minutes: u32 },
     /// Start a pomodoro / focus session of `minutes` minutes. When the timer
     /// expires playback pauses; the UI can distinguish "session complete" from
-    /// "sleep" via [`crate::TimerSnapshotKind`].
+    /// "sleep" via [`crate::TimerSnapshotKind`]. `minutes` is clamped and saved
+    /// like [`Command::StartSleepTimer`]'s.
     StartPomodoro { minutes: u32 },
     /// Start a count-up stopwatch so the user can see how long they've been
     /// listening. Replaces any running timer, never expires, and does not
