@@ -79,8 +79,7 @@ impl TimerOptions {
 }
 
 /// Listening-time view for the UI. `displayed_total_ms` is the number to show;
-/// `total_label` is a ready-formatted version of it. `unsynced_ms` is what a
-/// shell watches to decide when to sync.
+/// `total_label` is a ready-formatted version of it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListeningSnapshot {

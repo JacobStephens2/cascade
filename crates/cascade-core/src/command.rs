@@ -46,6 +46,8 @@ pub enum Command {
 
     /// Wall-clock tick from the platform. `elapsed_ms` is the delta since the
     /// previous tick. The core never reads the system clock; the UI ticks it.
+    /// A tick that counts listening also offers the routine sync, so its
+    /// update may carry a [`crate::Effect::PushListening`] to settle.
     Tick { elapsed_ms: u64 },
 
     /// Platform reports that audio actually started playing (e.g. the browser
