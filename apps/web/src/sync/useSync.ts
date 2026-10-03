@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Command, Snapshot, SyncReason } from "../core/types";
 import type { DispatchOptions } from "../core/useCascade";
-import * as api from "./api";
+import { syncAvailable } from "./config";
 
 type Dispatch = (command: Command, options?: DispatchOptions) => void;
 
@@ -34,14 +34,14 @@ export function useSync(
   // talk to, so these triggers send nothing to the core.
   const dispatchIfSyncAvailable = useCallback(
     (command: Command) => {
-      if (api.syncAvailable) dispatch(command);
+      if (syncAvailable) dispatch(command);
     },
     [dispatch],
   );
 
   const sync = useCallback(
     (reason: SyncReason, keepalive = false) => {
-      if (api.syncAvailable)
+      if (syncAvailable)
         dispatch({ type: "beginListeningSync", reason }, { keepalive });
     },
     [dispatch],
@@ -51,7 +51,7 @@ export function useSync(
   // URL. Waits for the core, which holds the account.
   const linkHandledRef = useRef(false);
   useEffect(() => {
-    if (!api.syncAvailable || !coreReady || linkHandledRef.current) return;
+    if (!syncAvailable || !coreReady || linkHandledRef.current) return;
     linkHandledRef.current = true;
     const url = new URL(window.location.href);
     const token = url.searchParams.get("token");
@@ -104,7 +104,7 @@ export function useSync(
   }, [sync]);
 
   return {
-    available: api.syncAvailable,
+    available: syncAvailable,
     desktopHandoff,
     requestSignInLink: useCallback(
       (email: string) => dispatchIfSyncAvailable({ type: "requestSignInLink", email }),
@@ -112,9 +112,20 @@ export function useSync(
     ),
     signOut: useCallback(() => dispatchIfSyncAvailable({ type: "signOut" }), [dispatchIfSyncAvailable]),
     deleteListeningData: useCallback(
-      () => dispatchIfSyncAvailable({ type: "deleteListeningData" }),
+      () =>
+        dispatchIfSyncAvailable({
+          type: "deleteListeningData",
+          newDeviceId: crypto.randomUUID(),
+        }),
       [dispatchIfSyncAvailable],
     ),
-    deleteAccount: useCallback(() => dispatchIfSyncAvailable({ type: "deleteAccount" }), [dispatchIfSyncAvailable]),
+    deleteAccount: useCallback(
+      () =>
+        dispatchIfSyncAvailable({
+          type: "deleteAccount",
+          newDeviceId: crypto.randomUUID(),
+        }),
+      [dispatchIfSyncAvailable],
+    ),
   };
 }
