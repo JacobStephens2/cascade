@@ -7,6 +7,7 @@ import kotlinx.coroutines.launch
 import page.stephens.cascade.core.CascadeBridgeHolder
 import page.stephens.cascade.core.Command
 import page.stephens.cascade.core.Effect
+import page.stephens.cascade.core.RequestEffect
 import page.stephens.cascade.core.SyncReason
 import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
@@ -57,7 +58,7 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
      * like any other (a sign-in answers with a refresh push). Every request
      * but `RevokeSession` must be settled, or the core won't start another.
      */
-    private fun carry(effect: Effect) {
+    private fun carry(effect: RequestEffect) {
         when (effect) {
             is Effect.PushListening -> carryRequest(
                 call = {
@@ -88,7 +89,6 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
                 succeeded = { Command.AccountDeleted(newDeviceId = UUID.randomUUID().toString()) },
                 failed = { Command.AccountRequestFailed(unauthorized = it) },
             )
-            else -> {}
         }
     }
 

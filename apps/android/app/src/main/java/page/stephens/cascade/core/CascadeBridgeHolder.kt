@@ -46,8 +46,8 @@ class CascadeBridgeHolder(
      *  StateFlow, so none is overwritten or dropped: each is received, and so
      *  settled, exactly once — whether a tick, a playback report, a UI command
      *  or a settle produced it. */
-    private val _requests = Channel<Effect>(Channel.UNLIMITED)
-    val requests: ReceiveChannel<Effect> = _requests
+    private val _requests = Channel<RequestEffect>(Channel.UNLIMITED)
+    val requests: ReceiveChannel<RequestEffect> = _requests
 
     private val bridge = CascadeBridge()
 
@@ -100,7 +100,8 @@ class CascadeBridgeHolder(
                 is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
                 is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
                 is Effect.PersistAccount -> writes.trySend { accountStore.write(effect.json) }
-                else -> if (effect.isRequest) _requests.trySend(effect)
+                is RequestEffect -> _requests.trySend(effect)
+                else -> {}
             }
         }
         return update
@@ -114,16 +115,8 @@ class CascadeBridgeHolder(
     private fun forHandlers(effects: List<Effect>): List<Effect> = effects.filter {
         when (it) {
             is Effect.PersistSettings, is Effect.PersistListening, is Effect.PersistAccount -> false
-            else -> !it.isRequest
+            is RequestEffect -> false
+            else -> true
         }
     }
-
-    /** An HTTP request for the carrier to run and settle. */
-    private val Effect.isRequest: Boolean
-        get() = when (this) {
-            is Effect.PushListening,
-            is Effect.SendSignInLink, is Effect.VerifySignInToken, is Effect.RevokeSession,
-            is Effect.DeleteServerListening, is Effect.DeleteServerAccount -> true
-            else -> false
-        }
 }

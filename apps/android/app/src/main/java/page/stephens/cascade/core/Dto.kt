@@ -66,6 +66,10 @@ enum class SyncReason {
     @SerialName("refresh") REFRESH,
 }
 
+/** An HTTP request the shell's one carrier runs and settles. Sealed, so the
+ *  carrier's `when` is exhaustive: a new request can't be silently dropped. */
+sealed interface RequestEffect
+
 @Serializable
 @JsonClassDiscriminator("type")
 sealed class Effect {
@@ -79,13 +83,13 @@ sealed class Effect {
         val deviceId: String,
         val deviceTotalMs: Long,
         val sessionToken: String,
-    ) : Effect()
-    @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect()
-    @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect()
+    ) : Effect(), RequestEffect
+    @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect(), RequestEffect
+    @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect(), RequestEffect
     /** Fire-and-forget: no settle command. */
-    @Serializable @SerialName("revokeSession") data class RevokeSession(val sessionToken: String) : Effect()
-    @Serializable @SerialName("deleteServerListening") data class DeleteServerListening(val sessionToken: String) : Effect()
-    @Serializable @SerialName("deleteServerAccount") data class DeleteServerAccount(val sessionToken: String) : Effect()
+    @Serializable @SerialName("revokeSession") data class RevokeSession(val sessionToken: String) : Effect(), RequestEffect
+    @Serializable @SerialName("deleteServerListening") data class DeleteServerListening(val sessionToken: String) : Effect(), RequestEffect
+    @Serializable @SerialName("deleteServerAccount") data class DeleteServerAccount(val sessionToken: String) : Effect(), RequestEffect
     /** Store verbatim; `""` means delete the stored account. */
     @Serializable @SerialName("persistAccount") data class PersistAccount(val json: String) : Effect()
 }
