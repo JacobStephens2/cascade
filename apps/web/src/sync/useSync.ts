@@ -30,7 +30,9 @@ export function useSync(
   const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
   const coreReady = snapshot !== null;
 
-  const dispatchIfAvailable = useCallback(
+  // Without a sync server the account UI is hidden and there is no one to
+  // talk to, so these triggers send nothing to the core.
+  const dispatchIfSyncAvailable = useCallback(
     (command: Command) => {
       if (api.syncAvailable) dispatch(command);
     },
@@ -75,8 +77,8 @@ export function useSync(
       return;
     }
 
-    dispatchIfAvailable({ type: "submitSignInLink", input: link });
-  }, [coreReady, dispatchIfAvailable]);
+    dispatchIfSyncAvailable({ type: "submitSignInLink", input: link });
+  }, [coreReady, dispatchIfSyncAvailable]);
 
   // On launch, fetch the cross-device total straight away. The core sends
   // nothing while signed out, and answers a fresh sign-in with its own refresh.
@@ -105,14 +107,14 @@ export function useSync(
     available: api.syncAvailable,
     desktopHandoff,
     requestSignInLink: useCallback(
-      (email: string) => dispatchIfAvailable({ type: "requestSignInLink", email }),
-      [dispatchIfAvailable],
+      (email: string) => dispatchIfSyncAvailable({ type: "requestSignInLink", email }),
+      [dispatchIfSyncAvailable],
     ),
-    signOut: useCallback(() => dispatchIfAvailable({ type: "signOut" }), [dispatchIfAvailable]),
+    signOut: useCallback(() => dispatchIfSyncAvailable({ type: "signOut" }), [dispatchIfSyncAvailable]),
     deleteListeningData: useCallback(
-      () => dispatchIfAvailable({ type: "deleteListeningData" }),
-      [dispatchIfAvailable],
+      () => dispatchIfSyncAvailable({ type: "deleteListeningData" }),
+      [dispatchIfSyncAvailable],
     ),
-    deleteAccount: useCallback(() => dispatchIfAvailable({ type: "deleteAccount" }), [dispatchIfAvailable]),
+    deleteAccount: useCallback(() => dispatchIfSyncAvailable({ type: "deleteAccount" }), [dispatchIfSyncAvailable]),
   };
 }

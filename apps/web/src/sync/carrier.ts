@@ -4,12 +4,16 @@ import * as api from "./api";
 /** Dispatches a settle; that dispatch carries the settle's own effects. */
 type Settle = (outcome: Command) => void;
 
-/** Run one request and turn its result into the command that settles it. */
+/**
+ * Run one request and turn its result into the command that settles it.
+ * Without a sync server the request fails unsent, so it is still settled.
+ */
 async function settleWith<T>(
   call: () => Promise<T>,
   succeeded: (res: T) => Command,
   failed: (unauthorized: boolean) => Command,
 ): Promise<Command> {
+  if (!api.syncAvailable) return failed(false);
   try {
     return succeeded(await call());
   } catch (err) {
@@ -23,14 +27,12 @@ async function settleWith<T>(
  * it runs each request effect over HTTP and settles it through `settle`, which
  * is itself a dispatch, so a settle's answer comes back here too. Every request
  * but `revokeSession` must be settled, or the core won't start another.
- * Without a sync server there is nothing to carry.
  */
 export function carryRequests(
   effects: Effect[],
   settle: Settle,
   keepalive = false,
 ): void {
-  if (!api.syncAvailable) return;
   const accountFailed = (unauthorized: boolean): Command => ({
     type: "accountRequestFailed",
     unauthorized,
@@ -73,7 +75,7 @@ export function carryRequests(
         break;
       case "revokeSession":
         // Already gone server-side or offline — local sign-out stands.
-        api.logout(effect.sessionToken).catch(() => {});
+        if (api.syncAvailable) api.logout(effect.sessionToken).catch(() => {});
         break;
       case "deleteServerListening":
         void settleWith(
