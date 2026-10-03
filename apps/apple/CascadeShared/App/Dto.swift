@@ -19,14 +19,15 @@ enum Command: Codable {
     case platformPlaybackPaused
     case platformPlaybackError(message: String)
     case setListeningTracking(enabled: Bool)
-    case restoreListening(json: String, fallbackDeviceId: String)
+    case restore(settingsJson: String, listeningJson: String, fallbackDeviceId: String)
     case beginListeningSync(reason: SyncReason)
     case listeningSyncSucceeded(serverTotalMs: UInt64)
     case listeningSyncFailed(unauthorized: Bool)
     case resetListeningData(newDeviceId: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, percent, minutes, elapsedMs, message, enabled, json, fallbackDeviceId, reason,
+        case type, percent, minutes, elapsedMs, message, enabled, settingsJson, listeningJson,
+             fallbackDeviceId, reason,
              serverTotalMs, unauthorized, newDeviceId
     }
 
@@ -59,9 +60,10 @@ enum Command: Codable {
         case .setListeningTracking(let enabled):
             try c.encode("setListeningTracking", forKey: .type)
             try c.encode(enabled, forKey: .enabled)
-        case .restoreListening(let json, let fallbackDeviceId):
-            try c.encode("restoreListening", forKey: .type)
-            try c.encode(json, forKey: .json)
+        case .restore(let settingsJson, let listeningJson, let fallbackDeviceId):
+            try c.encode("restore", forKey: .type)
+            try c.encode(settingsJson, forKey: .settingsJson)
+            try c.encode(listeningJson, forKey: .listeningJson)
             try c.encode(fallbackDeviceId, forKey: .fallbackDeviceId)
         case .beginListeningSync(let reason):
             try c.encode("beginListeningSync", forKey: .type)
@@ -97,9 +99,10 @@ enum Command: Codable {
         case "platformPlaybackPaused": self = .platformPlaybackPaused
         case "platformPlaybackError": self = .platformPlaybackError(message: try c.decode(String.self, forKey: .message))
         case "setListeningTracking": self = .setListeningTracking(enabled: try c.decode(Bool.self, forKey: .enabled))
-        case "restoreListening":
-            self = .restoreListening(
-                json: try c.decode(String.self, forKey: .json),
+        case "restore":
+            self = .restore(
+                settingsJson: try c.decode(String.self, forKey: .settingsJson),
+                listeningJson: try c.decode(String.self, forKey: .listeningJson),
                 fallbackDeviceId: try c.decode(String.self, forKey: .fallbackDeviceId))
         case "beginListeningSync":
             self = .beginListeningSync(reason: try c.decode(SyncReason.self, forKey: .reason))

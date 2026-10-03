@@ -32,7 +32,7 @@ final class AccountStore {
     }
 
     /// The device id older builds generated and stored here, if any. Read-only:
-    /// handed to the core once as `restoreListening`'s fallback.
+    /// handed to the core once as `restore`'s `fallbackDeviceId`.
     func legacyDeviceId() -> String? {
         guard let id = defaults.string(forKey: legacyDeviceKey), !id.isEmpty else { return nil }
         return id

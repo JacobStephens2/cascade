@@ -35,7 +35,11 @@ sealed class Command {
     @Serializable @SerialName("platformPlaybackPaused") data object PlatformPlaybackPaused : Command()
     @Serializable @SerialName("platformPlaybackError") data class PlatformPlaybackError(val message: String) : Command()
     @Serializable @SerialName("setListeningTracking") data class SetListeningTracking(val enabled: Boolean) : Command()
-    @Serializable @SerialName("restoreListening") data class RestoreListening(val json: String, val fallbackDeviceId: String) : Command()
+    @Serializable @SerialName("restore") data class Restore(
+        val settingsJson: String,
+        val listeningJson: String,
+        val fallbackDeviceId: String,
+    ) : Command()
     @Serializable @SerialName("beginListeningSync") data class BeginListeningSync(val reason: SyncReason) : Command()
     @Serializable @SerialName("listeningSyncSucceeded") data class ListeningSyncSucceeded(val serverTotalMs: Long) : Command()
     @Serializable @SerialName("listeningSyncFailed") data class ListeningSyncFailed(val unauthorized: Boolean) : Command()

@@ -14,8 +14,9 @@ const DEVICE_B: &str = "device-b";
 /// has accrued `listened_ms` of confirmed audio.
 fn core_with_listening(listened_ms: u64) -> Core {
     let mut core = Core::new();
-    core.dispatch(Command::RestoreListening {
-        json: String::new(),
+    core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: String::new(),
         fallback_device_id: DEVICE_A.into(),
     });
     core.dispatch(Command::Play);
@@ -193,8 +194,9 @@ fn unauthorized_clears_the_session_and_keeps_local_listening() {
 fn restore_without_a_stored_id_adopts_and_persists_the_fallback() {
     let mut core = Core::new();
     let effects = core
-        .dispatch(Command::RestoreListening {
-            json: String::new(),
+        .dispatch(Command::Restore {
+            settings_json: String::new(),
+            listening_json: String::new(),
             fallback_device_id: DEVICE_A.into(),
         })
         .effects;
@@ -209,8 +211,9 @@ fn a_stored_id_wins_over_the_fallback_across_restarts() {
 
     let mut second = Core::new();
     let effects = second
-        .dispatch(Command::RestoreListening {
-            json: blob,
+        .dispatch(Command::Restore {
+            settings_json: String::new(),
+            listening_json: blob,
             fallback_device_id: DEVICE_B.into(),
         })
         .effects;
@@ -230,8 +233,9 @@ fn a_legacy_blob_without_an_id_keeps_its_total_and_adopts_the_fallback() {
     // to store themselves as the fallback, so the server slot is preserved.
     let legacy = r#"{"version":1,"deviceTotalMs":100,"syncedThroughMs":50,"trackingEnabled":true}"#;
     let mut core = Core::new();
-    core.dispatch(Command::RestoreListening {
-        json: legacy.into(),
+    core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: legacy.into(),
         fallback_device_id: DEVICE_B.into(),
     });
     assert_eq!(
@@ -261,8 +265,9 @@ fn reset_rotates_the_id_and_zeroes_the_slot_in_one_persisted_write() {
     // A crash right after that write restores to exactly the rotated, zeroed
     // slot — never the fresh id holding the old total.
     let mut restarted = Core::new();
-    restarted.dispatch(Command::RestoreListening {
-        json,
+    restarted.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: json,
         fallback_device_id: "unused".into(),
     });
     assert_eq!(
@@ -324,13 +329,6 @@ fn a_new_sync_waits_for_the_old_slots_put_to_settle_after_a_reset() {
 #[test]
 fn sync_commands_accept_the_shells_camel_case_json() {
     let cases = [
-        (
-            r#"{"type":"restoreListening","json":"","fallbackDeviceId":"d"}"#,
-            Command::RestoreListening {
-                json: String::new(),
-                fallback_device_id: "d".into(),
-            },
-        ),
         (
             r#"{"type":"beginListeningSync","reason":"threshold"}"#,
             Command::BeginListeningSync {

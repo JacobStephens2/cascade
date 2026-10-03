@@ -50,17 +50,6 @@ impl CascadeBridge {
         })
     }
 
-    /// Restore from previously persisted settings JSON. Returns a fresh-default
-    /// bridge if the JSON cannot be parsed — the caller is expected to log /
-    /// surface the error and move on, not get stuck in a startup loop.
-    #[uniffi::constructor]
-    pub fn restore_or_new(settings_json: String) -> std::sync::Arc<Self> {
-        let inner = Core::restore(&settings_json).unwrap_or_else(|_| Core::new());
-        std::sync::Arc::new(Self {
-            inner: Mutex::new(inner),
-        })
-    }
-
     /// Render the current snapshot as JSON.
     pub fn snapshot(&self) -> Result<String, CascadeError> {
         let core = self.inner.lock().expect("core mutex poisoned");
@@ -124,33 +113,8 @@ mod c_abi {
         }))
     }
 
-    /// `settings_json` may be `NULL` for a fresh-default session. Unparseable
-    /// JSON also falls back to a fresh default — the caller is expected to log
-    /// it once and move on, not loop on the error.
-    ///
     /// # Safety
-    /// `settings_json`, if non-null, must point to a valid C string (null-
-    /// terminated UTF-8).
-    #[no_mangle]
-    pub unsafe extern "C" fn cascade_restore_or_new(
-        settings_json: *const c_char,
-    ) -> *mut CoreHandle {
-        let core = if settings_json.is_null() {
-            Core::new()
-        } else {
-            match CStr::from_ptr(settings_json).to_str() {
-                Ok(s) => Core::restore(s).unwrap_or_else(|_| Core::new()),
-                Err(_) => Core::new(),
-            }
-        };
-        Box::into_raw(Box::new(CoreHandle {
-            inner: Mutex::new(core),
-        }))
-    }
-
-    /// # Safety
-    /// `handle` must come from `cascade_new` / `cascade_restore_or_new` and not
-    /// have been freed.
+    /// `handle` must come from `cascade_new` and not have been freed.
     #[no_mangle]
     pub unsafe extern "C" fn cascade_snapshot(handle: *mut CoreHandle) -> *mut c_char {
         if handle.is_null() {
@@ -206,8 +170,8 @@ mod c_abi {
     }
 
     /// # Safety
-    /// `handle` must be a pointer previously returned by `cascade_new` or
-    /// `cascade_restore_or_new`. Calling this twice on the same handle is UB.
+    /// `handle` must be a pointer previously returned by `cascade_new`. Calling
+    /// this twice on the same handle is UB.
     #[no_mangle]
     pub unsafe extern "C" fn cascade_free_handle(handle: *mut CoreHandle) {
         if !handle.is_null() {

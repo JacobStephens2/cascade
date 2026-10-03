@@ -56,8 +56,11 @@ pub struct State {
     /// (intent says Playing, audio never started) accrues nothing.
     pub audio_confirmed_playing: bool,
     /// Listening-time ledger. Restored from its own blob via
-    /// [`Command::RestoreListening`], not from settings.
+    /// [`Command::Restore`], separately from settings.
     pub listening: ListeningLedger,
+    /// Whether [`Command::Restore`] has already run. Only the first restore
+    /// takes effect, so a replayed stale blob can't undo a later reset.
+    restored: bool,
 }
 
 impl Default for State {
@@ -73,24 +76,18 @@ impl Default for State {
             last_error: None,
             audio_confirmed_playing: false,
             listening: ListeningLedger::default(),
+            restored: false,
         }
     }
 }
 
 impl State {
-    pub fn from_settings(s: PersistedSettings) -> Self {
-        Self {
-            intent: PlaybackIntent::Paused,
-            volume_percent: Some(clamp_volume(s.volume_percent)),
-            muted: false,
-            active_timer: None,
-            timer_just_completed: None,
-            default_sleep_minutes: s.default_sleep_minutes,
-            default_pomodoro_minutes: s.default_pomodoro_minutes,
-            last_error: None,
-            audio_confirmed_playing: false,
-            listening: ListeningLedger::default(),
-        }
+    /// Take the persisted fields from `s`. Playback intent, timers and mute
+    /// are live-session state and stay as they are.
+    pub fn apply_settings(&mut self, s: &PersistedSettings) {
+        self.volume_percent = Some(clamp_volume(s.volume_percent));
+        self.default_sleep_minutes = s.default_sleep_minutes;
+        self.default_pomodoro_minutes = s.default_pomodoro_minutes;
     }
 
     pub fn to_settings(&self) -> PersistedSettings {
@@ -247,14 +244,24 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.listening.tracking_enabled = enabled;
             push_persist_listening(state, effects);
         }
-        Command::RestoreListening {
-            json,
+        Command::Restore {
+            settings_json,
+            listening_json,
             fallback_device_id,
         } => {
-            // The shell hands back the opaque blob it stored. A missing or
-            // unparseable/unknown-version blob is ignored — restore must never
-            // lower a live counter, and the defaults are already correct.
-            if let Ok(restored) = serde_json::from_str::<PersistedListening>(&json) {
+            if state.restored {
+                return;
+            }
+            state.restored = true;
+            // The shell hands back the opaque blobs it stored. A missing or
+            // unparseable/unknown-version blob is ignored — the defaults are
+            // already correct, and restore must never lower a live counter.
+            if let Ok(settings) = serde_json::from_str::<PersistedSettings>(&settings_json) {
+                if settings.version == SETTINGS_VERSION {
+                    state.apply_settings(&settings);
+                }
+            }
+            if let Ok(restored) = serde_json::from_str::<PersistedListening>(&listening_json) {
                 if restored.version == crate::listening::LISTENING_VERSION {
                     let ledger = ListeningLedger::from_persisted(&restored);
                     state.listening.restore_from(&ledger);
@@ -599,8 +606,9 @@ mod tests {
         .unwrap();
         dispatch(
             &mut s,
-            Command::RestoreListening {
-                json: blob,
+            Command::Restore {
+                settings_json: String::new(),
+                listening_json: blob,
                 fallback_device_id: "fallback".into(),
             },
         );

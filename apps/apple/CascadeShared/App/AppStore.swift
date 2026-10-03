@@ -42,22 +42,21 @@ final class AppStore {
     /// Interval the tick loop is currently running at, in ms; 0 when stopped.
     private var tickIntervalMs: UInt64 = 0
 
-    /// Bootstrap from disk. Failures fall back to defaults — the user never
-    /// gets stuck on a startup error for something as trivial as malformed
-    /// settings JSON.
+    /// Bootstrap from disk. The core's `restore` keeps its defaults for any
+    /// missing or malformed blob, so the user never gets stuck on a startup
+    /// error for something as trivial as malformed settings JSON.
     static func bootstrap() -> AppStore {
         let settings = SettingsStore()
-        let json = settings.readSafely()
-        let bridge = CoreBridge(persistedSettings: json)
-        let store = AppStore(bridge: bridge, settings: settings)
-        // Restore the listening ledger once at startup — always, even with no
-        // blob, so the core can adopt a device id. The core ignores a
-        // missing/incompatible blob and never lets a restore lower the counter.
-        // The fallback id is the one this shell used to store itself (so an
-        // existing server slot carries over), else a fresh one; the core only
-        // adopts it if the blob carries no id.
-        store.dispatch(.restoreListening(
-            json: settings.readListeningSafely() ?? "",
+        let store = AppStore(bridge: CoreBridge(), settings: settings)
+        // Boot is one step: a fresh core, then one `restore` carrying both
+        // persisted blobs (empty = none) and a fallback device id. The core
+        // ignores a missing/incompatible blob and never lets a restore lower
+        // the counter. The fallback id is the one this shell used to store
+        // itself (so an existing server slot carries over), else a fresh one;
+        // the core only adopts it if the listening blob carries no id.
+        store.dispatch(.restore(
+            settingsJson: settings.readSafely() ?? "",
+            listeningJson: settings.readListeningSafely() ?? "",
             fallbackDeviceId: store.accountStore.legacyDeviceId() ?? UUID().uuidString))
         store.account = store.accountStore.readAccount()
         if store.account != nil {

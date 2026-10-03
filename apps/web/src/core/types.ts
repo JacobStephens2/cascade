@@ -19,7 +19,12 @@ export type Command =
   | { type: "platformPlaybackPaused" }
   | { type: "platformPlaybackError"; message: string }
   | { type: "setListeningTracking"; enabled: boolean }
-  | { type: "restoreListening"; json: string; fallbackDeviceId: string }
+  | {
+      type: "restore";
+      settingsJson: string;
+      listeningJson: string;
+      fallbackDeviceId: string;
+    }
   | { type: "beginListeningSync"; reason: SyncReason }
   | { type: "listeningSyncSucceeded"; serverTotalMs: number }
   | { type: "listeningSyncFailed"; unauthorized: boolean }

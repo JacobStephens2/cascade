@@ -16,12 +16,8 @@ final class CoreBridge {
     private let encoder: JSONEncoder
     private let decoder: JSONDecoder
 
-    init(persistedSettings: String?) {
-        if let json = persistedSettings, !json.isEmpty {
-            self.bridge = CascadeBridge.restoreOrNew(settingsJson: json)
-        } else {
-            self.bridge = CascadeBridge()
-        }
+    init() {
+        self.bridge = CascadeBridge()
         let enc = JSONEncoder()
         enc.outputFormatting = [.withoutEscapingSlashes]
         self.encoder = enc
