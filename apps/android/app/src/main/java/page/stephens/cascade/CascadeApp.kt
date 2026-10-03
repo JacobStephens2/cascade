@@ -20,9 +20,10 @@ class CascadeApp : Application() {
         // Settings are read async; the bridge handles a missing/empty JSON
         // by booting with defaults.
         val accountStore = AccountStore(this)
-        // The legacy device id is read once, at restore, so an existing
-        // server slot carries over to the core-owned id.
-        bridgeHolder = CascadeBridgeHolder(settingsStore) { accountStore.legacyDeviceId() }
-        syncManager = SyncManager(bridgeHolder, accountStore)
+        // The account blob and the legacy device id are read once, at restore;
+        // the device id so an existing server slot carries over to the
+        // core-owned id.
+        bridgeHolder = CascadeBridgeHolder(settingsStore, accountStore)
+        syncManager = SyncManager(bridgeHolder)
     }
 }

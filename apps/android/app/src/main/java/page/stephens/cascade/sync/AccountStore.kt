@@ -5,40 +5,47 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.first
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 
 private val Context.accountDataStore by preferencesDataStore("cascade-account")
 
-data class Account(val sessionToken: String, val email: String)
+/** The version-less shape this shell stored before the core held the account. */
+@Serializable
+private data class LegacyAccount(val sessionToken: String, val email: String)
 
 /**
- * Persists the optional sync account (session token + email). The per-device
- * id (this device's G-Counter slot) now lives in the core's listening blob;
- * this store only exposes the id older builds kept here, so the core can adopt
- * it once and an existing server slot carries over.
+ * Stores the core's account blob (JSON produced by the Rust `PersistAccount`
+ * effect), opaque to Kotlin. Before the core held the account this store kept
+ * the session token and email under their own keys; on the first launch after
+ * upgrading those are handed to the core as the version-less
+ * `{ sessionToken, email }` it also reads, so an existing sign-in survives.
+ *
+ * The per-device id (this device's G-Counter slot) lives in the core's
+ * listening blob; this store only exposes the id older builds kept here, so
+ * the core can adopt it once and an existing server slot carries over.
  */
 class AccountStore(private val context: Context) {
-    private val tokenKey = stringPreferencesKey("session_token")
-    private val emailKey = stringPreferencesKey("email")
+    private val accountKey = stringPreferencesKey("account_v1")
+    private val legacyTokenKey = stringPreferencesKey("session_token")
+    private val legacyEmailKey = stringPreferencesKey("email")
     private val deviceKey = stringPreferencesKey("device_id")
 
-    suspend fun readAccount(): Account? {
+    /** The stored blob, the legacy account in the shape the core reads, or `""`. */
+    suspend fun read(): String {
         val prefs = context.accountDataStore.data.first()
-        val token = prefs[tokenKey]
-        val email = prefs[emailKey]
-        return if (token != null && email != null) Account(token, email) else null
+        prefs[accountKey]?.let { return it }
+        val token = prefs[legacyTokenKey] ?: return ""
+        val email = prefs[legacyEmailKey] ?: return ""
+        return Json.encodeToString(LegacyAccount.serializer(), LegacyAccount(token, email))
     }
 
-    suspend fun writeAccount(account: Account) {
+    /** Store the blob verbatim; an empty [json] deletes the stored account. */
+    suspend fun write(json: String) {
         context.accountDataStore.edit {
-            it[tokenKey] = account.sessionToken
-            it[emailKey] = account.email
-        }
-    }
-
-    suspend fun clearAccount() {
-        context.accountDataStore.edit {
-            it.remove(tokenKey)
-            it.remove(emailKey)
+            if (json.isEmpty()) it.remove(accountKey) else it[accountKey] = json
+            it.remove(legacyTokenKey)
+            it.remove(legacyEmailKey)
         }
     }
 
