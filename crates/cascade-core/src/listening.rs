@@ -168,9 +168,10 @@ impl ListeningLedger {
     }
 
     /// The in-flight PUT failed. Nothing was acknowledged; the next trigger
-    /// may try again.
-    pub fn sync_failed(&mut self) {
-        self.in_flight = None;
+    /// may try again. Returns `false` if no sync for the current slot was in
+    /// flight, so a superseded request's failure means nothing.
+    pub fn sync_failed(&mut self) -> bool {
+        matches!(self.in_flight.take(), Some(InFlight::Sent { .. }))
     }
 
     /// Take `fallback` as this device's id if it doesn't have one yet.

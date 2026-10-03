@@ -105,7 +105,7 @@ class CascadeBridgeHolder(
     private fun forHandlers(effects: List<Effect>): List<Effect> = effects.filter {
         when (it) {
             is Effect.PersistSettings, is Effect.PersistListening, is Effect.PersistAccount,
-            is Effect.PushListening, Effect.ClearSession,
+            is Effect.PushListening,
             is Effect.SendSignInLink, is Effect.VerifySignInToken, is Effect.RevokeSession,
             is Effect.DeleteServerListening, is Effect.DeleteServerAccount -> false
             else -> true

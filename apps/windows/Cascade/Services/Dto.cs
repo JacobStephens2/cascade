@@ -128,7 +128,6 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
 [JsonDerivedType(typeof(PersistSettingsEffect), "persistSettings")]
 [JsonDerivedType(typeof(PersistListeningEffect), "persistListening")]
 [JsonDerivedType(typeof(PushListeningEffect), "pushListening")]
-[JsonDerivedType(typeof(ClearSessionEffect), "clearSession")]
 [JsonDerivedType(typeof(SendSignInLinkEffect), "sendSignInLink")]
 [JsonDerivedType(typeof(VerifySignInTokenEffect), "verifySignInToken")]
 [JsonDerivedType(typeof(RevokeSessionEffect), "revokeSession")]
@@ -143,11 +142,8 @@ public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(double Gain) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
-// SessionToken is null only for a shell that keeps its own account; never here.
+// SessionToken is null only when restored without accountJson; never here.
 public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs, string? SessionToken) : CascadeEffect;
-// Only sent to a shell that keeps its own account; never here. Still decoded,
-// so an unknown discriminator can't throw.
-public sealed record ClearSessionEffect : CascadeEffect;
 // Account requests: carry each over HTTP and settle it with its success
 // command or AccountRequestFailed. RevokeSession is fire-and-forget.
 public sealed record SendSignInLinkEffect(string Email) : CascadeEffect;

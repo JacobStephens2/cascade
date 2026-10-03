@@ -760,7 +760,6 @@ fn a_failed_account_delete_stays_signed_in() {
 fn assert_signed_out_by_401(core: &mut Core, effects: &[Effect]) {
     assert_eq!(persisted_accounts(effects), vec![String::new()]);
     assert_eq!(persisted_listening(effects).len(), 1, "{effects:?}");
-    assert!(!effects.contains(&Effect::ClearSession));
     assert!(!effects
         .iter()
         .any(|e| matches!(e, Effect::RevokeSession { .. })));

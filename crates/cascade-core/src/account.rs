@@ -70,9 +70,8 @@ impl AccountStatus {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Account {
     /// Whether the shell has handed the account to the core, by restoring
-    /// with an `accountJson` (even an empty one). A shell that has not been
-    /// ported keeps its own account: the core then syncs without a session
-    /// and answers a 401 with [`crate::Effect::ClearSession`], as before.
+    /// with an `accountJson` (even an empty one). Without one, the core syncs
+    /// without a session; a 401 still signs out.
     pub held_by_core: bool,
     pub session: Option<Session>,
     pub pending: Option<PendingRequest>,
@@ -90,7 +89,7 @@ impl Account {
     }
 
     /// Whether a listening sync may start: the core holds a session, or the
-    /// shell still keeps the account itself.
+    /// shell restored without `accountJson`.
     pub fn may_sync(&self) -> bool {
         !self.held_by_core || self.session.is_some()
     }

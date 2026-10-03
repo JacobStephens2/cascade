@@ -85,8 +85,8 @@ pub enum Command {
     /// handed the shell, or the version-less `{ sessionToken, email }` a shell
     /// stored before the core held the account. Empty or garbage means no
     /// account. Sending the field at all — even empty — hands the account to
-    /// the core; a shell that omits it keeps its own account, and the core
-    /// syncs and answers a 401 as it did before it held one.
+    /// the core; a shell that omits it syncs without a session token, and a
+    /// 401 still signs out.
     Restore {
         settings_json: String,
         listening_json: String,
@@ -107,9 +107,8 @@ pub enum Command {
     /// as synced. Moves the display baseline only; never lowers the device slot.
     ListeningSyncSucceeded { server_total_ms: u64 },
     /// The in-flight listening PUT failed. `unauthorized` is true for an HTTP
-    /// 401: the session is gone. If the core holds the account it signs out
-    /// (see [`Command::AccountRequestFailed`]); otherwise it answers with
-    /// [`crate::Effect::ClearSession`]. Listening stays local either way.
+    /// 401: the session is gone, and the core signs out (see
+    /// [`Command::AccountRequestFailed`]). Listening stays local.
     ListeningSyncFailed { unauthorized: bool },
     /// "Delete my listening data": zero this device's slot, forget the server
     /// aggregate, and rotate to `new_device_id` (a fresh random id from the
