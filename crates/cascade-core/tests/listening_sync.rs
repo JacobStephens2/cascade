@@ -291,18 +291,6 @@ fn the_failure_pacing_is_never_persisted() {
 // ---- reasons a shell sends ---------------------------------------------------
 
 #[test]
-fn a_threshold_request_from_a_shell_still_waits_for_thirty_seconds() {
-    let mut below = restored_with_unsynced(LISTENING_SYNC_THRESHOLD_MS - 1, true);
-    assert_eq!(begin(&mut below, SyncReason::Threshold), None);
-
-    let mut at = restored_with_unsynced(LISTENING_SYNC_THRESHOLD_MS, true);
-    assert_eq!(
-        begin(&mut at, SyncReason::Threshold),
-        Some((DEVICE_A.into(), LISTENING_SYNC_THRESHOLD_MS))
-    );
-}
-
-#[test]
 fn flush_sends_any_unsynced_time_but_not_nothing() {
     let mut core = core_with_listening(0);
     assert_eq!(begin(&mut core, SyncReason::Flush), None);
@@ -581,12 +569,6 @@ fn a_new_sync_waits_for_the_old_slots_put_to_settle_after_a_reset() {
 fn sync_commands_accept_the_shells_camel_case_json() {
     let cases = [
         (
-            r#"{"type":"beginListeningSync","reason":"threshold"}"#,
-            Command::BeginListeningSync {
-                reason: SyncReason::Threshold,
-            },
-        ),
-        (
             r#"{"type":"beginListeningSync","reason":"flush"}"#,
             Command::BeginListeningSync {
                 reason: SyncReason::Flush,
@@ -617,6 +599,12 @@ fn sync_commands_accept_the_shells_camel_case_json() {
         let parsed: Command = serde_json::from_str(json).expect(json);
         assert_eq!(parsed, expected, "{json}");
     }
+}
+
+#[test]
+fn a_shell_cannot_ask_for_a_threshold_sync() {
+    let json = r#"{"type":"beginListeningSync","reason":"threshold"}"#;
+    assert!(serde_json::from_str::<Command>(json).is_err());
 }
 
 #[test]

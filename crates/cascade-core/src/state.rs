@@ -151,13 +151,17 @@ fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
     });
 }
 
-/// Start a listening sync if there is anything to send and the account allows
-/// it, answering with one `PushListening`.
-fn begin_listening_sync(state: &mut State, reason: SyncReason, effects: &mut Vec<Effect>) {
+/// Start a listening sync if `begin` finds anything to send and the account
+/// allows it, answering with one `PushListening`.
+fn begin_listening_sync(
+    state: &mut State,
+    effects: &mut Vec<Effect>,
+    begin: impl FnOnce(&mut ListeningLedger) -> Option<(String, u64)>,
+) {
     let Some(session_token) = state.account.session_token() else {
         return;
     };
-    if let Some((device_id, device_total_ms)) = state.listening.begin_sync(reason) {
+    if let Some((device_id, device_total_ms)) = begin(&mut state.listening) {
         effects.push(Effect::PushListening {
             device_id,
             device_total_ms,
@@ -315,7 +319,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             // it is also the one place the routine sync is offered.
             if was_accruing {
                 push_persist_listening(state, effects);
-                begin_listening_sync(state, SyncReason::Threshold, effects);
+                begin_listening_sync(state, effects, ListeningLedger::begin_threshold_sync);
             }
         }
         Command::PlatformPlaybackStarted => {
@@ -379,7 +383,9 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 push_persist_listening(state, effects);
             }
         }
-        Command::BeginListeningSync { reason } => begin_listening_sync(state, reason, effects),
+        Command::BeginListeningSync { reason } => {
+            begin_listening_sync(state, effects, |l| l.begin_sync(reason))
+        }
         Command::ListeningSyncSucceeded { server_total_ms } => {
             if state.listening.sync_succeeded(server_total_ms) {
                 push_persist_listening(state, effects);
@@ -488,7 +494,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 email,
             });
             push_persist_account(state, effects);
-            begin_listening_sync(state, SyncReason::Refresh, effects);
+            begin_listening_sync(state, effects, |l| l.begin_sync(SyncReason::Refresh));
         }
         Command::ListeningDataDeleted { new_device_id } => {
             if !state.account.settle(PendingRequest::DeleteListening) {

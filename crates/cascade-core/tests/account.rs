@@ -381,11 +381,7 @@ fn signed_out_the_account_section_is_empty() {
 fn nothing_syncs_while_signed_out() {
     let mut core = signed_out();
     listen(&mut core, 40_000);
-    for reason in [
-        SyncReason::Threshold,
-        SyncReason::Flush,
-        SyncReason::Refresh,
-    ] {
+    for reason in [SyncReason::Flush, SyncReason::Refresh] {
         assert!(begin(&mut core, reason).is_empty(), "{reason:?}");
     }
 }
