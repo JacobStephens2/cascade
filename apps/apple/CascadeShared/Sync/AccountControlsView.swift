@@ -21,9 +21,9 @@ struct AccountControlsView: View {
                     Text(signedInLabel).font(.callout)
                     HStack(spacing: 12) {
                         Button("Sign out") { store.dispatch(.signOut) }
-                        Button("Delete data") { store.dispatch(.deleteListeningData) }
+                        Button("Delete data") { store.dispatch(.deleteListeningData(newDeviceId: UUID().uuidString)) }
                             .disabled(account.busy)
-                        Button("Delete account", role: .destructive) { store.dispatch(.deleteAccount) }
+                        Button("Delete account", role: .destructive) { store.dispatch(.deleteAccount(newDeviceId: UUID().uuidString)) }
                             .disabled(account.busy)
                     }
                     .buttonStyle(.borderless)
