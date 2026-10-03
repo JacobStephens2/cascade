@@ -151,15 +151,18 @@ final class AppStore {
 
     /// Entry point for `.onOpenURL`: the core finds the token in the link.
     func handleOpenURL(_ url: URL) {
+        guard syncAvailable else { return }
         dispatch(.submitSignInLink(input: url.absoluteString))
     }
 
     /// Carry one request effect over HTTP and settle it with the core. Every
     /// request but `revokeSession` must be settled, or the core won't start
-    /// another; the settle's own effects come back through `apply`.
+    /// another; the settle's own effects come back through `apply`. Only
+    /// reached with sync available: `sync`, `handleOpenURL` and the account
+    /// controls are the only ways a request starts.
     private func carry(_ effect: Effect) {
-        guard syncAvailable else { return }
         let api = syncApi
+        let accountFailed = { (unauthorized: Bool) in Command.accountRequestFailed(unauthorized: unauthorized) }
         Task { @MainActor in
             switch effect {
             case .pushListening(let deviceId, let deviceTotalMs, let sessionToken):
@@ -178,14 +181,14 @@ final class AppStore {
                         try await api.requestLink(email: email)
                         return .signInLinkSent
                     },
-                    failed: { .accountRequestFailed(unauthorized: $0) })
+                    failed: accountFailed)
             case .verifySignInToken(let token):
                 await settle(
                     {
                         let res = try await api.verify(token: token)
                         return .signInVerified(sessionToken: res.sessionToken, email: res.email)
                     },
-                    failed: { .accountRequestFailed(unauthorized: $0) })
+                    failed: accountFailed)
             case .revokeSession(let sessionToken):
                 // Already gone server-side or offline — local sign-out stands.
                 try? await api.logout(token: sessionToken)
@@ -195,15 +198,17 @@ final class AppStore {
                         try await api.deleteListening(token: sessionToken)
                         return .listeningDataDeleted(newDeviceId: UUID().uuidString)
                     },
-                    failed: { .accountRequestFailed(unauthorized: $0) })
+                    failed: accountFailed)
             case .deleteServerAccount(let sessionToken):
                 await settle(
                     {
                         try await api.deleteAccount(token: sessionToken)
                         return .accountDeleted(newDeviceId: UUID().uuidString)
                     },
-                    failed: { .accountRequestFailed(unauthorized: $0) })
-            default:
+                    failed: accountFailed)
+            case .startPlayback, .pausePlayback, .setPlatformVolume, .persistSettings,
+                 .persistListening, .clearSession, .persistAccount:
+                // Not requests: `apply` handles these itself.
                 break
             }
         }
