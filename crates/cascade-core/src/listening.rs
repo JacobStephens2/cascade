@@ -34,7 +34,7 @@ pub const MAX_TICK_ACCRUAL_MS: u64 = 5_000;
 pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
 
 /// Why a shell is asking to sync. The shell decides *when it can* talk
-/// (reachability, lifecycle, auth); the reason lets the core decide *whether
+/// (reachability, lifecycle); the reason lets the core decide *whether
 /// there is anything to say*.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -168,9 +168,10 @@ impl ListeningLedger {
     }
 
     /// The in-flight PUT failed. Nothing was acknowledged; the next trigger
-    /// may try again.
-    pub fn sync_failed(&mut self) {
-        self.in_flight = None;
+    /// may try again. Returns `false` if no sync for the current slot was in
+    /// flight, so a superseded request's failure means nothing.
+    pub fn sync_failed(&mut self) -> bool {
+        matches!(self.in_flight.take(), Some(InFlight::Sent { .. }))
     }
 
     /// Take `fallback` as this device's id if it doesn't have one yet.
@@ -196,6 +197,18 @@ impl ListeningLedger {
         self.synced_through_ms = 0;
         self.server_total_ms = None;
         self.device_id = Some(new_device_id);
+        if self.in_flight.is_some() {
+            self.in_flight = Some(InFlight::Superseded);
+        }
+    }
+
+    /// Forget the cross-device total when the account goes away (sign-out, a
+    /// 401, account deleted): the display falls back to this device's slot.
+    /// Any in-flight sync belonged to that account and becomes
+    /// [`InFlight::Superseded`], so its late ack can't bring the total back.
+    /// The device slot and its sync bookkeeping are untouched.
+    pub fn forget_server(&mut self) {
+        self.server_total_ms = None;
         if self.in_flight.is_some() {
             self.in_flight = Some(InFlight::Superseded);
         }
@@ -343,6 +356,21 @@ mod tests {
         assert_eq!(l.server_total_ms, None);
         assert_eq!(l.device_id.as_deref(), Some("rotated"));
         assert!(l.tracking_enabled, "deleting data must not flip the toggle");
+    }
+
+    #[test]
+    fn forget_server_drops_the_total_and_supersedes_but_keeps_the_slot() {
+        let mut l = ListeningLedger::default();
+        l.accrue(4_000);
+        sync(&mut l, 9_000);
+        l.accrue(1_000);
+        l.begin_sync(SyncReason::Flush).expect("nothing in flight");
+        l.forget_server();
+        assert_eq!(l.server_total_ms, None);
+        assert_eq!(l.in_flight, Some(InFlight::Superseded));
+        assert_eq!(l.device_total_ms, 5_000);
+        assert_eq!(l.synced_through_ms, 4_000);
+        assert_eq!(l.displayed_total_ms(), 5_000);
     }
 
     #[test]

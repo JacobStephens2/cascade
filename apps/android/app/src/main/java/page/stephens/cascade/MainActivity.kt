@@ -53,10 +53,11 @@ class MainActivity : ComponentActivity() {
         handleAuthDeepLink(intent)
     }
 
-    /** Complete a magic-link sign-in if we were opened via .../auth?token=... */
+    /** Finish a magic-link sign-in if we were opened via .../auth?token=...
+     *  The core reads the token out of the link. */
     private fun handleAuthDeepLink(intent: Intent?) {
-        val token = intent?.data?.getQueryParameter("token") ?: return
-        (application as CascadeApp).syncManager.completeSignIn(token)
+        val link = intent?.data?.toString() ?: return
+        (application as CascadeApp).syncManager.submitSignInLink(link)
     }
 
     override fun onStop() {

@@ -19,16 +19,30 @@ enum Command: Codable {
     case platformPlaybackPaused
     case platformPlaybackError(message: String)
     case setListeningTracking(enabled: Bool)
-    case restore(settingsJson: String, listeningJson: String, fallbackDeviceId: String)
+    /// `accountJson` is the stored account blob, verbatim; `""` for none.
+    /// Always sent, so the core holds the account.
+    case restore(settingsJson: String, listeningJson: String, fallbackDeviceId: String, accountJson: String)
     case beginListeningSync(reason: SyncReason)
     case listeningSyncSucceeded(serverTotalMs: UInt64)
     case listeningSyncFailed(unauthorized: Bool)
     case resetListeningData(newDeviceId: String)
+    case requestSignInLink(email: String)
+    /// The whole pasted or opened sign-in link, or the bare token.
+    case submitSignInLink(input: String)
+    case signOut
+    case deleteListeningData
+    case deleteAccount
+    case signInLinkSent
+    case signInVerified(sessionToken: String, email: String)
+    case listeningDataDeleted(newDeviceId: String)
+    case accountDeleted(newDeviceId: String)
+    /// `unauthorized` is true for an HTTP 401.
+    case accountRequestFailed(unauthorized: Bool)
 
     private enum CodingKeys: String, CodingKey {
         case type, percent, minutes, elapsedMs, message, enabled, settingsJson, listeningJson,
-             fallbackDeviceId, reason,
-             serverTotalMs, unauthorized, newDeviceId
+             fallbackDeviceId, accountJson, reason,
+             serverTotalMs, unauthorized, newDeviceId, email, input, sessionToken
     }
 
     func encode(to encoder: Encoder) throws {
@@ -60,11 +74,12 @@ enum Command: Codable {
         case .setListeningTracking(let enabled):
             try c.encode("setListeningTracking", forKey: .type)
             try c.encode(enabled, forKey: .enabled)
-        case .restore(let settingsJson, let listeningJson, let fallbackDeviceId):
+        case .restore(let settingsJson, let listeningJson, let fallbackDeviceId, let accountJson):
             try c.encode("restore", forKey: .type)
             try c.encode(settingsJson, forKey: .settingsJson)
             try c.encode(listeningJson, forKey: .listeningJson)
             try c.encode(fallbackDeviceId, forKey: .fallbackDeviceId)
+            try c.encode(accountJson, forKey: .accountJson)
         case .beginListeningSync(let reason):
             try c.encode("beginListeningSync", forKey: .type)
             try c.encode(reason, forKey: .reason)
@@ -77,6 +92,29 @@ enum Command: Codable {
         case .resetListeningData(let newDeviceId):
             try c.encode("resetListeningData", forKey: .type)
             try c.encode(newDeviceId, forKey: .newDeviceId)
+        case .requestSignInLink(let email):
+            try c.encode("requestSignInLink", forKey: .type)
+            try c.encode(email, forKey: .email)
+        case .submitSignInLink(let input):
+            try c.encode("submitSignInLink", forKey: .type)
+            try c.encode(input, forKey: .input)
+        case .signOut: try c.encode("signOut", forKey: .type)
+        case .deleteListeningData: try c.encode("deleteListeningData", forKey: .type)
+        case .deleteAccount: try c.encode("deleteAccount", forKey: .type)
+        case .signInLinkSent: try c.encode("signInLinkSent", forKey: .type)
+        case .signInVerified(let sessionToken, let email):
+            try c.encode("signInVerified", forKey: .type)
+            try c.encode(sessionToken, forKey: .sessionToken)
+            try c.encode(email, forKey: .email)
+        case .listeningDataDeleted(let newDeviceId):
+            try c.encode("listeningDataDeleted", forKey: .type)
+            try c.encode(newDeviceId, forKey: .newDeviceId)
+        case .accountDeleted(let newDeviceId):
+            try c.encode("accountDeleted", forKey: .type)
+            try c.encode(newDeviceId, forKey: .newDeviceId)
+        case .accountRequestFailed(let unauthorized):
+            try c.encode("accountRequestFailed", forKey: .type)
+            try c.encode(unauthorized, forKey: .unauthorized)
         }
     }
 
@@ -103,7 +141,8 @@ enum Command: Codable {
             self = .restore(
                 settingsJson: try c.decode(String.self, forKey: .settingsJson),
                 listeningJson: try c.decode(String.self, forKey: .listeningJson),
-                fallbackDeviceId: try c.decode(String.self, forKey: .fallbackDeviceId))
+                fallbackDeviceId: try c.decode(String.self, forKey: .fallbackDeviceId),
+                accountJson: try c.decodeIfPresent(String.self, forKey: .accountJson) ?? "")
         case "beginListeningSync":
             self = .beginListeningSync(reason: try c.decode(SyncReason.self, forKey: .reason))
         case "listeningSyncSucceeded":
@@ -112,6 +151,24 @@ enum Command: Codable {
             self = .listeningSyncFailed(unauthorized: try c.decode(Bool.self, forKey: .unauthorized))
         case "resetListeningData":
             self = .resetListeningData(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
+        case "requestSignInLink":
+            self = .requestSignInLink(email: try c.decode(String.self, forKey: .email))
+        case "submitSignInLink":
+            self = .submitSignInLink(input: try c.decode(String.self, forKey: .input))
+        case "signOut": self = .signOut
+        case "deleteListeningData": self = .deleteListeningData
+        case "deleteAccount": self = .deleteAccount
+        case "signInLinkSent": self = .signInLinkSent
+        case "signInVerified":
+            self = .signInVerified(
+                sessionToken: try c.decode(String.self, forKey: .sessionToken),
+                email: try c.decode(String.self, forKey: .email))
+        case "listeningDataDeleted":
+            self = .listeningDataDeleted(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
+        case "accountDeleted":
+            self = .accountDeleted(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
+        case "accountRequestFailed":
+            self = .accountRequestFailed(unauthorized: try c.decode(Bool.self, forKey: .unauthorized))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown command type: \(type)")
         }
@@ -139,10 +196,20 @@ enum Effect: Decodable {
     case setPlatformVolume(gain: Float)
     case persistSettings(json: String)
     case persistListening(json: String)
-    case pushListening(deviceId: String, deviceTotalMs: UInt64)
-    case clearSession
+    /// `sessionToken` is the bearer token to send.
+    case pushListening(deviceId: String, deviceTotalMs: UInt64, sessionToken: String)
+    case sendSignInLink(email: String)
+    case verifySignInToken(token: String)
+    /// Fire-and-forget: no settle command.
+    case revokeSession(sessionToken: String)
+    case deleteServerListening(sessionToken: String)
+    case deleteServerAccount(sessionToken: String)
+    /// Store verbatim; `""` means delete the stored account.
+    case persistAccount(json: String)
 
-    private enum CodingKeys: String, CodingKey { case type, gain, json, deviceId, deviceTotalMs }
+    private enum CodingKeys: String, CodingKey {
+        case type, gain, json, deviceId, deviceTotalMs, sessionToken, email, token
+    }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -161,9 +228,20 @@ enum Effect: Decodable {
         case "pushListening":
             self = .pushListening(
                 deviceId: try c.decode(String.self, forKey: .deviceId),
-                deviceTotalMs: try c.decode(UInt64.self, forKey: .deviceTotalMs))
-        case "clearSession":
-            self = .clearSession
+                deviceTotalMs: try c.decode(UInt64.self, forKey: .deviceTotalMs),
+                sessionToken: try c.decode(String.self, forKey: .sessionToken))
+        case "sendSignInLink":
+            self = .sendSignInLink(email: try c.decode(String.self, forKey: .email))
+        case "verifySignInToken":
+            self = .verifySignInToken(token: try c.decode(String.self, forKey: .token))
+        case "revokeSession":
+            self = .revokeSession(sessionToken: try c.decode(String.self, forKey: .sessionToken))
+        case "deleteServerListening":
+            self = .deleteServerListening(sessionToken: try c.decode(String.self, forKey: .sessionToken))
+        case "deleteServerAccount":
+            self = .deleteServerAccount(sessionToken: try c.decode(String.self, forKey: .sessionToken))
+        case "persistAccount":
+            self = .persistAccount(json: try c.decode(String.self, forKey: .json))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown effect type: \(type)")
         }
@@ -211,6 +289,18 @@ struct ListeningSnapshot: Decodable, Equatable {
     let totalLabel: String
 }
 
+/// The account view. Never carries the session token.
+struct AccountSnapshot: Decodable, Equatable {
+    /// nil when signed out.
+    let email: String?
+    /// "Syncing · {email}"; nil when signed out.
+    let signedInLabel: String?
+    /// What the user was last told; nil when there is nothing to say.
+    let statusLabel: String?
+    /// An account request is out; every account control but sign-out waits.
+    let busy: Bool
+}
+
 struct Snapshot: Decodable, Equatable {
     let title: String
     let subtitle: String
@@ -224,6 +314,7 @@ struct Snapshot: Decodable, Equatable {
     let timerOptions: TimerOptions
     let errorMessage: String?
     let listening: ListeningSnapshot
+    let account: AccountSnapshot
     /// How often to send `.tick`, in ms; 0 means stop. The core owns the cadence.
     let tickIntervalMs: UInt64
 }

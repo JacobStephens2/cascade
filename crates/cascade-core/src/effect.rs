@@ -32,14 +32,33 @@ pub enum Effect {
     /// PUT this device's slot to the listening endpoint, exactly as given.
     /// Emitted only in answer to [`crate::Command::BeginListeningSync`]; the
     /// shell must settle it with `ListeningSyncSucceeded` or
-    /// `ListeningSyncFailed`, or no further sync will start.
+    /// `ListeningSyncFailed`, or no further sync will start. `session_token`
+    /// is the bearer token to send; there is never a push without one.
     PushListening {
         device_id: String,
         device_total_ms: u64,
+        session_token: String,
     },
-    /// The server rejected the session (401). The shell drops its stored
-    /// session token and tells the user to sign in again.
-    ClearSession,
+
+    /// POST a sign-in link request for `email`. Settle with
+    /// `SignInLinkSent` or `AccountRequestFailed`.
+    SendSignInLink { email: String },
+    /// POST `token` for verification. Settle with `SignInVerified` or
+    /// `AccountRequestFailed`.
+    VerifySignInToken { token: String },
+    /// POST a sign-out for `session_token`. Fire-and-forget: there is no settle
+    /// command, and its result changes nothing — sign-out is local.
+    RevokeSession { session_token: String },
+    /// DELETE the server's listening data. Settle with `ListeningDataDeleted`
+    /// or `AccountRequestFailed`.
+    DeleteServerListening { session_token: String },
+    /// DELETE the account. Settle with `AccountDeleted` or
+    /// `AccountRequestFailed`.
+    DeleteServerAccount { session_token: String },
+    /// Persist the account blob, verbatim, and hand it back as `accountJson`
+    /// in [`crate::Command::Restore`] on the next launch. An empty `json`
+    /// means "delete the stored account".
+    PersistAccount { json: String },
 }
 
 #[cfg(test)]

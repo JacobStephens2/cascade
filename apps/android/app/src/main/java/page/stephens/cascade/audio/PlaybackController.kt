@@ -127,9 +127,9 @@ class PlaybackController(
                 }
                 Effect.PausePlayback -> c.pause()
                 is Effect.SetPlatformVolume -> c.volume = effect.gain
-                is Effect.PersistSettings -> { /* handled by CascadeBridgeHolder */ }
-                is Effect.PersistListening -> { /* handled by CascadeBridgeHolder */ }
-                is Effect.PushListening, Effect.ClearSession -> { /* handled by SyncManager */ }
+                // Persists are written by CascadeBridgeHolder; sync and account
+                // requests are carried by SyncManager.
+                else -> {}
             }
         }
     }

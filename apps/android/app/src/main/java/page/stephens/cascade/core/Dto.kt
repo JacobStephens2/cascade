@@ -39,11 +39,23 @@ sealed class Command {
         val settingsJson: String,
         val listeningJson: String,
         val fallbackDeviceId: String,
+        /** The stored account blob, verbatim; `""` for none. Always sent: the core holds the account. */
+        val accountJson: String,
     ) : Command()
     @Serializable @SerialName("beginListeningSync") data class BeginListeningSync(val reason: SyncReason) : Command()
     @Serializable @SerialName("listeningSyncSucceeded") data class ListeningSyncSucceeded(val serverTotalMs: Long) : Command()
     @Serializable @SerialName("listeningSyncFailed") data class ListeningSyncFailed(val unauthorized: Boolean) : Command()
     @Serializable @SerialName("resetListeningData") data class ResetListeningData(val newDeviceId: String) : Command()
+    @Serializable @SerialName("requestSignInLink") data class RequestSignInLink(val email: String) : Command()
+    @Serializable @SerialName("submitSignInLink") data class SubmitSignInLink(val input: String) : Command()
+    @Serializable @SerialName("signOut") data object SignOut : Command()
+    @Serializable @SerialName("deleteListeningData") data object DeleteListeningData : Command()
+    @Serializable @SerialName("deleteAccount") data object DeleteAccount : Command()
+    @Serializable @SerialName("signInLinkSent") data object SignInLinkSent : Command()
+    @Serializable @SerialName("signInVerified") data class SignInVerified(val sessionToken: String, val email: String) : Command()
+    @Serializable @SerialName("listeningDataDeleted") data class ListeningDataDeleted(val newDeviceId: String) : Command()
+    @Serializable @SerialName("accountDeleted") data class AccountDeleted(val newDeviceId: String) : Command()
+    @Serializable @SerialName("accountRequestFailed") data class AccountRequestFailed(val unauthorized: Boolean) : Command()
 }
 
 /** Why the shell is asking to sync; the core decides whether it's worth a PUT. */
@@ -63,8 +75,19 @@ sealed class Effect {
     @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val gain: Float) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
     @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
-    @Serializable @SerialName("pushListening") data class PushListening(val deviceId: String, val deviceTotalMs: Long) : Effect()
-    @Serializable @SerialName("clearSession") data object ClearSession : Effect()
+    @Serializable @SerialName("pushListening") data class PushListening(
+        val deviceId: String,
+        val deviceTotalMs: Long,
+        val sessionToken: String,
+    ) : Effect()
+    @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect()
+    @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect()
+    /** Fire-and-forget: no settle command. */
+    @Serializable @SerialName("revokeSession") data class RevokeSession(val sessionToken: String) : Effect()
+    @Serializable @SerialName("deleteServerListening") data class DeleteServerListening(val sessionToken: String) : Effect()
+    @Serializable @SerialName("deleteServerAccount") data class DeleteServerAccount(val sessionToken: String) : Effect()
+    /** Store verbatim; `""` means delete the stored account. */
+    @Serializable @SerialName("persistAccount") data class PersistAccount(val json: String) : Effect()
 }
 
 @Serializable
@@ -117,6 +140,19 @@ data class ListeningSnapshot(
     val totalLabel: String,
 )
 
+/** The account view. Never carries the session token. */
+@Serializable
+data class AccountSnapshot(
+    /** Null when signed out. */
+    val email: String? = null,
+    /** "Syncing · {email}"; null when signed out. */
+    val signedInLabel: String? = null,
+    /** What the user was last told; null when there is nothing to say. */
+    val statusLabel: String? = null,
+    /** An account request is out; every account control but sign-out waits. */
+    val busy: Boolean,
+)
+
 @Serializable
 data class Snapshot(
     val title: String,
@@ -131,6 +167,7 @@ data class Snapshot(
     val timerOptions: TimerOptions,
     val errorMessage: String? = null,
     val listening: ListeningSnapshot,
+    val account: AccountSnapshot,
     /** How often to send [Command.Tick], in ms; 0 means stop. The core owns the cadence. */
     val tickIntervalMs: Long,
 )

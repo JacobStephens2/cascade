@@ -32,6 +32,7 @@ fn restore_with(settings: PersistedSettings) -> Command {
         settings_json: serde_json::to_string(&settings).unwrap(),
         listening_json: String::new(),
         fallback_device_id: "device".into(),
+        account_json: String::new(),
     }
 }
 

@@ -3,19 +3,19 @@
 The account magic-link email contains
 `https://cascade.stephens.page/auth?token=…`. By default that URL opens the
 **website**. With Universal Links configured it instead opens the **Cascade
-app** directly into `AppStore.completeSignIn(…)`, so the user never copies a
-token by hand.
+app** directly, which dispatches the core's `SubmitSignInLink`, so the user
+never copies a token by hand.
 
 ## Pieces (all in this repo)
 
 | Piece | Where | Status |
 |-------|-------|--------|
-| `onOpenURL` → `handleOpenURL` → `completeSignIn` | `CascadeShared/App/AppStore.swift`, `Cascade*App.swift` | already wired |
+| `onOpenURL` → `handleOpenURL` → `SubmitSignInLink` | `CascadeShared/App/AppStore.swift`, `Cascade*App.swift` | already wired |
 | `associated-domains` entitlement (`applinks:cascade.stephens.page`) | `apps/apple/project.yml` (both targets, via `entitlements.properties` so XcodeGen doesn't clobber it) | added |
 | AASA file | `apps/web/public/.well-known/apple-app-site-association` | added |
 | Browser fallback for un-installed devices | `apps/web/public/auth/index.html` (shows the token to paste) | added |
 
-The app already extracts the token from either a full link or a bare token, so
+The core already extracts the token from either a full link or a bare token, so
 no Swift changes are needed — only the OS-level link registration above.
 
 ## Requirement: paid Apple Developer Program

@@ -129,6 +129,7 @@ proptest! {
             settings_json: json,
             listening_json: String::new(),
             fallback_device_id: "d".into(),
+            account_json: String::new(),
         });
 
         prop_assert_eq!(restored.snapshot().volume_percent, persisted.volume_percent);
@@ -268,6 +269,8 @@ proptest! {
             settings_json: String::new(),
             listening_json: String::new(),
             fallback_device_id: "original".into(),
+            // Signed in, so the syncs this property exercises go out.
+            account_json: r#"{"sessionToken":"t","email":"a@b.c"}"#.into(),
         });
         core.dispatch(Command::Play);
         core.dispatch(Command::PlatformPlaybackStarted);
@@ -276,7 +279,7 @@ proptest! {
             let l = &core.state().listening;
             prop_assert!(l.synced_through_ms <= l.device_total_ms);
             for e in &update.effects {
-                if let Effect::PushListening { device_id, device_total_ms } = e {
+                if let Effect::PushListening { device_id, device_total_ms, .. } = e {
                     prop_assert_eq!(Some(device_id), l.device_id.as_ref());
                     prop_assert_eq!(*device_total_ms, l.device_total_ms);
                 }

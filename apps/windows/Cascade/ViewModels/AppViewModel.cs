@@ -42,34 +42,44 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     public bool SyncAvailable => SyncConfig.Available;
 
     [ObservableProperty]
-    private Account? account;
-
-    [ObservableProperty]
-    private string? syncStatus;
-
-    [ObservableProperty]
     private string emailInput = "";
 
     [ObservableProperty]
     private string signInLinkInput = "";
 
-    public string AccountEmail => Account?.Email ?? "";
+    // The core holds the account; these only read the snapshot's account
+    // section. Bound directly (not via an x:Bind function) so the signed-in /
+    // signed-out panels flip whenever the account changes at runtime —
+    // function bindings proved not to re-evaluate, stranding the view after
+    // sign-out / a 401. Explicit notification in OnSnapshotChanged drives these.
+    private bool SignedIn => Snapshot.Account.Email is not null;
 
-    // Bound directly (not via an x:Bind function) so the signed-in / signed-out
-    // panels flip whenever Account changes at runtime — function bindings on
-    // Account proved not to re-evaluate, stranding the view after sign-out / a
-    // 401. Explicit notification in OnAccountChanged drives these.
     public Visibility SignedInVisibility =>
-        Account is not null ? Visibility.Visible : Visibility.Collapsed;
+        SignedIn ? Visibility.Visible : Visibility.Collapsed;
 
     public Visibility SignedOutVisibility =>
-        Account is not null ? Visibility.Collapsed : Visibility.Visible;
+        SignedIn ? Visibility.Collapsed : Visibility.Visible;
 
-    partial void OnAccountChanged(Account? value)
+    // Every account control but sign-out waits while a request is out.
+    private bool AccountIdle => !Snapshot.Account.Busy;
+
+    partial void OnSnapshotChanged(CascadeSnapshot? oldValue, CascadeSnapshot newValue)
     {
-        OnPropertyChanged(nameof(AccountEmail));
-        OnPropertyChanged(nameof(SignedInVisibility));
-        OnPropertyChanged(nameof(SignedOutVisibility));
+        var wasSignedIn = oldValue?.Account.Email is not null;
+        if (SignedIn != wasSignedIn)
+        {
+            // The pasted link is spent once it signs in.
+            if (SignedIn) SignInLinkInput = "";
+            OnPropertyChanged(nameof(SignedInVisibility));
+            OnPropertyChanged(nameof(SignedOutVisibility));
+        }
+        if (oldValue?.Account.Busy != newValue.Account.Busy)
+        {
+            RequestSignInLinkCommand.NotifyCanExecuteChanged();
+            SubmitSignInLinkCommand.NotifyCanExecuteChanged();
+            DeleteListeningDataCommand.NotifyCanExecuteChanged();
+            DeleteAccountCommand.NotifyCanExecuteChanged();
+        }
     }
 
     public AppViewModel(DispatcherQueue dispatcher)
@@ -94,18 +104,18 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         // only if the listening blob carries none. The id older builds stored
         // themselves goes first, so an existing server slot carries over. The
         // core ignores a missing/incompatible blob and never lets a restore
-        // lower the counter.
-        var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? Guid.NewGuid().ToString();
-        Send(new RestoreCommand(
+        // lower the counter. The account blob rides along; the core holds the
+        // account from here on.
+        var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? NewDeviceId();
+        Dispatch(new RestoreCommand(
             _settings.ReadSafely() ?? "",
             _settings.ReadListeningSafely() ?? "",
-            fallbackDeviceId));
+            fallbackDeviceId,
+            _accountStore.ReadAccountJson()));
 
-        Account = _accountStore.ReadAccount();
-        if (Account is not null)
-        {
-            _ = SyncAsync(SyncReason.Refresh);
-        }
+        // Fetch the cross-device total straight away; the core sends nothing
+        // while signed out.
+        BeginSync(SyncReason.Refresh);
     }
 
     /// <summary>
@@ -116,23 +126,18 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     {
         Dispatch(command);
 
-        // Routine check after every update: the shell only says it *can* talk
-        // (signed in); the core decides whether enough unsynced time has
+        // Routine check after every update: the shell only says it *can* talk;
+        // the core decides whether it is signed in and enough unsynced time has
         // accrued, and answers with nothing while a sync is already in flight.
-        if (Account is not null)
-        {
-            _ = SyncAsync(SyncReason.Threshold);
-        }
+        BeginSync(SyncReason.Threshold);
     }
 
     /// <summary>
-    /// Dispatch one command, apply its update, and hand the update back so the
-    /// caller can read the effects of *this* dispatch (the sync flow needs its
-    /// PushListening / ClearSession synchronously). Null if the dispatch threw.
-    /// Unlike <see cref="Send"/>, never triggers a sync itself — the sync flow
-    /// dispatches through here so it can't recurse into another begin.
+    /// Dispatch one command and apply its update, carrying any request it
+    /// asks for. Unlike <see cref="Send"/>, never offers a sync itself — a
+    /// settle dispatches through here so it can't recurse into another begin.
     /// </summary>
-    private CascadeUpdate? Dispatch(CascadeCommand command)
+    private void Dispatch(CascadeCommand command)
     {
         try
         {
@@ -141,12 +146,10 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             var update = JsonSerializer.Deserialize<CascadeUpdate>(updateJson, CascadeJson.Options)!;
             Apply(update);
             ErrorMessage = update.Snapshot.ErrorMessage;
-            return update;
         }
         catch (Exception ex)
         {
             ErrorMessage = ex.Message;
-            return null;
         }
     }
 
@@ -178,6 +181,12 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                     break;
                 case PersistListeningEffect persistListening:
                     _settings.WriteListeningSafely(persistListening.Json);
+                    break;
+                case PersistAccountEffect persistAccount:
+                    _accountStore.WriteAccountJson(persistAccount.Json);
+                    break;
+                default:
+                    CarryRequest(effect);
                     break;
             }
         }
@@ -224,160 +233,133 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     // ---- account / sync commands ----
 
+    [RelayCommand(CanExecute = nameof(AccountIdle))]
+    private void RequestSignInLink() => Send(new RequestSignInLinkCommand(EmailInput));
+
+    [RelayCommand(CanExecute = nameof(AccountIdle))]
+    private void SubmitSignInLink() => Send(new SubmitSignInLinkCommand(SignInLinkInput));
+
+    /// <summary>
+    /// Entry point for a <c>cascade://auth?token=…</c> deep link: the core
+    /// reads the link exactly as it reads a pasted one.
+    /// </summary>
+    public void SignInWithLink(string link) => Send(new SubmitSignInLinkCommand(link));
+
+    [RelayCommand]
+    private void SignOut() => Send(new SignOutCommand());
+
+    [RelayCommand(CanExecute = nameof(AccountIdle))]
+    private void DeleteListeningData() => Send(new DeleteListeningDataCommand());
+
+    [RelayCommand(CanExecute = nameof(AccountIdle))]
+    private void DeleteAccount() => Send(new DeleteAccountCommand());
+
     /// <summary>
     /// The shell decides when it can talk; the core decides whether there is
-    /// anything to say, and what. Ask the core to begin a sync, PUT exactly the
-    /// slot its PushListening names, and settle the result — every begun sync
-    /// must be settled (success or failure) or the core never starts another.
+    /// anything to say, and what. A PushListening in the answer is carried by
+    /// <see cref="CarryRequest"/>.
     /// </summary>
-    private async Task SyncAsync(SyncReason reason)
+    private void BeginSync(SyncReason reason)
     {
-        var account = Account;
-        if (account is null) return;
-        var push = Dispatch(new BeginListeningSyncCommand(reason))?
-            .Effects.OfType<PushListeningEffect>().FirstOrDefault();
-        if (push is null) return;
+        if (SyncConfig.Available) Dispatch(new BeginListeningSyncCommand(reason));
+    }
 
-        ulong serverTotalMs;
+    /// <summary>
+    /// Carry one request effect over HTTP and settle it with the core. Every
+    /// request but RevokeSession must be settled (success or failure), or the
+    /// core never starts another. Not a request: nothing to do.
+    /// </summary>
+    private void CarryRequest(CascadeEffect effect)
+    {
+        static CascadeCommand AccountFailed(bool unauthorized) =>
+            new AccountRequestFailedCommand(unauthorized);
+
+        switch (effect)
+        {
+            case PushListeningEffect push:
+                _ = SettleWithAsync(
+                    () => _syncApi.PutListeningAsync(
+                        push.SessionToken, push.DeviceId, (long)push.DeviceTotalMs),
+                    res => new ListeningSyncSucceededCommand((ulong)Math.Max(0L, res.ServerTotalMs)),
+                    unauthorized => new ListeningSyncFailedCommand(unauthorized));
+                break;
+            case SendSignInLinkEffect send:
+                _ = SettleWithAsync(
+                    () => _syncApi.RequestLinkAsync(send.Email),
+                    () => new SignInLinkSentCommand(),
+                    AccountFailed);
+                break;
+            case VerifySignInTokenEffect verify:
+                _ = SettleWithAsync(
+                    () => _syncApi.VerifyAsync(verify.Token),
+                    res => new SignInVerifiedCommand(res.SessionToken, res.Email),
+                    AccountFailed);
+                break;
+            case RevokeSessionEffect revoke:
+                _ = RevokeAsync(revoke.SessionToken);
+                break;
+            case DeleteServerListeningEffect delete:
+                _ = SettleWithAsync(
+                    () => _syncApi.DeleteListeningAsync(delete.SessionToken),
+                    () => new ListeningDataDeletedCommand(NewDeviceId()),
+                    AccountFailed);
+                break;
+            case DeleteServerAccountEffect delete:
+                _ = SettleWithAsync(
+                    () => _syncApi.DeleteAccountAsync(delete.SessionToken),
+                    () => new AccountDeletedCommand(NewDeviceId()),
+                    AccountFailed);
+                break;
+        }
+    }
+
+    /// A fresh random device id. The core has no randomness, so the shell
+    /// supplies one for the fallback id and each delete's slot rotation.
+    private static string NewDeviceId() => Guid.NewGuid().ToString();
+
+    /// Fire-and-forget: nothing settles a revoke.
+    private async Task RevokeAsync(string sessionToken)
+    {
+        try { await _syncApi.LogoutAsync(sessionToken); }
+        catch { /* already gone server-side or offline — local sign-out stands */ }
+    }
+
+    /// Run one request and settle it with the command its result maps to.
+    /// Offline / transient / rejected all fail; only a 401 is unauthorized,
+    /// and what that does is the core's call.
+    private async Task SettleWithAsync<T>(
+        Func<Task<T>> call,
+        Func<T, CascadeCommand> succeeded,
+        Func<bool, CascadeCommand> failed)
+    {
+        CascadeCommand outcome;
         try
         {
-            var res = await _syncApi.PutListeningAsync(
-                account.SessionToken, push.DeviceId, (long)push.DeviceTotalMs);
-            serverTotalMs = (ulong)Math.Max(0L, res.ServerTotalMs);
+            outcome = succeeded(await call());
         }
         catch (Exception e)
         {
-            // Offline / transient / rejected: settle it so the next trigger can
-            // retry. Whether a 401 ends the session is the core's call.
-            var unauthorized = e is SyncHttpException { Status: 401 };
-            OnUiThread(() =>
-            {
-                var failed = Dispatch(new ListeningSyncFailedCommand(unauthorized));
-                if (failed?.Effects.OfType<ClearSessionEffect>().Any() == true)
-                {
-                    Account = null;
-                    _accountStore.ClearAccount();
-                    SyncStatus = "Signed out — sign in again to sync.";
-                }
-            });
-            return;
+            outcome = failed(e is SyncHttpException { Status: 401 });
         }
-        OnUiThread(() => Dispatch(new ListeningSyncSucceededCommand(serverTotalMs)));
+        OnUiThread(() => Dispatch(outcome));
     }
 
+    private Task SettleWithAsync(
+        Func<Task> call,
+        Func<CascadeCommand> succeeded,
+        Func<bool, CascadeCommand> failed) =>
+        SettleWithAsync(
+            async () => { await call(); return true; },
+            _ => succeeded(),
+            failed);
+
     /// Started on the UI thread, so await continuations normally resume on it;
-    /// marshal back defensively so the settle dispatch and the bound account
-    /// state are never touched from a background thread.
+    /// marshal back defensively so the settle dispatch and the bound snapshot
+    /// are never touched from a background thread.
     private void OnUiThread(Action action)
     {
         if (_dispatcher.HasThreadAccess) action();
         else _dispatcher.TryEnqueue(() => action());
-    }
-
-    [RelayCommand]
-    private async Task RequestLink()
-    {
-        var email = EmailInput.Trim();
-        if (email.Length == 0) return;
-        try
-        {
-            await _syncApi.RequestLinkAsync(email);
-            SyncStatus = $"Check {email} for a sign-in link.";
-        }
-        catch
-        {
-            SyncStatus = "Couldn't send the sign-in link.";
-        }
-    }
-
-    /// <summary>
-    /// Entry point for a <c>cascade://auth?token=…</c> deep link: reuse the
-    /// exact paste-and-sign-in path so the link handoff and manual paste behave
-    /// identically (same token extraction, verify, persist, and status text).
-    /// </summary>
-    public Task SignInWithLinkAsync(string link)
-    {
-        SignInLinkInput = link;
-        return CompleteSignInCommand.ExecuteAsync(null);
-    }
-
-    [RelayCommand]
-    private async Task CompleteSignIn()
-    {
-        var token = ExtractToken(SignInLinkInput);
-        if (token is null) { SyncStatus = "Paste the full sign-in link."; return; }
-        try
-        {
-            var res = await _syncApi.VerifyAsync(token);
-            Account = new Account(res.SessionToken, res.Email);
-            _accountStore.WriteAccount(Account);
-            SignInLinkInput = "";
-            SyncStatus = $"Signed in as {res.Email}.";
-            await SyncAsync(SyncReason.Refresh);
-        }
-        catch
-        {
-            SyncStatus = "That sign-in link was invalid or expired.";
-        }
-    }
-
-    [RelayCommand]
-    private async Task SignOut()
-    {
-        var prev = Account;
-        Account = null;
-        _accountStore.ClearAccount();
-        SyncStatus = null;
-        if (prev is not null)
-        {
-            try { await _syncApi.LogoutAsync(prev.SessionToken); } catch { }
-        }
-    }
-
-    [RelayCommand]
-    private async Task DeleteListeningData()
-    {
-        if (Account is null) return;
-        try
-        {
-            await _syncApi.DeleteListeningAsync(Account.SessionToken);
-            // One dispatch rotates the id and zeroes the slot, so they land in
-            // the same persisted write.
-            Send(new ResetListeningDataCommand(Guid.NewGuid().ToString()));
-            SyncStatus = "Listening data deleted.";
-        }
-        catch { SyncStatus = "Couldn't delete listening data."; }
-    }
-
-    [RelayCommand]
-    private async Task DeleteAccount()
-    {
-        if (Account is null) return;
-        try
-        {
-            await _syncApi.DeleteAccountAsync(Account.SessionToken);
-            Send(new ResetListeningDataCommand(Guid.NewGuid().ToString()));
-            Account = null;
-            _accountStore.ClearAccount();
-            SyncStatus = "Account deleted.";
-        }
-        catch { SyncStatus = "Couldn't delete the account."; }
-    }
-
-    /// Pull the token out of a pasted sign-in URL (…/auth?token=XYZ), or accept
-    /// a raw token. Desktop protocol-activation is the on-device follow-up.
-    private static string? ExtractToken(string input)
-    {
-        var s = input.Trim();
-        if (s.Length == 0) return null;
-        var idx = s.IndexOf("token=", StringComparison.OrdinalIgnoreCase);
-        if (idx >= 0)
-        {
-            var rest = s.Substring(idx + "token=".Length);
-            var amp = rest.IndexOf('&');
-            return amp >= 0 ? rest.Substring(0, amp) : rest;
-        }
-        return s;
     }
 
     public void Dispose()
