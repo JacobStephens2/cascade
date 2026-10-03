@@ -67,8 +67,11 @@ public sealed record ResetListeningDataCommand(string NewDeviceId) : CascadeComm
 
 // What the user does with the account. Every one but SignOut is ignored while
 // an account request is pending (account.busy).
-// Platform names the app the emailed link hands off to; null for none.
-public sealed record RequestSignInLinkCommand(string Email, string? Platform) : CascadeCommand;
+// Platform names the platform whose app the emailed link hands off to; null
+// for none, and then left off the wire as the core leaves it off.
+public sealed record RequestSignInLinkCommand(
+    string Email,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Platform) : CascadeCommand;
 public sealed record SubmitSignInLinkCommand(string Input) : CascadeCommand;
 public sealed record SignOutCommand : CascadeCommand;
 // NewDeviceId is a fresh id the core rotates to once the server confirms.

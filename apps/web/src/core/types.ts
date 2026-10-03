@@ -29,7 +29,7 @@ export type Command =
     }
   | { type: "beginListeningSync"; reason: SyncReason }
   | { type: "resetListeningData"; newDeviceId: string }
-  /** `platform` names the platform whose shell the emailed link hands off
+  /** `platform` names the platform whose app the emailed link hands off
    * to, if any; the web shell has no hand-off and leaves it out. */
   | { type: "requestSignInLink"; email: string; platform?: string }
   | { type: "submitSignInLink"; input: string }
@@ -37,9 +37,16 @@ export type Command =
   /** `newDeviceId` is a fresh UUID, adopted once the server confirms. */
   | { type: "deleteListeningData"; newDeviceId: string }
   | { type: "deleteAccount"; newDeviceId: string }
-  /** Settles the `serverRequest` with the same `id`: the HTTP status (0 when
-   * not sent or no response) and the response body verbatim. */
-  | { type: "serverResponse"; id: number; status: number; body: string };
+  | ServerResponse;
+
+/** Settles the `serverRequest` with the same `id`: the HTTP status (0 when
+ * not sent or no response) and the response body verbatim. */
+export interface ServerResponse {
+  type: "serverResponse";
+  id: number;
+  status: number;
+  body: string;
+}
 
 /** Why the shell is asking to sync; the core decides whether to send. The
  * routine threshold sync is the core's own, answered from a tick. */

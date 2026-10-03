@@ -1,9 +1,9 @@
-import type { Command, Effect, ServerRequest } from "../core/types";
+import type { Effect, ServerRequest, ServerResponse } from "../core/types";
 import type { DispatchOptions } from "../core/useCascade";
 import { SYNC_API_BASE, syncAvailable } from "./config";
 
 /** Dispatches a settle; that dispatch carries the settle's own effects. */
-type Settle = (response: Command) => void;
+type Settle = (response: ServerResponse) => void;
 
 /** How long a request may take before it is given up and settled as status 0. */
 const REQUEST_TIMEOUT_MS = 30_000;
@@ -16,8 +16,8 @@ const REQUEST_TIMEOUT_MS = 30_000;
 async function send(
   request: ServerRequest,
   keepalive: boolean,
-): Promise<Command> {
-  const response = (status: number, body = ""): Command => ({
+): Promise<ServerResponse> {
+  const response = (status: number, body = ""): ServerResponse => ({
     type: "serverResponse",
     id: request.id,
     status,
