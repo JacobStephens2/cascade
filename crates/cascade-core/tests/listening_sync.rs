@@ -15,7 +15,7 @@ use cascade_core::{
     Command, Core, Effect, HttpMethod, SyncReason, Update, LISTENING_SYNC_THRESHOLD_MS,
 };
 use serde_json::json;
-use support::{bare_response, request_id, response};
+use support::{bare_response, pushes, request_id, response};
 
 /// A core plus what a shell would remember: the listening pushes it is
 /// carrying, oldest first, so a test can settle them by id.
@@ -149,13 +149,6 @@ fn pushed(effects: &[Effect]) -> Option<(String, u64)> {
         }
         _ => None,
     })
-}
-
-fn pushes(effects: &[Effect]) -> Vec<&Effect> {
-    effects
-        .iter()
-        .filter(|e| matches!(e, Effect::ServerRequest { path, .. } if path == "/listening"))
-        .collect()
 }
 
 fn begin(core: &mut Shell, reason: SyncReason) -> Option<(String, u64)> {

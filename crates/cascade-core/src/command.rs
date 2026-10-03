@@ -112,8 +112,9 @@ pub enum Command {
     /// User asked for a sign-in link. The email is trimmed; an empty one is
     /// refused with a status and no effect. Answered with a
     /// [`crate::Effect::ServerRequest`] (POST `/auth/request`). `platform`
-    /// names the shell's link hand-off (Windows sends `"windows"`) and is
-    /// added to the request body only when given.
+    /// names the platform whose app the emailed link should hand off to
+    /// (the Windows shell sends `"windows"`), and is added to the request
+    /// body only when given.
     ///
     /// Like every account request, it is ignored while another account
     /// request is pending (`account.busy`).

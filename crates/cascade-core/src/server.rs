@@ -64,7 +64,7 @@ impl Request {
     /// POST `/auth/logout` with the bearer token. Nothing waits for its
     /// response.
     pub fn revoke(session_token: String) -> Self {
-        Self::bearer(HttpMethod::Post, "/auth/logout", session_token)
+        Self::bearer_only(HttpMethod::Post, "/auth/logout", session_token)
     }
 
     /// PUT `/listening` `{deviceId, deviceTotalMs}`; read with
@@ -75,18 +75,18 @@ impl Request {
                 device_id,
                 device_total_ms,
             }),
-            ..Self::bearer(HttpMethod::Put, "/listening", session_token)
+            ..Self::bearer_only(HttpMethod::Put, "/listening", session_token)
         }
     }
 
     /// DELETE `/listening` with the bearer token.
     pub fn delete_listening(session_token: String) -> Self {
-        Self::bearer(HttpMethod::Delete, "/listening", session_token)
+        Self::bearer_only(HttpMethod::Delete, "/listening", session_token)
     }
 
     /// DELETE `/account` with the bearer token.
     pub fn delete_account(session_token: String) -> Self {
-        Self::bearer(HttpMethod::Delete, "/account", session_token)
+        Self::bearer_only(HttpMethod::Delete, "/account", session_token)
     }
 
     fn post_json(path: &'static str, body: &impl Serialize) -> Self {
@@ -98,7 +98,7 @@ impl Request {
         }
     }
 
-    fn bearer(method: HttpMethod, path: &'static str, session_token: String) -> Self {
+    fn bearer_only(method: HttpMethod, path: &'static str, session_token: String) -> Self {
         Self {
             method,
             path,
@@ -123,9 +123,9 @@ fn to_json(body: &impl Serialize) -> Option<String> {
     serde_json::to_string(body).ok()
 }
 
-/// What a response's status means, before its body is read.
+/// What a response's HTTP status means, before its body is read.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum Status {
+pub enum StatusClass {
     /// Any 2xx.
     Success,
     /// 401: the session is gone.
@@ -134,7 +134,7 @@ pub enum Status {
     Failed,
 }
 
-impl Status {
+impl StatusClass {
     pub fn of(status: u16) -> Self {
         match status {
             200..=299 => Self::Success,

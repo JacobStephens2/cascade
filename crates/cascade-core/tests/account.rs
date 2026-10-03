@@ -10,7 +10,7 @@ mod support;
 
 use cascade_core::{AccountSnapshot, Command, Core, Effect, HttpMethod, SyncReason};
 use serde_json::json;
-use support::{bare_response, request_id, requests, response};
+use support::{bare_response, pushes, request_id, requests, response};
 
 const DEVICE_A: &str = "device-a";
 const DEVICE_B: &str = "device-b";
@@ -75,10 +75,7 @@ fn begin(core: &mut Core, reason: SyncReason) -> Vec<Effect> {
 
 /// The listening push in `effects`, if any.
 fn pushed(effects: &[Effect]) -> Option<Effect> {
-    effects
-        .iter()
-        .find(|e| matches!(e, Effect::ServerRequest { path, .. } if path == "/listening"))
-        .cloned()
+    pushes(effects).first().map(|e| (*e).clone())
 }
 
 /// The push request the core should send, per the request table.

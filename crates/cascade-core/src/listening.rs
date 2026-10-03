@@ -119,6 +119,11 @@ impl Default for ListeningLedger {
 }
 
 impl ListeningLedger {
+    /// Whether the PUT in flight (superseded or not) is request `id`.
+    pub fn awaits(&self, id: u64) -> bool {
+        self.in_flight.is_some_and(|f| f.id() == id)
+    }
+
     /// Milliseconds accrued locally that the server has not yet acknowledged.
     /// Saturating so a hand-edited or partially-written blob can never
     /// underflow.

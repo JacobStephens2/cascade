@@ -4,13 +4,26 @@
 
 #![allow(dead_code)]
 
-use cascade_core::{Command, Effect};
+use cascade_core::{Command, Effect, HttpMethod};
 
 /// Every `ServerRequest` in `effects`, in order.
 pub fn requests(effects: &[Effect]) -> Vec<&Effect> {
     effects
         .iter()
         .filter(|e| matches!(e, Effect::ServerRequest { .. }))
+        .collect()
+}
+
+/// Every listening push (PUT `/listening`) in `effects`, in order.
+pub fn pushes(effects: &[Effect]) -> Vec<&Effect> {
+    effects
+        .iter()
+        .filter(|e| {
+            matches!(
+                e,
+                Effect::ServerRequest { method: HttpMethod::Put, path, .. } if path == "/listening"
+            )
+        })
         .collect()
 }
 

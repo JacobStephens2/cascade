@@ -12,7 +12,7 @@ use crate::account::{
 use crate::command::Command;
 use crate::effect::Effect;
 use crate::listening::{ListeningLedger, PersistedListening, SyncReason};
-use crate::server::{parse_server_total, parse_verified, Request, Status};
+use crate::server::{parse_server_total, parse_verified, Request, StatusClass};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
 use crate::timer::{clamp_minutes, ActiveTimer, TimerKind, DEFAULT_TIMER_MINUTES};
 
@@ -467,11 +467,11 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             }
         }
         Command::ServerResponse { id, status, body } => {
-            let status = Status::of(status);
+            let class = StatusClass::of(status);
             if let Some(request) = state.account.settle(id) {
-                account_response(state, request, status, &body, effects);
-            } else if state.listening.in_flight.is_some_and(|f| f.id() == id) {
-                sync_response(state, status, &body, effects);
+                account_response(state, request, class, &body, effects);
+            } else if state.listening.awaits(id) {
+                sync_response(state, class, &body, effects);
             }
         }
     }
@@ -479,16 +479,16 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
 
 /// Settle the in-flight listening push. A superseded push only frees the
 /// slot: its success or 401 refers to a slot or session already replaced.
-fn sync_response(state: &mut State, status: Status, body: &str, effects: &mut Vec<Effect>) {
-    let server_total_ms = match status {
-        Status::Success => parse_server_total(body),
-        Status::Unauthorized | Status::Failed => None,
+fn sync_response(state: &mut State, class: StatusClass, body: &str, effects: &mut Vec<Effect>) {
+    let server_total_ms = match class {
+        StatusClass::Success => parse_server_total(body),
+        StatusClass::Unauthorized | StatusClass::Failed => None,
     };
     if let Some(server_total_ms) = server_total_ms {
         if state.listening.sync_succeeded(server_total_ms) {
             push_persist_listening(state, effects);
         }
-    } else if state.listening.sync_failed() && status == Status::Unauthorized {
+    } else if state.listening.sync_failed() && class == StatusClass::Unauthorized {
         session_expired(state, effects);
     }
 }
@@ -497,15 +497,15 @@ fn sync_response(state: &mut State, status: Status, body: &str, effects: &mut Ve
 fn account_response(
     state: &mut State,
     request: PendingRequest,
-    status: Status,
+    class: StatusClass,
     body: &str,
     effects: &mut Vec<Effect>,
 ) {
-    if status == Status::Unauthorized && state.account.session.is_some() {
+    if class == StatusClass::Unauthorized && state.account.session.is_some() {
         session_expired(state, effects);
         return;
     }
-    let succeeded = status == Status::Success;
+    let succeeded = class == StatusClass::Success;
     match request {
         PendingRequest::SignInLink { email } if succeeded => {
             state.account.status = Some(AccountStatus::LinkSent { email });
