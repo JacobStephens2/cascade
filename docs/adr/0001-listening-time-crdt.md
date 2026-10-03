@@ -1,6 +1,6 @@
 # ADR 0001 — Cross-platform listening-time tracking: a pure-core G-Counter with data-minimizing sync
 
-- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issue #31)
+- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issues #31, #44 and #49)
 - **Date:** 2026-06-05
 - **Context:** Cascade is one headless Rust core (`cascade-core`) driving six native shells (web, Android, macOS, Windows, iOS, watchOS). We want to show a user the total time they've spent listening, aggregated across every device they use, with an optional account to centralize it — without turning a white-noise app into a surveillance liability.
 
@@ -30,7 +30,7 @@ The account stores an email and **one integer per device** — no timestamps, no
 
 *Amended 2026-09-27 (issue #18).* Originally "sync cadence lives in the shells, not the core", which conflated two things. Knowledge only a shell has — lifecycle, reachability, auth state (web `pagehide`, Android `onStop`, etc.) — stays in the shell, as does the HTTP transport. Protocol rules the core already has every input for now live in the core, defined once:
 
-- **Threshold and payload.** The shell dispatches `BeginListeningSync { reason }` (`threshold` / `flush` / `refresh`). If there is something worth sending (≥ 30 s unsynced for `threshold`, anything for `flush`, always for `refresh`) the core answers with one `PushListening { deviceId, deviceTotalMs }`, and the shell PUTs exactly that.
+- **Threshold and payload.** The shell dispatches `BeginListeningSync { reason }` (`threshold` / `flush` / `refresh`). If there is something worth sending (≥ 30 s unsynced for `threshold`, anything for `flush`, always for `refresh`) the core answers with one `PushListening { deviceId, deviceTotalMs }`, and the shell PUTs exactly that. *(The `threshold` timing is superseded by the issue #44 amendment below: the core's tick checks it.)*
 - **High-water mark.** The shell reports `ListeningSyncSucceeded { serverTotalMs }` or `ListeningSyncFailed { unauthorized }`. The core marks as synced exactly the total it sent — never a shell-reconstructed value — so accrual during the request stays unsynced.
 - **Re-entrancy.** A sync in flight blocks the next `BeginListeningSync` until it is settled — including one sent for a slot a reset has since replaced, whose ack is then dropped.
 - **401 rule.** `unauthorized: true` makes the core emit `ClearSession`; the shell drops its token. *(Superseded by the issue #31 amendment below.)*
@@ -46,6 +46,14 @@ Six shells running decision 5 as first written produced ~20 copies of these four
 - **Storage.** The core persists the account through `PersistAccount { json }` and restores it from `Restore`'s `accountJson` (missing means empty: signed out); each shell keeps its own storage location.
 
 The rules are tested once in `crates/cascade-core/tests/account.rs`.
+
+*Amended 2026-10-03 (issue #44).* The threshold *timing* moves into the core as well. Four shells each polled `BeginListeningSync { reason: threshold }` at a different moment (on unsynced change, every snapshot, after every tick, after every command), with no test on any of them, and that poll wiped the timer-completion message on every platform. Only a counted tick can raise the unsynced total, so the tick is now the one place the threshold is checked:
+
+- **The tick offers the threshold sync.** A `Tick` that counts listening runs the threshold begin-sync step (`ListeningLedger::begin_threshold_sync`), with the same in-flight guard as a shell's `BeginListeningSync`. If the user is signed in, nothing is in flight and at least 30 s is unsynced, the tick's effects include one `PushListening`. Shells carry it and settle it like any other push.
+- **Shells no longer poll `threshold`.** They keep only what a shell knows: `flush` when backgrounding and `refresh` on launch. `threshold` stayed accepted until every shell had stopped sending it. *(Issue #49: it is now gone from the commands a shell can send. The shell-facing `SyncReason` is `flush` or `refresh`, and `{"reason":"threshold"}` no longer deserializes; the threshold is only the core's own tick-time check.)*
+- **A failed sync waits for another threshold of listening.** The core remembers the total the failed push sent and counts the next threshold from there, so an offline device no longer retries on every tick. The mark is measured in listened milliseconds, so it needs no clock. `flush` and `refresh` ignore it; it is never persisted, and a successful sync, a reset, or losing the account clears it.
+
+The rules are tested in `crates/cascade-core/tests/listening_sync.rs`.
 
 ### 6. Opaque tokens + magic-link, and `device_id` rotation on delete
 

@@ -44,8 +44,9 @@ pub struct State {
     /// and always cleared when playback starts or stops.
     pub muted: bool,
     pub active_timer: Option<ActiveTimer>,
-    /// Set on the tick that an active timer hit zero, cleared on the next
-    /// dispatch. Surfaces in snapshots as
+    /// Set on the tick that an active timer hit zero, and cleared only by a
+    /// command that changes playback intent or the timer (see
+    /// [`clears_timer_completion`]). Surfaces in snapshots as
     /// [`crate::TimerSnapshotKind::JustCompleted`].
     pub timer_just_completed: Option<TimerKind>,
     pub default_sleep_minutes: Option<u32>,
@@ -150,13 +151,17 @@ fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
     });
 }
 
-/// Start a listening sync if there is anything to send and the account allows
-/// it, answering with one `PushListening`.
-fn begin_listening_sync(state: &mut State, reason: SyncReason, effects: &mut Vec<Effect>) {
+/// Start a listening sync if `begin` finds anything to send and the account
+/// allows it, answering with one `PushListening`.
+fn begin_listening_sync(
+    state: &mut State,
+    effects: &mut Vec<Effect>,
+    begin: impl FnOnce(&mut ListeningLedger) -> Option<(String, u64)>,
+) {
     let Some(session_token) = state.account.session_token() else {
         return;
     };
-    if let Some((device_id, device_total_ms)) = state.listening.begin_sync(reason) {
+    if let Some((device_id, device_total_ms)) = begin(&mut state.listening) {
         effects.push(Effect::PushListening {
             device_id,
             device_total_ms,
@@ -194,11 +199,50 @@ fn is_accruing(state: &State) -> bool {
     state.listening.tracking_enabled && state.audio_confirmed_playing && !state.muted
 }
 
+/// Whether `command` replaces a finished timer's message. Only the user's
+/// playback and timer commands do: background traffic (ticks, sync and account
+/// settles, platform reports) and small adjustments (volume, mute) leave it on
+/// screen, since after expiry nothing else would ever show it.
+/// Exhaustive on purpose, so a new command has to choose.
+fn clears_timer_completion(command: &Command) -> bool {
+    match command {
+        Command::Play
+        | Command::Pause
+        | Command::TogglePlayback
+        | Command::StartSleepTimer { .. }
+        | Command::StartPomodoro { .. }
+        | Command::StartStopwatch
+        | Command::CancelTimer => true,
+        Command::SetVolume { .. }
+        | Command::ToggleMute
+        | Command::Tick { .. }
+        | Command::PlatformPlaybackStarted
+        | Command::PlatformPlaybackPaused
+        | Command::PlatformPlaybackError { .. }
+        | Command::SetListeningTracking { .. }
+        | Command::Restore { .. }
+        | Command::BeginListeningSync { .. }
+        | Command::ListeningSyncSucceeded { .. }
+        | Command::ListeningSyncFailed { .. }
+        | Command::ResetListeningData { .. }
+        | Command::RequestSignInLink { .. }
+        | Command::SubmitSignInLink { .. }
+        | Command::SignOut
+        | Command::DeleteListeningData
+        | Command::DeleteAccount
+        | Command::SignInLinkSent
+        | Command::SignInVerified { .. }
+        | Command::ListeningDataDeleted { .. }
+        | Command::AccountDeleted { .. }
+        | Command::AccountRequestFailed { .. } => false,
+    }
+}
+
 /// The reducer. Mutates `state` and appends to `effects`.
 pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
-    // Every dispatch starts by clearing the one-shot `just completed` flag so
-    // the JustCompleted state is visible for exactly one snapshot.
-    state.timer_just_completed = None;
+    if clears_timer_completion(&command) {
+        state.timer_just_completed = None;
+    }
 
     match command {
         Command::Play => start_playback(state, effects),
@@ -270,9 +314,12 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 }
             }
             // Persist the new total on the tick we actually counted something,
-            // so a process kill loses at most one tick of listening.
+            // so a process kill loses at most one tick of listening. Only a
+            // counted tick can bring the unsynced total to the threshold, so
+            // it is also the one place the routine sync is offered.
             if was_accruing {
                 push_persist_listening(state, effects);
+                begin_listening_sync(state, effects, ListeningLedger::begin_threshold_sync);
             }
         }
         Command::PlatformPlaybackStarted => {
@@ -336,7 +383,9 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 push_persist_listening(state, effects);
             }
         }
-        Command::BeginListeningSync { reason } => begin_listening_sync(state, reason, effects),
+        Command::BeginListeningSync { reason } => {
+            begin_listening_sync(state, effects, |l| l.begin_sync(reason))
+        }
         Command::ListeningSyncSucceeded { server_total_ms } => {
             if state.listening.sync_succeeded(server_total_ms) {
                 push_persist_listening(state, effects);
@@ -445,7 +494,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 email,
             });
             push_persist_account(state, effects);
-            begin_listening_sync(state, SyncReason::Refresh, effects);
+            begin_listening_sync(state, effects, |l| l.begin_sync(SyncReason::Refresh));
         }
         Command::ListeningDataDeleted { new_device_id } => {
             if !state.account.settle(PendingRequest::DeleteListening) {
@@ -666,13 +715,16 @@ mod tests {
     }
 
     #[test]
-    fn just_completed_clears_on_next_dispatch() {
+    fn just_completed_stays_until_the_user_acts() {
         let mut s = State::default();
         dispatch(&mut s, Command::StartPomodoro { minutes: 1 });
         dispatch(&mut s, Command::Tick { elapsed_ms: 60_001 });
         assert_eq!(s.timer_just_completed, Some(TimerKind::Pomodoro));
-        // Any subsequent dispatch (even another Tick) clears the flag.
+        // Ticks and platform reports leave it; pressing play clears it.
         dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        dispatch(&mut s, Command::PlatformPlaybackPaused);
+        assert_eq!(s.timer_just_completed, Some(TimerKind::Pomodoro));
+        dispatch(&mut s, Command::Play);
         assert!(s.timer_just_completed.is_none());
     }
 

@@ -2,10 +2,14 @@
 //!
 //! The core decides which timer lengths a user is offered, the custom-duration
 //! limits, what the custom field opens on, whether a timer is active and how
-//! the timer reads as one status line. Every shell renders these verbatim, so
-//! these tests pin the rules on the snapshot.
+//! the timer reads as one status line, including how long a finished timer's
+//! message stays. Every shell renders these verbatim, so these tests pin the
+//! rules on the snapshot.
 
-use cascade_core::{Command, Core, Effect, PersistedSettings, Snapshot, Update};
+use cascade_core::{
+    Command, Core, Effect, PersistedSettings, Snapshot, SyncReason, TimerSnapshotKind, Update,
+    LISTENING_SYNC_THRESHOLD_MS,
+};
 
 fn core_after(commands: impl IntoIterator<Item = Command>) -> Core {
     let mut core = Core::new();
@@ -250,6 +254,191 @@ fn status_label_when_just_completed_is_the_completion_text() {
         .dispatch(Command::Tick { elapsed_ms: 60_000 })
         .snapshot;
     assert_eq!(snap.timer.status_label, "Session complete");
+}
+
+// ---- completion message ---------------------------------------------------
+
+const SLEEP_TIMER_ENDED: &str = "Sleep timer ended";
+/// A stored account, so the core holds a session and may sync.
+const SIGNED_IN: &str = r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#;
+
+/// A core whose one-minute sleep timer has just run out while playing.
+fn sleep_timer_ended() -> Core {
+    let mut core = core_after([
+        Command::Play,
+        Command::StartSleepTimer { minutes: 1 },
+        Command::Tick { elapsed_ms: 60_000 },
+    ]);
+    assert_eq!(core.snapshot().timer.status_label, SLEEP_TIMER_ENDED);
+    // A shell still ticking after expiry must not clear it either.
+    core.dispatch(Command::Tick { elapsed_ms: 250 });
+    core
+}
+
+#[test]
+fn the_completion_message_survives_everything_the_user_did_not_ask_for() {
+    let mut core = sleep_timer_ended();
+    let background = [
+        Command::Tick { elapsed_ms: 1_000 },
+        Command::BeginListeningSync {
+            reason: SyncReason::Flush,
+        },
+        Command::BeginListeningSync {
+            reason: SyncReason::Refresh,
+        },
+        Command::ListeningSyncSucceeded { server_total_ms: 0 },
+        Command::ListeningSyncFailed {
+            unauthorized: false,
+        },
+        Command::ListeningSyncFailed { unauthorized: true },
+        Command::SignInLinkSent,
+        Command::SignInVerified {
+            session_token: "t".into(),
+            email: "a@example.com".into(),
+        },
+        Command::ListeningDataDeleted {
+            new_device_id: "d".into(),
+        },
+        Command::AccountDeleted {
+            new_device_id: "d".into(),
+        },
+        Command::AccountRequestFailed {
+            unauthorized: false,
+        },
+        Command::AccountRequestFailed { unauthorized: true },
+        Command::PlatformPlaybackStarted,
+        Command::PlatformPlaybackPaused,
+        Command::SetVolume { percent: 30 },
+        Command::ToggleMute,
+    ];
+    for command in background {
+        let snap = core.dispatch(command.clone()).snapshot;
+        assert_eq!(
+            snap.timer.kind,
+            TimerSnapshotKind::JustCompleted,
+            "{command:?}"
+        );
+        assert_eq!(snap.timer.status_label, SLEEP_TIMER_ENDED, "{command:?}");
+    }
+}
+
+#[test]
+fn the_completion_message_survives_sync_and_account_traffic_that_lands() {
+    // Signed in, so each request really goes out and each settle really
+    // lands on a pending request.
+    let mut core = Core::new();
+    core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: String::new(),
+        fallback_device_id: "device".into(),
+        account_json: SIGNED_IN.into(),
+    });
+    core.dispatch(Command::Play);
+    core.dispatch(Command::StartSleepTimer { minutes: 1 });
+    core.dispatch(Command::Tick { elapsed_ms: 60_000 });
+    let refresh = Command::BeginListeningSync {
+        reason: SyncReason::Refresh,
+    };
+    let sign_in = [
+        Command::SubmitSignInLink {
+            input: "raw-token".into(),
+        },
+        Command::SignInVerified {
+            session_token: "t2".into(),
+            email: "a@example.com".into(),
+        },
+    ];
+    let traffic = [
+        refresh.clone(),
+        Command::ListeningSyncSucceeded { server_total_ms: 0 },
+        refresh,
+        Command::ListeningSyncFailed {
+            unauthorized: false,
+        },
+        Command::DeleteListeningData,
+        Command::ListeningDataDeleted {
+            new_device_id: "d2".into(),
+        },
+        Command::DeleteListeningData,
+        Command::AccountRequestFailed {
+            unauthorized: false,
+        },
+        Command::DeleteAccount,
+        Command::AccountDeleted {
+            new_device_id: "d3".into(),
+        },
+    ]
+    .into_iter()
+    .chain(sign_in.clone())
+    .chain([Command::ListeningSyncFailed { unauthorized: true }])
+    .chain(sign_in)
+    .chain([
+        Command::ListeningSyncSucceeded { server_total_ms: 0 },
+        Command::DeleteListeningData,
+        Command::AccountRequestFailed { unauthorized: true },
+    ]);
+    for command in traffic {
+        let snap = core.dispatch(command.clone()).snapshot;
+        assert_eq!(snap.timer.status_label, SLEEP_TIMER_ENDED, "{command:?}");
+    }
+}
+
+#[test]
+fn each_playback_and_timer_command_clears_the_completion_message() {
+    for command in [
+        Command::Play,
+        Command::Pause,
+        Command::TogglePlayback,
+        Command::StartSleepTimer { minutes: 5 },
+        Command::StartPomodoro { minutes: 5 },
+        Command::StartStopwatch,
+        Command::CancelTimer,
+    ] {
+        let mut core = sleep_timer_ended();
+        let snap = core.dispatch(command.clone()).snapshot;
+        assert_ne!(
+            snap.timer.kind,
+            TimerSnapshotKind::JustCompleted,
+            "{command:?}"
+        );
+        assert_ne!(snap.timer.status_label, SLEEP_TIMER_ENDED, "{command:?}");
+    }
+}
+
+#[test]
+fn the_tick_that_ends_a_timer_and_crosses_the_threshold_does_both() {
+    let mut core = Core::new();
+    core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: String::new(),
+        fallback_device_id: "device".into(),
+        account_json: SIGNED_IN.into(),
+    });
+    core.dispatch(Command::Play);
+    core.dispatch(Command::PlatformPlaybackStarted);
+    for _ in 0..25 {
+        core.dispatch(Command::Tick { elapsed_ms: 1_000 });
+    }
+    // Paused while the timer runs down, so the expiry tick is also the one
+    // that brings listening to 30 seconds.
+    core.dispatch(Command::StartSleepTimer { minutes: 1 });
+    core.dispatch(Command::Pause);
+    core.dispatch(Command::Tick { elapsed_ms: 55_000 });
+    core.dispatch(Command::Play);
+    core.dispatch(Command::PlatformPlaybackStarted);
+
+    let update = core.dispatch(Command::Tick { elapsed_ms: 5_000 });
+    assert_eq!(update.snapshot.timer.kind, TimerSnapshotKind::JustCompleted);
+    assert_eq!(update.snapshot.timer.status_label, SLEEP_TIMER_ENDED);
+    assert!(
+        update.effects.contains(&Effect::PushListening {
+            device_id: "device".into(),
+            device_total_ms: LISTENING_SYNC_THRESHOLD_MS,
+            session_token: "t".into(),
+        }),
+        "{:?}",
+        update.effects
+    );
 }
 
 // ---- wire shape -----------------------------------------------------------

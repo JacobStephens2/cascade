@@ -42,8 +42,9 @@ export type Command =
   | { type: "accountDeleted"; newDeviceId: string }
   | { type: "accountRequestFailed"; unauthorized: boolean };
 
-/** Why the shell is asking to sync; the core decides whether to send. */
-export type SyncReason = "threshold" | "flush" | "refresh";
+/** Why the shell is asking to sync; the core decides whether to send. The
+ * routine threshold sync is the core's own, answered from a tick. */
+export type SyncReason = "flush" | "refresh";
 
 export type Effect =
   /** `gain` is the final output level, 0–1, mute and curve already applied. */

@@ -26,8 +26,9 @@ pub enum TimerSnapshotKind {
     /// Count-up stopwatch. `remaining_label`/`remaining_ms` carry the elapsed
     /// time, `total_ms` is 0, and `progress` is 0 (no end to progress toward).
     Stopwatch,
-    /// Timer just finished on the most recent tick. UIs can show a chime /
-    /// toast before transitioning back to `Off` on the next snapshot.
+    /// Timer finished. Stays until the user plays, pauses, or starts or
+    /// cancels a timer, so UIs can show "Sleep timer ended" / "Session
+    /// complete" until then; background commands leave it.
     JustCompleted,
 }
 
@@ -79,8 +80,7 @@ impl TimerOptions {
 }
 
 /// Listening-time view for the UI. `displayed_total_ms` is the number to show;
-/// `total_label` is a ready-formatted version of it. `unsynced_ms` is what a
-/// shell watches to decide when to sync.
+/// `total_label` is a ready-formatted version of it.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct ListeningSnapshot {
