@@ -56,6 +56,27 @@ export interface TimerSnapshot {
   remainingMs: number;
   totalMs: number;
   progress: number;
+  /** A timer is running (something to cancel); false when off or just completed. */
+  isActive: boolean;
+  /** One-line status, e.g. "Playing · 12:34 left". */
+  statusLabel: string;
+}
+
+/** A ready-made timer length the core offers. */
+export interface TimerPreset {
+  minutes: number;
+  label: string;
+  shortLabel: string;
+}
+
+/** The timer choices the core offers: presets, limits and the custom pre-fill. */
+export interface TimerOptions {
+  focusPresets: TimerPreset[];
+  sleepPresets: TimerPreset[];
+  minMinutes: number;
+  maxMinutes: number;
+  customFocusMinutes: number;
+  customSleepMinutes: number;
 }
 
 export interface ListeningSnapshot {
@@ -76,6 +97,7 @@ export interface Snapshot {
   outputGain: number;
   primaryButtonLabel: string;
   timer: TimerSnapshot;
+  timerOptions: TimerOptions;
   errorMessage: string | null;
   listening: ListeningSnapshot;
   /** How often to send `tick`, in ms; 0 means stop. The core owns the cadence. */

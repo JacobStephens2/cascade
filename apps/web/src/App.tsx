@@ -58,7 +58,6 @@ export function App() {
   }
 
   const isPlaying = snapshot.isPlaying;
-  const timerKind = snapshot.timer.kind;
 
   return (
     <div className={`cascade-shell ${isPlaying ? "is-playing" : "is-paused"}`}>
@@ -91,7 +90,8 @@ export function App() {
         />
 
         <TimerControls
-          activeKind={timerKind}
+          isActive={snapshot.timer.isActive}
+          options={snapshot.timerOptions}
           showCustom={showCustomTimer}
           onToggleCustom={() => setShowCustomTimer((v) => !v)}
           onStartPomodoro={(minutes) => {
