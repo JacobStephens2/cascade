@@ -231,10 +231,18 @@ public sealed partial class MainWindow : Window
     }
 
     private void OnStartFocusPreset(object sender, RoutedEventArgs e) =>
-        ViewModel.StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: false);
+        StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: false);
 
     private void OnStartSleepPreset(object sender, RoutedEventArgs e) =>
-        ViewModel.StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: true);
+        StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: true);
+
+    /// <summary>Start a timer and collapse the custom panel (as the web does),
+    /// so reopening it pre-fills from the core's new last-started length.</summary>
+    private void StartTimer(int minutes, bool sleep)
+    {
+        CustomPanel.Visibility = Visibility.Collapsed;
+        ViewModel.StartTimer(minutes, sleep);
+    }
 
     /// <summary>Checkbox toggles listening tracking; IsChecked is bound one-way
     /// from the snapshot, so we drive the change through the command and let the
@@ -250,6 +258,6 @@ public sealed partial class MainWindow : Window
         // Only a positive whole number crosses; the core clamps the rest.
         var raw = CustomMinutes.Value;
         if (double.IsNaN(raw) || raw < 1 || raw != Math.Floor(raw)) return;
-        ViewModel.StartTimer((int)raw, sleep: CustomSleepRadio.IsChecked == true);
+        StartTimer((int)raw, sleep: CustomSleepRadio.IsChecked == true);
     }
 }

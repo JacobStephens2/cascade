@@ -54,7 +54,7 @@ struct WatchSessionView: View {
                 Toggle("Sleep timer", isOn: $customSleep)
                 Button {
                     WatchHaptics.start()
-                    conn.send(.startCustom(minutes: customMinutes, sleep: customSleep))
+                    conn.send(.startTimer(minutes: customMinutes, sleep: customSleep))
                     steppedMinutes = nil
                 } label: {
                     HStack {
@@ -94,7 +94,7 @@ struct WatchSessionView: View {
     private func preset(_ p: WatchTimerPreset) -> some View {
         Button {
             WatchHaptics.start()
-            conn.send(.startCustom(minutes: p.minutes, sleep: false))
+            conn.send(.startTimer(minutes: p.minutes, sleep: false))
         } label: {
             HStack {
                 Text(p.label)

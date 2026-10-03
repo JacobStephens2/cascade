@@ -121,69 +121,67 @@ pub struct Snapshot {
 
 impl Snapshot {
     pub fn from_state(state: &State) -> Self {
-        let timer = match (&state.active_timer, state.timer_just_completed) {
-            (_, Some(kind)) => TimerSnapshot {
-                kind: TimerSnapshotKind::JustCompleted,
-                remaining_label: match kind {
-                    TimerKind::Sleep => "Sleep timer ended".to_string(),
-                    TimerKind::Pomodoro => "Session complete".to_string(),
-                    // A stopwatch never expires, so this arm is unreachable in
-                    // practice; keep the match exhaustive.
-                    TimerKind::Stopwatch => String::new(),
-                },
-                remaining_ms: 0,
-                total_ms: 0,
-                progress: 1.0,
-                is_active: false,
-                status_label: String::new(),
-            },
-            (Some(t), None) if t.kind == TimerKind::Stopwatch => TimerSnapshot {
-                // Count-up: the time fields carry elapsed, with no total/progress.
-                kind: TimerSnapshotKind::Stopwatch,
-                remaining_label: format_remaining(t.elapsed_ms),
-                remaining_ms: t.elapsed_ms,
-                total_ms: 0,
-                progress: 0.0,
-                is_active: true,
-                status_label: String::new(),
-            },
-            (Some(t), None) => {
-                let remaining = t.remaining_ms();
-                let progress = if t.total_ms == 0 {
-                    0.0
-                } else {
-                    // Clamp: f32 division on million-ms durations can round a
-                    // hair outside [0,1], and UI progress bars expect a clean
-                    // fraction.
-                    (1.0 - (remaining as f32 / t.total_ms as f32)).clamp(0.0, 1.0)
-                };
-                TimerSnapshot {
-                    kind: match t.kind {
-                        TimerKind::Sleep => TimerSnapshotKind::Sleep,
-                        TimerKind::Pomodoro => TimerSnapshotKind::Pomodoro,
-                        TimerKind::Stopwatch => unreachable!("handled above"),
+        let (kind, remaining_label, remaining_ms, total_ms, progress) =
+            match (&state.active_timer, state.timer_just_completed) {
+                (_, Some(kind)) => (
+                    TimerSnapshotKind::JustCompleted,
+                    match kind {
+                        TimerKind::Sleep => "Sleep timer ended".to_string(),
+                        TimerKind::Pomodoro => "Session complete".to_string(),
+                        // A stopwatch never expires, so this arm is unreachable in
+                        // practice; keep the match exhaustive.
+                        TimerKind::Stopwatch => String::new(),
                     },
-                    remaining_label: format_remaining(remaining),
-                    remaining_ms: remaining,
-                    total_ms: t.total_ms,
-                    progress,
-                    is_active: true,
-                    status_label: String::new(),
+                    0,
+                    0,
+                    1.0,
+                ),
+                // Count-up: the time fields carry elapsed, with no total/progress.
+                (Some(t), None) if t.kind == TimerKind::Stopwatch => (
+                    TimerSnapshotKind::Stopwatch,
+                    format_remaining(t.elapsed_ms),
+                    t.elapsed_ms,
+                    0,
+                    0.0,
+                ),
+                (Some(t), None) => {
+                    let remaining = t.remaining_ms();
+                    let progress = if t.total_ms == 0 {
+                        0.0
+                    } else {
+                        // Clamp: f32 division on million-ms durations can round a
+                        // hair outside [0,1], and UI progress bars expect a clean
+                        // fraction.
+                        (1.0 - (remaining as f32 / t.total_ms as f32)).clamp(0.0, 1.0)
+                    };
+                    (
+                        match t.kind {
+                            TimerKind::Sleep => TimerSnapshotKind::Sleep,
+                            TimerKind::Pomodoro => TimerSnapshotKind::Pomodoro,
+                            TimerKind::Stopwatch => unreachable!("handled above"),
+                        },
+                        format_remaining(remaining),
+                        remaining,
+                        t.total_ms,
+                        progress,
+                    )
                 }
-            }
-            (None, None) => TimerSnapshot {
-                kind: TimerSnapshotKind::Off,
-                remaining_label: String::new(),
-                remaining_ms: 0,
-                total_ms: 0,
-                progress: 0.0,
-                is_active: false,
-                status_label: String::new(),
-            },
-        };
+                (None, None) => (TimerSnapshotKind::Off, String::new(), 0, 0, 0.0),
+            };
         let timer = TimerSnapshot {
-            status_label: status_label(state, &timer),
-            ..timer
+            kind,
+            status_label: status_label(state, kind, &remaining_label),
+            remaining_label,
+            remaining_ms,
+            total_ms,
+            progress,
+            // A just-completed timer has nothing left to cancel.
+            is_active: matches!(
+                kind,
+                TimerSnapshotKind::Sleep
+                    | TimerSnapshotKind::Pomodoro
+                    | TimerSnapshotKind::Stopwatch
+            ),
         };
 
         Snapshot {
@@ -214,7 +212,7 @@ impl Snapshot {
 }
 
 /// The timer read as one line: playback state plus what the timer shows.
-fn status_label(state: &State, timer: &TimerSnapshot) -> String {
+fn status_label(state: &State, kind: TimerSnapshotKind, remaining_label: &str) -> String {
     // Pausing clears mute, so "Muted" only ever means muted while playing.
     let playback = if state.muted {
         "Muted"
@@ -223,14 +221,14 @@ fn status_label(state: &State, timer: &TimerSnapshot) -> String {
     } else {
         "Paused"
     };
-    match timer.kind {
+    match kind {
         TimerSnapshotKind::Off if state.intent.is_playing() => format!("{playback} · no timer"),
         TimerSnapshotKind::Off => playback.to_string(),
         TimerSnapshotKind::Sleep | TimerSnapshotKind::Pomodoro => {
-            format!("{playback} · {} left", timer.remaining_label)
+            format!("{playback} · {remaining_label} left")
         }
-        TimerSnapshotKind::Stopwatch => format!("Stopwatch · {}", timer.remaining_label),
-        TimerSnapshotKind::JustCompleted => timer.remaining_label.clone(),
+        TimerSnapshotKind::Stopwatch => format!("Stopwatch · {remaining_label}"),
+        TimerSnapshotKind::JustCompleted => remaining_label.to_string(),
     }
 }
 
