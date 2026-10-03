@@ -96,6 +96,37 @@ pub struct ListeningSnapshot {
     pub total_label: String,
 }
 
+/// The account view for the UI. Never carries the session token: the snapshot
+/// is UI data (and goes to the watch); the token rides only on the effects
+/// that need it.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountSnapshot {
+    /// The signed-in email; `None` when signed out.
+    pub email: Option<String>,
+    /// `"Syncing · {email}"`; `None` when signed out.
+    pub signed_in_label: Option<String>,
+    /// What the user was last told, e.g. `"Check a@b.c for a sign-in link."`;
+    /// `None` when there is nothing to say.
+    pub status_label: Option<String>,
+    /// An account request is out: every account control but sign-out is
+    /// ignored until it settles.
+    pub busy: bool,
+}
+
+impl AccountSnapshot {
+    fn from_state(state: &State) -> Self {
+        let account = &state.account;
+        let email = account.session.as_ref().map(|s| s.email.clone());
+        Self {
+            signed_in_label: email.as_ref().map(|e| format!("Syncing · {e}")),
+            email,
+            status_label: account.status.as_ref().map(|s| s.label()),
+            busy: account.busy(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -114,6 +145,7 @@ pub struct Snapshot {
     pub timer_options: TimerOptions,
     pub error_message: Option<String>,
     pub listening: ListeningSnapshot,
+    pub account: AccountSnapshot,
     /// How often the shell should send [`crate::Command::Tick`], in ms. `0`
     /// means stop ticking. The core owns the cadence; the shell owns the clock.
     pub tick_interval_ms: u64,
@@ -206,6 +238,7 @@ impl Snapshot {
                 unsynced_ms: state.listening.unsynced_ms(),
                 total_label: format_listening_total(state.listening.displayed_total_ms()),
             },
+            account: AccountSnapshot::from_state(state),
             tick_interval_ms: tick_interval_ms(state),
         }
     }

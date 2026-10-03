@@ -9,6 +9,7 @@
 //! call returns an [`Update`] containing a fresh [`Snapshot`] (for rendering)
 //! and a list of [`Effect`]s (for the platform to execute).
 
+pub mod account;
 pub mod command;
 pub mod effect;
 pub mod listening;
@@ -17,6 +18,7 @@ pub mod snapshot;
 pub mod state;
 pub mod timer;
 
+pub use account::{PersistedAccount, ACCOUNT_VERSION};
 pub use command::Command;
 pub use effect::Effect;
 pub use listening::{
@@ -25,7 +27,7 @@ pub use listening::{
 };
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
 pub use snapshot::{
-    ListeningSnapshot, Snapshot, TimerOptions, TimerSnapshot, TimerSnapshotKind,
+    AccountSnapshot, ListeningSnapshot, Snapshot, TimerOptions, TimerSnapshot, TimerSnapshotKind,
     PLAYBACK_TICK_INTERVAL_MS, TIMER_TICK_INTERVAL_MS,
 };
 pub use state::{PlaybackIntent, State, TimerMode};

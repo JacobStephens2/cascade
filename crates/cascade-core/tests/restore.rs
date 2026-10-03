@@ -14,6 +14,7 @@ fn restore(settings_json: &str, listening_json: &str, fallback_device_id: &str) 
         settings_json: settings_json.into(),
         listening_json: listening_json.into(),
         fallback_device_id: fallback_device_id.into(),
+        account_json: None,
     }
 }
 
@@ -176,6 +177,107 @@ fn a_stale_blob_replayed_after_a_reset_cannot_resurrect_the_old_slot() {
     assert_eq!(pushed_device_id(&mut core).as_deref(), Some(DEVICE_B));
 }
 
+// ---- account ---------------------------------------------------------------
+
+fn restore_account(account_json: &str) -> Command {
+    Command::Restore {
+        settings_json: String::new(),
+        listening_json: String::new(),
+        fallback_device_id: DEVICE_A.into(),
+        account_json: Some(account_json.into()),
+    }
+}
+
+fn pushed_session_token(core: &mut Core) -> Option<Option<String>> {
+    core.dispatch(Command::BeginListeningSync {
+        reason: SyncReason::Refresh,
+    })
+    .effects
+    .into_iter()
+    .find_map(|e| match e {
+        Effect::PushListening { session_token, .. } => Some(session_token),
+        _ => None,
+    })
+}
+
+#[test]
+fn restore_signs_in_from_the_versioned_account_blob() {
+    let mut core = Core::new();
+    let update = core.dispatch(restore_account(
+        r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#,
+    ));
+    assert_eq!(
+        update.snapshot.account.email.as_deref(),
+        Some("a@example.com")
+    );
+    assert!(
+        update
+            .effects
+            .iter()
+            .all(|e| matches!(e, Effect::PersistListening { .. })),
+        "restore re-persists no account: {:?}",
+        update.effects
+    );
+    assert_eq!(pushed_session_token(&mut core), Some(Some("t".into())));
+}
+
+#[test]
+fn restore_accepts_the_version_less_legacy_account_blob() {
+    // What web and Apple stored before the core held the account.
+    let mut core = Core::new();
+    let snap = core
+        .dispatch(restore_account(
+            r#"{"sessionToken":"t","email":"a@example.com"}"#,
+        ))
+        .snapshot;
+    assert_eq!(snap.account.email.as_deref(), Some("a@example.com"));
+    assert_eq!(pushed_session_token(&mut core), Some(Some("t".into())));
+}
+
+#[test]
+fn an_empty_or_garbage_account_blob_means_no_account() {
+    for blob in [
+        "",
+        "not json",
+        "{}",
+        r#"{"version":2,"sessionToken":"t","email":"a@example.com"}"#,
+        r#"{"version":1,"sessionToken":"","email":"a@example.com"}"#,
+    ] {
+        let mut core = Core::new();
+        let snap = core.dispatch(restore_account(blob)).snapshot;
+        assert_eq!(snap.account.email, None, "{blob}");
+        assert_eq!(pushed_session_token(&mut core), None, "{blob}");
+    }
+}
+
+#[test]
+fn an_older_restore_without_account_json_still_restores() {
+    let json = r#"{"type":"restore","settingsJson":"","listeningJson":"","fallbackDeviceId":"d"}"#;
+    let command: Command = serde_json::from_str(json).unwrap();
+    let mut core = Core::new();
+    let snap = core.dispatch(command).snapshot;
+    assert_eq!(snap.account.email, None);
+    // That shell keeps its own account, so its syncs still go out.
+    assert_eq!(pushed_session_token(&mut core), Some(None));
+}
+
+#[test]
+fn restoring_signed_out_forgets_a_leftover_cross_device_total() {
+    // A device signed out before the core held the account kept the old
+    // account's total in its listening blob.
+    let listening = r#"{"version":1,"deviceTotalMs":100,"syncedThroughMs":100,"serverTotalMs":9000000,"trackingEnabled":true,"deviceId":"stored"}"#;
+    let mut core = Core::new();
+    let update = core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: listening.into(),
+        fallback_device_id: DEVICE_A.into(),
+        account_json: Some(String::new()),
+    });
+    assert_eq!(update.snapshot.listening.displayed_total_ms, 100);
+    let json = persisted_listening(&update.effects).expect("the forgotten total is persisted");
+    assert!(!json.contains("9000000"), "{json}");
+}
+
 // ---- wire shape ------------------------------------------------------------
 
 #[test]
@@ -184,4 +286,19 @@ fn restore_accepts_the_shells_camel_case_json() {
         r#"{"type":"restore","settingsJson":"s","listeningJson":"l","fallbackDeviceId":"d"}"#;
     let parsed: Command = serde_json::from_str(json).unwrap();
     assert_eq!(parsed, restore("s", "l", "d"));
+}
+
+#[test]
+fn restore_accepts_account_json() {
+    let json = r#"{"type":"restore","settingsJson":"s","listeningJson":"l","fallbackDeviceId":"d","accountJson":"a"}"#;
+    let parsed: Command = serde_json::from_str(json).unwrap();
+    assert_eq!(
+        parsed,
+        Command::Restore {
+            settings_json: "s".into(),
+            listening_json: "l".into(),
+            fallback_device_id: "d".into(),
+            account_json: Some("a".into()),
+        }
+    );
 }

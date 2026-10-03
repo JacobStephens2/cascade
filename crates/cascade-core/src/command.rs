@@ -80,24 +80,35 @@ pub enum Command {
     /// used to store itself, so an existing server slot carries over). It is
     /// adopted — and persisted at once — only if the listening blob carries no
     /// id.
+    ///
+    /// `account_json` is the string the last [`crate::Effect::PersistAccount`]
+    /// handed the shell, or the version-less `{ sessionToken, email }` a shell
+    /// stored before the core held the account. Empty or garbage means no
+    /// account. Sending the field at all — even empty — hands the account to
+    /// the core; a shell that omits it keeps its own account, and the core
+    /// syncs and answers a 401 as it did before it held one.
     Restore {
         settings_json: String,
         listening_json: String,
         fallback_device_id: String,
+        #[serde(default)]
+        account_json: Option<String>,
     },
-    /// The shell is able to talk to the server (online, signed in) and asks
-    /// whether there is anything to send. If so, the update carries one
+    /// The shell is able to talk to the server (online) and asks whether
+    /// there is anything to send. If so, the update carries one
     /// [`crate::Effect::PushListening`]; the shell PUTs exactly that and
     /// reports back with [`Command::ListeningSyncSucceeded`] or
-    /// [`Command::ListeningSyncFailed`]. No effect means nothing to send, or a
-    /// sync is already in flight.
+    /// [`Command::ListeningSyncFailed`]. No effect means nothing to send, a
+    /// sync is already in flight, or the core holds the account and is signed
+    /// out.
     BeginListeningSync { reason: SyncReason },
     /// The in-flight listening PUT succeeded; `server_total_ms` is the
     /// cross-device aggregate it returned. The core marks exactly what it sent
     /// as synced. Moves the display baseline only; never lowers the device slot.
     ListeningSyncSucceeded { server_total_ms: u64 },
     /// The in-flight listening PUT failed. `unauthorized` is true for an HTTP
-    /// 401: the session is gone, and the core answers with
+    /// 401: the session is gone. If the core holds the account it signs out
+    /// (see [`Command::AccountRequestFailed`]); otherwise it answers with
     /// [`crate::Effect::ClearSession`]. Listening stays local either way.
     ListeningSyncFailed { unauthorized: bool },
     /// "Delete my listening data": zero this device's slot, forget the server
@@ -106,6 +117,53 @@ pub enum Command {
     /// holding the old total, and a stale offline write can't resurrect the
     /// deleted one. Leaves the tracking toggle untouched.
     ResetListeningData { new_device_id: String },
+
+    /// User asked for a sign-in link. The email is trimmed; an empty one is
+    /// refused with a status and no effect. Answered with
+    /// [`crate::Effect::SendSignInLink`], settled with
+    /// [`Command::SignInLinkSent`] or [`Command::AccountRequestFailed`].
+    ///
+    /// Like every account request, it is ignored while another account
+    /// request is pending (`account.busy`).
+    RequestSignInLink { email: String },
+    /// User pasted or opened a sign-in link: either the whole link or the bare
+    /// token. Answered with [`crate::Effect::VerifySignInToken`], settled with
+    /// [`Command::SignInVerified`] or [`Command::AccountRequestFailed`].
+    SubmitSignInLink { input: String },
+    /// Sign out locally. Always works, even while a request is pending: that
+    /// request is dropped and its settle ignored. Forgets the cross-device
+    /// total and hands the server a fire-and-forget
+    /// [`crate::Effect::RevokeSession`].
+    SignOut,
+    /// User asked to delete their synced listening data. Answered with
+    /// [`crate::Effect::DeleteServerListening`], settled with
+    /// [`Command::ListeningDataDeleted`] or [`Command::AccountRequestFailed`].
+    DeleteListeningData,
+    /// User asked to delete their account. Answered with
+    /// [`crate::Effect::DeleteServerAccount`], settled with
+    /// [`Command::AccountDeleted`] or [`Command::AccountRequestFailed`].
+    DeleteAccount,
+    /// The sign-in link request succeeded.
+    SignInLinkSent,
+    /// The sign-in token was redeemed for a session. The core persists the
+    /// account and starts a refresh sync for the cross-device total.
+    SignInVerified {
+        session_token: String,
+        email: String,
+    },
+    /// The server deleted the listening data. Like
+    /// [`Command::ResetListeningData`], zeroes the slot and rotates to
+    /// `new_device_id` (a fresh random id from the shell) in one persisted
+    /// write; supplied at settle time, so the slot only rotates once the
+    /// server has actually deleted.
+    ListeningDataDeleted { new_device_id: String },
+    /// The server deleted the account. Resets listening like
+    /// [`Command::ListeningDataDeleted`], and signs out.
+    AccountDeleted { new_device_id: String },
+    /// The pending account request failed. `unauthorized` is true for an HTTP
+    /// 401: while signed in, the core then signs out, forgets the cross-device
+    /// total and tells the user to sign in again.
+    AccountRequestFailed { unauthorized: bool },
 }
 
 #[cfg(test)]
