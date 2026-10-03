@@ -193,7 +193,7 @@ fn unauthorized_signs_out_and_keeps_local_listening() {
 }
 
 #[test]
-fn a_401_without_a_core_held_account_still_signs_out() {
+fn a_401_signs_out_even_without_a_core_held_account() {
     // A shell that restores without `accountJson` syncs without a session
     // token. A 401 there follows the same rule as any other: sign out.
     let mut core = Core::new();
@@ -224,10 +224,29 @@ fn a_401_without_a_core_held_account_still_signs_out() {
         "{:?}",
         update.effects
     );
-    assert!(persisted_json(&update.effects).is_some(), "{:?}", update.effects);
+    assert!(
+        persisted_json(&update.effects).is_some(),
+        "{:?}",
+        update.effects
+    );
     assert_eq!(
         update.snapshot.account.status_label.as_deref(),
         Some("Signed out — sign in again to sync.")
+    );
+}
+
+#[test]
+fn a_401_for_a_sync_superseded_by_sign_out_is_dropped() {
+    let mut core = core_with_listening(40_000);
+    begin(&mut core, SyncReason::Threshold);
+    core.dispatch(Command::SignOut);
+    let status = core.snapshot().account.status_label;
+    let update = core.dispatch(Command::ListeningSyncFailed { unauthorized: true });
+    assert!(update.effects.is_empty(), "{:?}", update.effects);
+    assert_eq!(update.snapshot.account.status_label, status);
+    assert!(
+        begin(&mut core, SyncReason::Refresh).is_none(),
+        "signed out, so nothing to send"
     );
 }
 

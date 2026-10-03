@@ -42,7 +42,7 @@ Six shells running decision 5 as first written produced ~20 copies of these four
 - **Request and settle, as above.** User intents (`RequestSignInLink`, `SubmitSignInLink`, `SignOut`, `DeleteListeningData`, `DeleteAccount`) are answered with one effect describing an HTTP request (`SendSignInLink`, `VerifySignInToken`, `DeleteServerListening`, `DeleteServerAccount`, plus the fire-and-forget `RevokeSession`). The shell settles each with a success command or `AccountRequestFailed { unauthorized }`. One account request runs at a time; `SignOut` always works and drops it.
 - **The session rides on effects.** `PushListening` carries `sessionToken`, and `BeginListeningSync` sends nothing while signed out. The snapshot's `account` section never carries the token.
 - **Signing out forgets the server.** Sign-out, a 401 on any request, and a deleted account forget the cross-device total and supersede any in-flight sync, so neither a stale total nor a late ack outlives the account.
-- **401 rule, revised.** `unauthorized: true` signs out and emits an empty `PersistAccount`, whether or not the core held a session. `ClearSession` is gone: every shell now takes the account from the core.
+- **401 rule, revised.** `unauthorized: true` signs out and emits an empty `PersistAccount`. For a listening sync this holds whether or not the core held a session; only a sync that sign-out or a reset has already superseded is ignored. *(Issue #36: `ClearSession` is gone, since every shell now takes the account from the core.)*
 - **Storage.** The core persists the account through `PersistAccount { json }` and restores it from `Restore`'s `accountJson`; each shell keeps its own storage location.
 
 The rules are tested once in `crates/cascade-core/tests/account.rs`.

@@ -257,7 +257,7 @@ fn an_older_restore_without_account_json_still_restores() {
     let mut core = Core::new();
     let snap = core.dispatch(command).snapshot;
     assert_eq!(snap.account.email, None);
-    // That shell keeps its own account, so its syncs still go out.
+    // That shell never handed the core an account, so its syncs still go out.
     assert_eq!(pushed_session_token(&mut core), Some(None));
 }
 

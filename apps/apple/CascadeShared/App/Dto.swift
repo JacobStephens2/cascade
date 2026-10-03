@@ -196,8 +196,8 @@ enum Effect: Decodable {
     case setPlatformVolume(gain: Float)
     case persistSettings(json: String)
     case persistListening(json: String)
-    /// `sessionToken` is the bearer token to send; nil only for a shell that
-    /// keeps its own account, which this one no longer does.
+    /// `sessionToken` is the bearer token to send; nil only when restored
+    /// without `accountJson`, which this shell never does.
     case pushListening(deviceId: String, deviceTotalMs: UInt64, sessionToken: String?)
     case sendSignInLink(email: String)
     case verifySignInToken(token: String)

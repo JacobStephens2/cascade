@@ -346,8 +346,8 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             }
         }
         Command::ListeningSyncFailed { unauthorized } => {
-            state.listening.sync_failed();
-            if unauthorized {
+            // A superseded sync's 401 refers to a session already dropped.
+            if state.listening.sync_failed() && unauthorized {
                 session_expired(state, effects);
             }
         }

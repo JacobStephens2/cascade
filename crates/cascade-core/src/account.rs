@@ -89,7 +89,7 @@ impl Account {
     }
 
     /// Whether a listening sync may start: the core holds a session, or the
-    /// shell still keeps the account itself.
+    /// shell restored without `accountJson`.
     pub fn may_sync(&self) -> bool {
         !self.held_by_core || self.session.is_some()
     }
