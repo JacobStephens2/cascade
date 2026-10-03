@@ -25,10 +25,13 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
     init {
+        // Always drained, even without a sync server, so a request (say, a
+        // tick's push for a stored session) is still settled and never leaves
+        // the core's in-flight guard set.
+        scope.launch {
+            for (request in bridge.requests) carry(request)
+        }
         if (syncAvailable) {
-            scope.launch {
-                for (request in bridge.requests) carry(request)
-            }
             // On launch, fetch the cross-device total straight away. The core
             // sends nothing while signed out, and answers a fresh sign-in with
             // its own refresh.
@@ -78,7 +81,9 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
                 failed = { Command.AccountRequestFailed(unauthorized = it) },
             )
             // Already gone server-side or offline — local sign-out stands.
-            is Effect.RevokeSession -> scope.launch { runCatching { SyncApi.logout(effect.sessionToken) } }
+            is Effect.RevokeSession -> if (syncAvailable) {
+                scope.launch { runCatching { SyncApi.logout(effect.sessionToken) } }
+            }
             is Effect.DeleteServerListening -> carryRequest(
                 call = { SyncApi.deleteListening(effect.sessionToken) },
                 succeeded = { Command.ListeningDataDeleted(newDeviceId = UUID.randomUUID().toString()) },
@@ -94,13 +99,18 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
 
     /**
      * Run one request and settle it with the command its result maps to (an
-     * HTTP 401 is `unauthorized`).
+     * HTTP 401 is `unauthorized`). Without a sync server the request fails
+     * unsent, so it is still settled.
      */
     private fun <T> carryRequest(
         call: suspend () -> T,
         succeeded: (T) -> Command,
         failed: (unauthorized: Boolean) -> Command,
     ) {
+        if (!syncAvailable) {
+            bridge.dispatch(failed(false))
+            return
+        }
         scope.launch {
             val outcome = try {
                 succeeded(call())
