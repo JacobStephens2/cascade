@@ -30,7 +30,8 @@ pub const LISTENING_VERSION: u32 = 1;
 pub const MAX_TICK_ACCRUAL_MS: u64 = 5_000;
 
 /// How much unsynced listening a [`SyncReason::Threshold`] sync waits for
-/// before it is worth a PUT. One definition for every shell.
+/// before it is worth a PUT. One definition for every shell. After a failed
+/// PUT, the threshold counts from what that PUT sent instead.
 pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
 
 /// Why a shell is asking to sync. The shell decides *when it can* talk
@@ -39,8 +40,10 @@ pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncReason {
-    /// Routine check (e.g. on every snapshot): send only once at least
-    /// [`LISTENING_SYNC_THRESHOLD_MS`] is unsynced.
+    /// Routine check: send only once at least [`LISTENING_SYNC_THRESHOLD_MS`]
+    /// is unsynced, counted past any failed PUT. The core runs it itself on
+    /// every tick that counts listening, so shells no longer need to send it;
+    /// it stays accepted until the shells stop.
     Threshold,
     /// The app is backgrounding or closing: send any unsynced time at all.
     Flush,
@@ -71,6 +74,11 @@ pub struct ListeningLedger {
     /// The PUT currently in flight, if any. Transient — never persisted; a
     /// restart simply forgets the request.
     pub in_flight: Option<InFlight>,
+    /// The `device_total_ms` the last failed PUT sent, so a threshold sync
+    /// waits for another threshold of listening rather than retrying on every
+    /// tick. Transient — never persisted; cleared by a successful sync, a
+    /// reset, or losing the account.
+    pub failed_through_ms: Option<u64>,
 }
 
 /// A listening PUT the shell has been told to send and hasn't settled yet.
@@ -94,16 +102,26 @@ impl Default for ListeningLedger {
             tracking_enabled: true,
             device_id: None,
             in_flight: None,
+            failed_through_ms: None,
         }
     }
 }
 
 impl ListeningLedger {
-    /// Milliseconds accrued locally that the server has not yet acknowledged —
-    /// what a shell watches to decide when to sync. Saturating so a hand-edited
-    /// or partially-written blob can never underflow.
+    /// Milliseconds accrued locally that the server has not yet acknowledged.
+    /// Saturating so a hand-edited or partially-written blob can never
+    /// underflow.
     pub fn unsynced_ms(&self) -> u64 {
         self.device_total_ms.saturating_sub(self.synced_through_ms)
+    }
+
+    /// Unsynced milliseconds that no PUT has carried yet: counted past the
+    /// last failed PUT as well as the synced high-water mark. What the
+    /// threshold measures, so a failure waits for another threshold.
+    fn unsent_ms(&self) -> u64 {
+        let failed_through_ms = self.failed_through_ms.unwrap_or(0);
+        self.device_total_ms
+            .saturating_sub(self.synced_through_ms.max(failed_through_ms))
     }
 
     /// The lifetime total to show the user. With an account this is the server
@@ -135,7 +153,7 @@ impl ListeningLedger {
         }
         let device_id = self.device_id.clone()?;
         let worth_sending = match reason {
-            SyncReason::Threshold => self.unsynced_ms() >= LISTENING_SYNC_THRESHOLD_MS,
+            SyncReason::Threshold => self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS,
             SyncReason::Flush => self.unsynced_ms() > 0,
             SyncReason::Refresh => true,
         };
@@ -164,14 +182,23 @@ impl ListeningLedger {
         };
         self.synced_through_ms = self.synced_through_ms.max(sent);
         self.server_total_ms = Some(server_total_ms);
+        self.failed_through_ms = None;
         true
     }
 
-    /// The in-flight PUT failed. Nothing was acknowledged; the next trigger
-    /// may try again. Returns `false` if no sync for the current slot was in
-    /// flight, so a superseded request's failure means nothing.
+    /// The in-flight PUT failed. Nothing was acknowledged; a flush or refresh
+    /// may try again at once, and a threshold sync once another threshold has
+    /// accrued past what was sent. Returns `false` if no sync for the current
+    /// slot was in flight, so a superseded request's failure means nothing.
     pub fn sync_failed(&mut self) -> bool {
-        matches!(self.in_flight.take(), Some(InFlight::Sent { .. }))
+        let Some(InFlight::Sent {
+            device_total_ms: sent,
+        }) = self.in_flight.take()
+        else {
+            return false;
+        };
+        self.failed_through_ms = Some(sent);
+        true
     }
 
     /// Take `fallback` as this device's id if it doesn't have one yet.
@@ -197,6 +224,7 @@ impl ListeningLedger {
         self.synced_through_ms = 0;
         self.server_total_ms = None;
         self.device_id = Some(new_device_id);
+        self.failed_through_ms = None;
         if self.in_flight.is_some() {
             self.in_flight = Some(InFlight::Superseded);
         }
@@ -205,10 +233,12 @@ impl ListeningLedger {
     /// Forget the cross-device total when the account goes away (sign-out, a
     /// 401, account deleted): the display falls back to this device's slot.
     /// Any in-flight sync belonged to that account and becomes
-    /// [`InFlight::Superseded`], so its late ack can't bring the total back.
-    /// The device slot and its sync bookkeeping are untouched.
+    /// [`InFlight::Superseded`], so its late ack can't bring the total back,
+    /// and that account's failed PUT no longer paces the next one. The device
+    /// slot and its synced high-water mark are untouched.
     pub fn forget_server(&mut self) {
         self.server_total_ms = None;
+        self.failed_through_ms = None;
         if self.in_flight.is_some() {
             self.in_flight = Some(InFlight::Superseded);
         }
@@ -248,6 +278,7 @@ impl ListeningLedger {
             tracking_enabled: p.tracking_enabled,
             device_id: p.device_id.clone(),
             in_flight: None,
+            failed_through_ms: None,
         }
     }
 }
@@ -385,6 +416,7 @@ mod tests {
             tracking_enabled: false,
             device_id: None,
             in_flight: None,
+            failed_through_ms: None,
         };
         live.restore_from(&stale);
         assert_eq!(live.device_total_ms, 5_000);
@@ -415,6 +447,7 @@ mod tests {
             tracking_enabled: true,
             device_id: Some("d".into()),
             in_flight: Some(InFlight::Sent { device_total_ms: 7 }),
+            failed_through_ms: Some(7),
         };
         let json = serde_json::to_string(&l.to_persisted()).unwrap();
         assert!(json.contains(r#""deviceTotalMs":7"#));
@@ -423,6 +456,7 @@ mod tests {
         assert!(json.contains(r#""trackingEnabled":true"#));
         assert!(json.contains(r#""deviceId":"d""#));
         assert!(!json.contains("inFlight"), "in-flight state is transient");
+        assert!(!json.contains("failed"), "failure pacing is transient");
     }
 
     #[test]
