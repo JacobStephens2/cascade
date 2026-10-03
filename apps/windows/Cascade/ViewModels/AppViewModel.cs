@@ -37,7 +37,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     // ---- account / sync ----
     private readonly AccountStore _accountStore = new();
-    private readonly SyncApi _syncApi = new();
+    private readonly SyncServer _syncServer = new();
 
     public bool SyncAvailable => SyncConfig.Available;
 
@@ -172,8 +172,8 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                 case PersistAccountEffect persistAccount:
                     _accountStore.WriteAccountJson(persistAccount.Json);
                     break;
-                default:
-                    CarryRequest(effect);
+                case ServerRequestEffect request:
+                    _ = CarryAndSettleAsync(request);
                     break;
             }
         }
@@ -220,8 +220,11 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     // ---- account / sync commands ----
 
+    // The "windows" platform makes the emailed link carry &app=windows, so the
+    // web /auth page hands the token to this app via cascade:// rather than
+    // consuming it in the browser.
     [RelayCommand(CanExecute = nameof(AccountIdle))]
-    private void RequestSignInLink() => Send(new RequestSignInLinkCommand(EmailInput));
+    private void RequestSignInLink() => Send(new RequestSignInLinkCommand(EmailInput, "windows"));
 
     [RelayCommand(CanExecute = nameof(AccountIdle))]
     private void SubmitSignInLink() => Send(new SubmitSignInLinkCommand(SignInLinkInput));
@@ -236,15 +239,15 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     private void SignOut() => Send(new SignOutCommand());
 
     [RelayCommand(CanExecute = nameof(AccountIdle))]
-    private void DeleteListeningData() => Send(new DeleteListeningDataCommand());
+    private void DeleteListeningData() => Send(new DeleteListeningDataCommand(NewDeviceId()));
 
     [RelayCommand(CanExecute = nameof(AccountIdle))]
-    private void DeleteAccount() => Send(new DeleteAccountCommand());
+    private void DeleteAccount() => Send(new DeleteAccountCommand(NewDeviceId()));
 
     /// <summary>
     /// The shell decides when it can talk; the core decides whether there is
-    /// anything to say, and what. A PushListening in the answer is carried by
-    /// <see cref="CarryRequest"/>.
+    /// anything to say, and what. The push in the answer is carried by
+    /// <see cref="CarryAndSettleAsync"/>.
     /// </summary>
     private void BeginSync(SyncReason reason)
     {
@@ -252,102 +255,23 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Carry one request effect over HTTP and settle it with the core. Every
-    /// request but RevokeSession must be settled (success or failure), or the
-    /// core never starts another. Not a request: nothing to do.
+    /// Carry one request to the sync server and settle it with the core. Every
+    /// request is settled, failures and the sign-out revoke included (status
+    /// 0 when nothing came back), or the core never starts another.
     /// </summary>
-    private void CarryRequest(CascadeEffect effect)
+    private async Task CarryAndSettleAsync(ServerRequestEffect request)
     {
-        static CascadeCommand AccountFailed(bool unauthorized) =>
-            new AccountRequestFailedCommand(unauthorized);
-
-        switch (effect)
-        {
-            case PushListeningEffect push:
-                _ = SettleWithAsync(
-                    () => _syncApi.PutListeningAsync(
-                        push.SessionToken, push.DeviceId, (long)push.DeviceTotalMs),
-                    res => new ListeningSyncSucceededCommand((ulong)Math.Max(0L, res.ServerTotalMs)),
-                    unauthorized => new ListeningSyncFailedCommand(unauthorized));
-                break;
-            case SendSignInLinkEffect send:
-                _ = SettleWithAsync(
-                    () => _syncApi.RequestLinkAsync(send.Email),
-                    () => new SignInLinkSentCommand(),
-                    AccountFailed);
-                break;
-            case VerifySignInTokenEffect verify:
-                _ = SettleWithAsync(
-                    () => _syncApi.VerifyAsync(verify.Token),
-                    res => new SignInVerifiedCommand(res.SessionToken, res.Email),
-                    AccountFailed);
-                break;
-            case RevokeSessionEffect revoke:
-                _ = RevokeAsync(revoke.SessionToken);
-                break;
-            case DeleteServerListeningEffect delete:
-                _ = SettleWithAsync(
-                    () => _syncApi.DeleteListeningAsync(delete.SessionToken),
-                    () => new ListeningDataDeletedCommand(NewDeviceId()),
-                    AccountFailed);
-                break;
-            case DeleteServerAccountEffect delete:
-                _ = SettleWithAsync(
-                    () => _syncApi.DeleteAccountAsync(delete.SessionToken),
-                    () => new AccountDeletedCommand(NewDeviceId()),
-                    AccountFailed);
-                break;
-        }
+        var response = await _syncServer.CarryAsync(request);
+        // Settle on the UI thread, which owns the dispatch and the bound
+        // snapshot, and never inside the dispatch that asked for the request:
+        // with no sync server the answer is already here and Apply is still
+        // running.
+        _dispatcher.TryEnqueue(() => Send(response));
     }
 
     /// A fresh random device id. The core has no randomness, so the shell
     /// supplies one for the fallback id and each delete's slot rotation.
     private static string NewDeviceId() => Guid.NewGuid().ToString();
-
-    /// Fire-and-forget: nothing settles a revoke.
-    private async Task RevokeAsync(string sessionToken)
-    {
-        try { await _syncApi.LogoutAsync(sessionToken); }
-        catch { /* already gone server-side or offline — local sign-out stands */ }
-    }
-
-    /// Run one request and settle it with the command its result maps to.
-    /// Offline / transient / rejected all fail; only a 401 is unauthorized,
-    /// and what that does is the core's call.
-    private async Task SettleWithAsync<T>(
-        Func<Task<T>> call,
-        Func<T, CascadeCommand> succeeded,
-        Func<bool, CascadeCommand> failed)
-    {
-        CascadeCommand outcome;
-        try
-        {
-            outcome = succeeded(await call());
-        }
-        catch (Exception e)
-        {
-            outcome = failed(e is SyncHttpException { Status: 401 });
-        }
-        OnUiThread(() => Send(outcome));
-    }
-
-    private Task SettleWithAsync(
-        Func<Task> call,
-        Func<CascadeCommand> succeeded,
-        Func<bool, CascadeCommand> failed) =>
-        SettleWithAsync(
-            async () => { await call(); return true; },
-            _ => succeeded(),
-            failed);
-
-    /// Started on the UI thread, so await continuations normally resume on it;
-    /// marshal back defensively so the settle dispatch and the bound snapshot
-    /// are never touched from a background thread.
-    private void OnUiThread(Action action)
-    {
-        if (_dispatcher.HasThreadAccess) action();
-        else _dispatcher.TryEnqueue(() => action());
-    }
 
     public void Dispose()
     {
