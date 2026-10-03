@@ -201,24 +201,6 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     private void TogglePlayback() => Send(new TogglePlaybackCommand());
 
     [RelayCommand]
-    private void StartThirty() => Send(new StartPomodoroCommand(30));
-
-    [RelayCommand]
-    private void StartSixty() => Send(new StartPomodoroCommand(60));
-
-    [RelayCommand]
-    private void StartEightHours() => Send(new StartPomodoroCommand(480));
-
-    [RelayCommand]
-    private void StartSleepFifteen() => Send(new StartSleepTimerCommand(15));
-
-    [RelayCommand]
-    private void StartSleepThirty() => Send(new StartSleepTimerCommand(30));
-
-    [RelayCommand]
-    private void StartSleepSixty() => Send(new StartSleepTimerCommand(60));
-
-    [RelayCommand]
     private void StartStopwatch() => Send(new StartStopwatchCommand());
 
     [RelayCommand]
@@ -234,13 +216,11 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     private void ToggleListeningTracking() =>
         Send(new SetListeningTrackingCommand(!Snapshot.Listening.TrackingEnabled));
 
-    /// Start a user-entered duration. `sleep` picks the timer flavor:
-    /// sleep timer (play, then stop) vs focus session.
-    public void StartCustom(int minutes, bool sleep)
-    {
-        if (minutes < 1 || minutes > 1440) return;
+    /// Start a timer preset or a user-entered duration. `sleep` picks the
+    /// timer flavor: sleep timer (play, then stop) vs focus session. The core
+    /// clamps `minutes` into its limits.
+    public void StartTimer(int minutes, bool sleep) =>
         Send(sleep ? new StartSleepTimerCommand(minutes) : new StartPomodoroCommand(minutes));
-    }
 
     // ---- account / sync commands ----
 

@@ -8,6 +8,51 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Shortest timer the core will start, in minutes.
+pub const MIN_TIMER_MINUTES: u32 = 1;
+/// Longest timer the core will start, in minutes (one day).
+pub const MAX_TIMER_MINUTES: u32 = 1440;
+/// Length the custom field opens on before the user has chosen one.
+pub const DEFAULT_TIMER_MINUTES: u32 = 30;
+
+/// Timer presets offered for a focus session, in minutes.
+pub const FOCUS_PRESET_MINUTES: [u32; 3] = [30, 60, 480];
+/// Timer presets offered for a sleep timer, in minutes.
+pub const SLEEP_PRESET_MINUTES: [u32; 3] = [15, 30, 60];
+
+/// Clamp a requested timer length into the limits. A clamp can't fail, so
+/// the start commands take any `u32`.
+pub fn clamp_minutes(minutes: u32) -> u32 {
+    minutes.clamp(MIN_TIMER_MINUTES, MAX_TIMER_MINUTES)
+}
+
+/// A ready-made timer length the core offers, with a full-width `label`
+/// ("1 hr") and a compact `short_label` ("1h").
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct TimerPreset {
+    pub minutes: u32,
+    pub label: String,
+    pub short_label: String,
+}
+
+impl TimerPreset {
+    /// Whole hours read as hours, anything else as minutes.
+    pub fn new(minutes: u32) -> Self {
+        let (label, short_label) = if minutes >= 60 && minutes.is_multiple_of(60) {
+            let hours = minutes / 60;
+            (format!("{hours} hr"), format!("{hours}h"))
+        } else {
+            (format!("{minutes} min"), format!("{minutes}m"))
+        };
+        Self {
+            minutes,
+            label,
+            short_label,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TimerKind {
@@ -112,6 +157,15 @@ mod tests {
         // Even after an hour it just keeps counting.
         assert!(!t.tick(3_600_000));
         assert_eq!(t.elapsed_ms, 3_720_000);
+    }
+
+    #[test]
+    fn preset_labels_read_hours_or_minutes() {
+        assert_eq!(TimerPreset::new(15).label, "15 min");
+        assert_eq!(TimerPreset::new(15).short_label, "15m");
+        assert_eq!(TimerPreset::new(90).label, "90 min");
+        assert_eq!(TimerPreset::new(480).label, "8 hr");
+        assert_eq!(TimerPreset::new(480).short_label, "8h");
     }
 
     #[test]

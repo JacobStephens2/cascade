@@ -26,3 +26,7 @@ _Avoid_: using "platform" for the shell itself
 
 **Watch app**:
 The Apple Watch client. It is not independently installed; it comes with the iPhone app.
+
+**Timer preset**:
+A ready-made timer length the core offers for a focus session or sleep timer, alongside the user's own custom duration.
+_Avoid_: hard-coding preset lengths or labels in a shell

@@ -183,25 +183,28 @@ private enum CustomMode: String, CaseIterable, Identifiable {
 
 private struct TimerControls: View {
     @Environment(AppStore.self) private var store
-    @State private var customMinutes: Int = 45
+    /// `nil` until the user steps, so the stepper shows the core's pre-fill
+    /// for the chosen mode.
+    @State private var steppedMinutes: Int?
     @State private var customMode: CustomMode = .focus
+
+    private var options: TimerOptions { store.snapshot.timerOptions }
+
+    private var customMinutes: Int {
+        steppedMinutes
+            ?? (customMode == .focus ? options.customFocusMinutes : options.customSleepMinutes)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             section(
                 title: "Focus session",
-                presets: [30, 60, 480],
-                labelFor: { mins in
-                    if mins < 60 { return "\(mins) min" }
-                    if mins == 60 { return "1 hr" }
-                    return "\(mins / 60) hr"
-                },
+                presets: options.focusPresets,
                 action: { store.dispatch(.startPomodoro(minutes: $0)) }
             )
             section(
                 title: "Sleep timer",
-                presets: [15, 30, 60],
-                labelFor: { "\($0) min" },
+                presets: options.sleepPresets,
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
             VStack(alignment: .leading, spacing: 6) {
@@ -213,7 +216,7 @@ private struct TimerControls: View {
                     .buttonStyle(.bordered)
             }
             customSection
-            if store.snapshot.timer.kind != .off {
+            if store.snapshot.timer.isActive {
                 Button("Cancel timer") { store.dispatch(.cancelTimer) }
                     .buttonStyle(.bordered)
                     .controlSize(.regular)
@@ -231,15 +234,22 @@ private struct TimerControls: View {
                 ForEach(CustomMode.allCases) { Text($0.rawValue).tag($0) }
             }
             .pickerStyle(.segmented)
+            .onChange(of: customMode) { steppedMinutes = nil }
             // Stepper keeps numeric entry keyboard-free, which suits a
             // one-handed "set it and forget it" interaction.
-            Stepper(value: $customMinutes, in: 1 ... 1440, step: 5) {
+            Stepper(
+                value: Binding(get: { customMinutes }, set: { steppedMinutes = $0 }),
+                in: options.minMinutes ... options.maxMinutes,
+                step: 5
+            ) {
                 Text("\(customMinutes) min").monospacedDigit()
             }
             Button(customMode == .focus ? "Start focus" : "Start sleep") {
+                let minutes = customMinutes
+                steppedMinutes = nil
                 switch customMode {
-                case .focus: store.dispatch(.startPomodoro(minutes: customMinutes))
-                case .sleep: store.dispatch(.startSleepTimer(minutes: customMinutes))
+                case .focus: store.dispatch(.startPomodoro(minutes: minutes))
+                case .sleep: store.dispatch(.startSleepTimer(minutes: minutes))
                 }
             }
             .buttonStyle(.borderedProminent)
@@ -249,8 +259,7 @@ private struct TimerControls: View {
     @ViewBuilder
     private func section(
         title: String,
-        presets: [Int],
-        labelFor: @escaping (Int) -> String,
+        presets: [TimerPreset],
         action: @escaping (Int) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -259,8 +268,8 @@ private struct TimerControls: View {
                 .foregroundStyle(.secondary)
                 .tracking(2)
             HStack(spacing: 8) {
-                ForEach(presets, id: \.self) { mins in
-                    Button(labelFor(mins)) { action(mins) }
+                ForEach(presets, id: \.minutes) { preset in
+                    Button(preset.label) { action(preset.minutes) }
                         .buttonStyle(.bordered)
                 }
             }

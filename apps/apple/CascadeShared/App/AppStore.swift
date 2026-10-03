@@ -311,7 +311,26 @@ extension Snapshot {
         isMuted: false,
         outputGain: 0.36,
         primaryButtonLabel: "Play",
-        timer: TimerSnapshot(kind: .off, remainingLabel: "", remainingMs: 0, totalMs: 0, progress: 0),
+        timer: TimerSnapshot(
+            kind: .off, remainingLabel: "", remainingMs: 0, totalMs: 0, progress: 0,
+            isActive: false, statusLabel: "Paused"
+        ),
+        timerOptions: TimerOptions(
+            focusPresets: [
+                TimerPreset(minutes: 30, label: "30 min", shortLabel: "30m"),
+                TimerPreset(minutes: 60, label: "1 hr", shortLabel: "1h"),
+                TimerPreset(minutes: 480, label: "8 hr", shortLabel: "8h"),
+            ],
+            sleepPresets: [
+                TimerPreset(minutes: 15, label: "15 min", shortLabel: "15m"),
+                TimerPreset(minutes: 30, label: "30 min", shortLabel: "30m"),
+                TimerPreset(minutes: 60, label: "1 hr", shortLabel: "1h"),
+            ],
+            minMinutes: 1,
+            maxMinutes: 1440,
+            customFocusMinutes: 30,
+            customSleepMinutes: 30
+        ),
         errorMessage: nil,
         listening: ListeningSnapshot(
             trackingEnabled: true,

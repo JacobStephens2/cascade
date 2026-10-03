@@ -5,8 +5,13 @@ import SwiftUI
 struct WatchSessionView: View {
     @Environment(WatchConnectivityClient.self) private var conn
 
-    @State private var customMinutes: Int = 45
+    /// `nil` until the user steps, so the stepper shows the core's pre-fill.
+    @State private var steppedMinutes: Int?
     @State private var customSleep = false
+
+    private var customMinutes: Int {
+        steppedMinutes ?? conn.snapshot.customFocusMinutes
+    }
 
     var body: some View {
         ScrollView {
@@ -16,9 +21,7 @@ struct WatchSessionView: View {
                     .tracking(2)
                     .foregroundStyle(.secondary)
 
-                preset("30 min",  .minutes30)
-                preset("60 min",  .minutes60)
-                preset("8 hours", .hours8)
+                ForEach(conn.snapshot.focusPresets, id: \.minutes) { preset($0) }
 
                 Divider().padding(.vertical, 4)
 
@@ -41,13 +44,18 @@ struct WatchSessionView: View {
                     .tracking(2)
                     .foregroundStyle(.secondary)
                 // Stepper drives via the Digital Crown — no keyboard on the wrist.
-                Stepper(value: $customMinutes, in: 1 ... 1440, step: 5) {
+                Stepper(
+                    value: Binding(get: { customMinutes }, set: { steppedMinutes = $0 }),
+                    in: conn.snapshot.minMinutes ... conn.snapshot.maxMinutes,
+                    step: 5
+                ) {
                     Text("\(customMinutes) min").monospacedDigit()
                 }
                 Toggle("Sleep timer", isOn: $customSleep)
                 Button {
                     WatchHaptics.start()
-                    conn.send(.startCustom(minutes: customMinutes, sleep: customSleep))
+                    conn.send(.startTimer(minutes: customMinutes, sleep: customSleep))
+                    steppedMinutes = nil
                 } label: {
                     HStack {
                         Text(customSleep ? "Start sleep" : "Start focus")
@@ -57,7 +65,7 @@ struct WatchSessionView: View {
                 }
                 .buttonStyle(.borderedProminent)
 
-                if !conn.snapshot.timerRemainingLabel.isEmpty {
+                if conn.snapshot.isTimerActive {
                     Divider()
                         .padding(.vertical, 4)
 
@@ -83,13 +91,13 @@ struct WatchSessionView: View {
         }
     }
 
-    private func preset(_ label: String, _ p: WatchSessionPreset) -> some View {
+    private func preset(_ p: WatchTimerPreset) -> some View {
         Button {
             WatchHaptics.start()
-            conn.send(.startSession(p))
+            conn.send(.startTimer(minutes: p.minutes, sleep: false))
         } label: {
             HStack {
-                Text(label)
+                Text(p.label)
                 Spacer()
                 Image(systemName: "play.fill").font(.caption)
             }

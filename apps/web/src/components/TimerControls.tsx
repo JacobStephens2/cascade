@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
-import type { TimerKind } from "../core/types";
+import type { TimerOptions } from "../core/types";
 
 interface TimerControlsProps {
-  activeKind: TimerKind;
+  isActive: boolean;
+  options: TimerOptions;
   showCustom: boolean;
   onToggleCustom: () => void;
   onStartPomodoro: (minutes: number) => void;
@@ -11,20 +12,9 @@ interface TimerControlsProps {
   onCancel: () => void;
 }
 
-const POMODORO_PRESETS: { label: string; minutes: number }[] = [
-  { label: "30 min", minutes: 30 },
-  { label: "1 hr", minutes: 60 },
-  { label: "8 hr", minutes: 8 * 60 },
-];
-
-const SLEEP_PRESETS: { label: string; minutes: number }[] = [
-  { label: "15 min", minutes: 15 },
-  { label: "30 min", minutes: 30 },
-  { label: "1 hr", minutes: 60 },
-];
-
 export function TimerControls({
-  activeKind,
+  isActive,
+  options,
   showCustom,
   onToggleCustom,
   onStartPomodoro,
@@ -32,22 +22,30 @@ export function TimerControls({
   onStartStopwatch,
   onCancel,
 }: TimerControlsProps) {
-  const [customMinutes, setCustomMinutes] = useState("45");
+  // `null` until the user types, so the field shows the core's pre-fill for
+  // the chosen mode.
+  const [customText, setCustomText] = useState<string | null>(null);
   const [customMode, setCustomMode] = useState<"focus" | "sleep">("focus");
-
-  const timerRunning =
-    activeKind === "sleep" ||
-    activeKind === "pomodoro" ||
-    activeKind === "stopwatch";
+  const customMinutes =
+    customText ??
+    String(
+      customMode === "focus"
+        ? options.customFocusMinutes
+        : options.customSleepMinutes,
+    );
+  const chooseMode = (mode: "focus" | "sleep") => {
+    setCustomMode(mode);
+    setCustomText(null);
+  };
 
   // Collapse the custom panel automatically when a timer is running.
   useEffect(() => {
-    if (timerRunning && showCustom) onToggleCustom();
+    if (isActive && showCustom) onToggleCustom();
     // We intentionally don't include onToggleCustom — it changes per render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [timerRunning]);
+  }, [isActive]);
 
-  if (timerRunning) {
+  if (isActive) {
     return (
       <div className="timer-controls timer-controls--running">
         <button
@@ -66,7 +64,7 @@ export function TimerControls({
       <div className="timer-controls__section">
         <h2 className="timer-controls__heading">Focus session</h2>
         <div className="timer-controls__row">
-          {POMODORO_PRESETS.map((p) => (
+          {options.focusPresets.map((p) => (
             <button
               key={p.minutes}
               type="button"
@@ -82,7 +80,7 @@ export function TimerControls({
       <div className="timer-controls__section">
         <h2 className="timer-controls__heading">Sleep timer</h2>
         <div className="timer-controls__row">
-          {SLEEP_PRESETS.map((p) => (
+          {options.sleepPresets.map((p) => (
             <button
               key={p.minutes}
               type="button"
@@ -127,9 +125,10 @@ export function TimerControls({
           className="timer-controls__custom"
           onSubmit={(e) => {
             e.preventDefault();
-            const n = Number(customMinutes);
-            if (Number.isFinite(n) && n > 0 && n <= 24 * 60) {
-              const minutes = Math.round(n);
+            // Only a positive whole number crosses; the core clamps the rest.
+            const minutes = Number(customMinutes);
+            if (Number.isInteger(minutes) && minutes > 0) {
+              setCustomText(null);
               if (customMode === "focus") onStartPomodoro(minutes);
               else onStartSleep(minutes);
             }
@@ -145,7 +144,7 @@ export function TimerControls({
               role="radio"
               aria-checked={customMode === "focus"}
               className={`chip chip--ghost ${customMode === "focus" ? "is-active" : ""}`}
-              onClick={() => setCustomMode("focus")}
+              onClick={() => chooseMode("focus")}
             >
               Focus
             </button>
@@ -154,7 +153,7 @@ export function TimerControls({
               role="radio"
               aria-checked={customMode === "sleep"}
               className={`chip chip--ghost ${customMode === "sleep" ? "is-active" : ""}`}
-              onClick={() => setCustomMode("sleep")}
+              onClick={() => chooseMode("sleep")}
             >
               Sleep
             </button>
@@ -164,11 +163,11 @@ export function TimerControls({
             <input
               id="custom-minutes"
               type="number"
-              min={1}
-              max={1440}
+              min={options.minMinutes}
+              max={options.maxMinutes}
               step={1}
               value={customMinutes}
-              onChange={(e) => setCustomMinutes(e.target.value)}
+              onChange={(e) => setCustomText(e.target.value)}
             />
           </label>
           <button type="submit" className="chip chip--primary">

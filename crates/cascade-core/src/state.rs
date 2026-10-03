@@ -10,7 +10,7 @@ use crate::command::Command;
 use crate::effect::Effect;
 use crate::listening::{ListeningLedger, PersistedListening};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
-use crate::timer::{ActiveTimer, TimerKind};
+use crate::timer::{clamp_minutes, ActiveTimer, TimerKind, DEFAULT_TIMER_MINUTES};
 
 pub const DEFAULT_VOLUME_PERCENT: u8 = 60;
 pub const MIN_VOLUME_PERCENT: u8 = 0;
@@ -71,8 +71,8 @@ impl Default for State {
             muted: false,
             active_timer: None,
             timer_just_completed: None,
-            default_sleep_minutes: Some(30),
-            default_pomodoro_minutes: Some(30),
+            default_sleep_minutes: Some(DEFAULT_TIMER_MINUTES),
+            default_pomodoro_minutes: Some(DEFAULT_TIMER_MINUTES),
             last_error: None,
             audio_confirmed_playing: false,
             listening: ListeningLedger::default(),
@@ -178,26 +178,20 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             });
         }
         Command::StartSleepTimer { minutes } => {
-            if minutes == 0 {
-                state.active_timer = None;
-            } else {
-                state.active_timer = Some(ActiveTimer::start(TimerKind::Sleep, minutes));
-                state.default_sleep_minutes = Some(minutes);
-                push_persist(state, effects);
-            }
+            let minutes = clamp_minutes(minutes);
+            state.active_timer = Some(ActiveTimer::start(TimerKind::Sleep, minutes));
+            state.default_sleep_minutes = Some(minutes);
+            push_persist(state, effects);
         }
         Command::StartPomodoro { minutes } => {
-            if minutes == 0 {
-                state.active_timer = None;
-            } else {
-                state.active_timer = Some(ActiveTimer::start(TimerKind::Pomodoro, minutes));
-                state.default_pomodoro_minutes = Some(minutes);
-                // Pomodoro implies "start playing now if not already".
-                if !state.intent.is_playing() {
-                    start_playback(state, effects);
-                }
-                push_persist(state, effects);
+            let minutes = clamp_minutes(minutes);
+            state.active_timer = Some(ActiveTimer::start(TimerKind::Pomodoro, minutes));
+            state.default_pomodoro_minutes = Some(minutes);
+            // Pomodoro implies "start playing now if not already".
+            if !state.intent.is_playing() {
+                start_playback(state, effects);
             }
+            push_persist(state, effects);
         }
         Command::StartStopwatch => {
             // Count-up timer; replaces any countdown, leaves playback alone.

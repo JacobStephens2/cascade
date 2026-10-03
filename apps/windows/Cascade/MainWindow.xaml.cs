@@ -201,19 +201,47 @@ public sealed partial class MainWindow : Window
     /// matching the web's progressive disclosure.</summary>
     private void OnToggleCustom(object sender, RoutedEventArgs e)
     {
-        CustomPanel.Visibility =
-            CustomPanel.Visibility == Visibility.Visible
-                ? Visibility.Collapsed
-                : Visibility.Visible;
+        var opening = CustomPanel.Visibility != Visibility.Visible;
+        if (opening) PrefillCustomMinutes();
+        CustomPanel.Visibility = opening ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <summary>Relabel the custom Start button per the selected mode, mirroring
-    /// the web ("Start session" vs "Start sleep timer").</summary>
+    /// the web ("Start session" vs "Start sleep timer"), and pre-fill that
+    /// mode's minutes.</summary>
     private void OnCustomModeChanged(object sender, RoutedEventArgs e)
     {
-        if (StartCustomButton is null) return; // radios may fire during init
+        if (StartCustomButton is null || ViewModel is null) return; // radios may fire during init
         StartCustomButton.Content =
             CustomSleepRadio.IsChecked == true ? "Start sleep timer" : "Start session";
+        PrefillCustomMinutes();
+    }
+
+    /// <summary>Open the custom field on the core's limits and its pre-fill for
+    /// the chosen mode. Set here rather than bound, so a snapshot can't
+    /// overwrite what the user is typing.</summary>
+    private void PrefillCustomMinutes()
+    {
+        var options = ViewModel.Snapshot.TimerOptions;
+        CustomMinutes.Minimum = options.MinMinutes;
+        CustomMinutes.Maximum = options.MaxMinutes;
+        CustomMinutes.Value = CustomSleepRadio.IsChecked == true
+            ? options.CustomSleepMinutes
+            : options.CustomFocusMinutes;
+    }
+
+    private void OnStartFocusPreset(object sender, RoutedEventArgs e) =>
+        StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: false);
+
+    private void OnStartSleepPreset(object sender, RoutedEventArgs e) =>
+        StartTimer(((TimerPreset)((FrameworkElement)sender).DataContext).Minutes, sleep: true);
+
+    /// <summary>Start a timer and collapse the custom panel (as the web does),
+    /// so reopening it pre-fills from the core's new last-started length.</summary>
+    private void StartTimer(int minutes, bool sleep)
+    {
+        CustomPanel.Visibility = Visibility.Collapsed;
+        ViewModel.StartTimer(minutes, sleep);
     }
 
     /// <summary>Checkbox toggles listening tracking; IsChecked is bound one-way
@@ -227,10 +255,9 @@ public sealed partial class MainWindow : Window
     private void OnStartCustom(object sender, RoutedEventArgs e)
     {
         // NumberBox.Value is NaN when the field is empty / invalid.
+        // Only a positive whole number crosses; the core clamps the rest.
         var raw = CustomMinutes.Value;
-        if (double.IsNaN(raw)) return;
-        var minutes = (int)Math.Round(raw);
-        if (minutes < 1 || minutes > 1440) return;
-        ViewModel.StartCustom(minutes, sleep: CustomSleepRadio.IsChecked == true);
+        if (double.IsNaN(raw) || raw < 1 || raw != Math.Floor(raw)) return;
+        StartTimer((int)raw, sleep: CustomSleepRadio.IsChecked == true);
     }
 }

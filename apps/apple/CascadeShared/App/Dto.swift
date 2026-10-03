@@ -180,6 +180,27 @@ struct TimerSnapshot: Decodable, Equatable {
     let remainingMs: UInt64
     let totalMs: UInt64
     let progress: Float
+    /// A timer is running (something to cancel); false when off or just completed.
+    let isActive: Bool
+    /// One-line status, e.g. "Playing · 12:34 left".
+    let statusLabel: String
+}
+
+/// A ready-made timer length the core offers.
+struct TimerPreset: Decodable, Equatable {
+    let minutes: Int
+    let label: String
+    let shortLabel: String
+}
+
+/// The timer choices the core offers: presets, limits and the custom pre-fill.
+struct TimerOptions: Decodable, Equatable {
+    let focusPresets: [TimerPreset]
+    let sleepPresets: [TimerPreset]
+    let minMinutes: Int
+    let maxMinutes: Int
+    let customFocusMinutes: Int
+    let customSleepMinutes: Int
 }
 
 struct ListeningSnapshot: Decodable, Equatable {
@@ -200,6 +221,7 @@ struct Snapshot: Decodable, Equatable {
     let outputGain: Float
     let primaryButtonLabel: String
     let timer: TimerSnapshot
+    let timerOptions: TimerOptions
     let errorMessage: String?
     let listening: ListeningSnapshot
     /// How often to send `.tick`, in ms; 0 means stop. The core owns the cadence.
