@@ -73,14 +73,14 @@ export function logout(sessionToken: string): Promise<{ ok: boolean }> {
 }
 
 export function putListening(
-  sessionToken: string | null,
+  sessionToken: string,
   deviceId: string,
   deviceTotalMs: number,
   keepalive = false,
 ): Promise<ListeningResponse> {
   return call("/listening", {
     method: "PUT",
-    sessionToken: sessionToken ?? undefined,
+    sessionToken,
     keepalive,
     body: JSON.stringify({ deviceId, deviceTotalMs }),
   });

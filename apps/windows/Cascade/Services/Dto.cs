@@ -142,8 +142,7 @@ public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(double Gain) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
-// SessionToken is null only when restored without accountJson; never here.
-public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs, string? SessionToken) : CascadeEffect;
+public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs, string SessionToken) : CascadeEffect;
 // Account requests: carry each over HTTP and settle it with its success
 // command or AccountRequestFailed. RevokeSession is fire-and-forget.
 public sealed record SendSignInLinkEffect(string Email) : CascadeEffect;

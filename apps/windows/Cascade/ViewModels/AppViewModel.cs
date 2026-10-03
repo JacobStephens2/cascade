@@ -278,9 +278,8 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         {
             case PushListeningEffect push:
                 _ = SettleWithAsync(
-                    // Never null here: this shell hands the core its account.
                     () => _syncApi.PutListeningAsync(
-                        push.SessionToken!, push.DeviceId, (long)push.DeviceTotalMs),
+                        push.SessionToken, push.DeviceId, (long)push.DeviceTotalMs),
                     res => new ListeningSyncSucceededCommand((ulong)Math.Max(0L, res.ServerTotalMs)),
                     unauthorized => new ListeningSyncFailedCommand(unauthorized));
                 break;

@@ -18,8 +18,9 @@ private data class LegacyAccount(val sessionToken: String, val email: String)
  * Stores the core's account blob (JSON produced by the Rust `PersistAccount`
  * effect), opaque to Kotlin. Before the core held the account this store kept
  * the session token and email under their own keys; on the first launch after
- * upgrading those are handed to the core as the version-less
- * `{ sessionToken, email }` it also reads, so an existing sign-in survives.
+ * upgrading those are converted once to the version-less
+ * `{ sessionToken, email }` the core also reads, so an existing sign-in
+ * survives.
  *
  * The per-device id (this device's G-Counter slot) lives in the core's
  * listening blob; this store only exposes the id older builds kept here, so
@@ -31,13 +32,15 @@ class AccountStore(private val context: Context) {
     private val legacyEmailKey = stringPreferencesKey("email")
     private val deviceKey = stringPreferencesKey("device_id")
 
-    /** The stored blob, the legacy account in the shape the core reads, or `""`. */
+    /** The stored blob, or `""`. A legacy account is converted and stored once. */
     suspend fun read(): String {
         val prefs = context.accountDataStore.data.first()
         prefs[accountKey]?.let { return it }
         val token = prefs[legacyTokenKey] ?: return ""
         val email = prefs[legacyEmailKey] ?: return ""
-        return Json.encodeToString(LegacyAccount.serializer(), LegacyAccount(token, email))
+        val converted = Json.encodeToString(LegacyAccount.serializer(), LegacyAccount(token, email))
+        write(converted)
+        return converted
     }
 
     /** Store the blob verbatim; an empty [json] deletes the stored account. */

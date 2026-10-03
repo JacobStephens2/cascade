@@ -56,8 +56,7 @@ export type Effect =
       type: "pushListening";
       deviceId: string;
       deviceTotalMs: number;
-      /** Null only when restored without `accountJson`; never for web. */
-      sessionToken: string | null;
+      sessionToken: string;
     }
   | { type: "sendSignInLink"; email: string }
   | { type: "verifySignInToken"; token: string }

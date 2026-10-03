@@ -75,11 +75,10 @@ sealed class Effect {
     @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val gain: Float) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
     @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
-    /** [sessionToken] is null only when restored without `accountJson`; never for this one. */
     @Serializable @SerialName("pushListening") data class PushListening(
         val deviceId: String,
         val deviceTotalMs: Long,
-        val sessionToken: String? = null,
+        val sessionToken: String,
     ) : Effect()
     @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect()
     @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect()

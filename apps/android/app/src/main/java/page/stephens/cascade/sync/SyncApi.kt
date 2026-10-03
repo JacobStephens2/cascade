@@ -51,7 +51,7 @@ object SyncApi {
     }
 
     suspend fun putListening(
-        sessionToken: String?,
+        sessionToken: String,
         deviceId: String,
         deviceTotalMs: Long,
     ): ListeningResponse {

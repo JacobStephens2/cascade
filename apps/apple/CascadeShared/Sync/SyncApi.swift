@@ -38,7 +38,7 @@ struct SyncApi {
         _ = try await send("POST", "/auth/logout", body: nil, token: token)
     }
 
-    func putListening(token: String?, deviceId: String, deviceTotalMs: Int64) async throws -> ListeningResponse {
+    func putListening(token: String, deviceId: String, deviceTotalMs: Int64) async throws -> ListeningResponse {
         let data = try await send(
             "PUT", "/listening",
             body: ["deviceId": deviceId, "deviceTotalMs": deviceTotalMs],

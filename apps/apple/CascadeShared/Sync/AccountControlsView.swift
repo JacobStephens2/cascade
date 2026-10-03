@@ -17,8 +17,8 @@ struct AccountControlsView: View {
                     .foregroundStyle(.secondary)
                     .tracking(2)
 
-                if let signedEmail = account.email {
-                    Text(account.signedInLabel ?? signedEmail).font(.callout)
+                if let signedInLabel = account.signedInLabel {
+                    Text(signedInLabel).font(.callout)
                     HStack(spacing: 12) {
                         Button("Sign out") { store.dispatch(.signOut) }
                         Button("Delete data") { store.dispatch(.deleteListeningData) }
