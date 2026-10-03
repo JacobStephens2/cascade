@@ -94,7 +94,7 @@ public sealed record AccountRequestFailedCommand(bool Unauthorized) : CascadeCom
 /// reason lets the core decide whether there is anything to say.
 /// </summary>
 [JsonConverter(typeof(SyncReasonConverter))]
-public enum SyncReason { Threshold, Flush, Refresh }
+public enum SyncReason { Flush, Refresh }
 
 internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonConverter<SyncReason>
 {
@@ -102,7 +102,6 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
         System.Type typeToConvert, System.Text.Json.JsonSerializerOptions options) =>
         reader.GetString() switch
         {
-            "threshold" => SyncReason.Threshold,
             "flush" => SyncReason.Flush,
             "refresh" => SyncReason.Refresh,
             var other => throw new System.Text.Json.JsonException($"unknown SyncReason '{other}'"),
@@ -112,10 +111,9 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
         System.Text.Json.JsonSerializerOptions options) =>
         writer.WriteStringValue(value switch
         {
-            SyncReason.Threshold => "threshold",
             SyncReason.Flush => "flush",
             SyncReason.Refresh => "refresh",
-            _ => "threshold",
+            _ => throw new System.Text.Json.JsonException($"unknown SyncReason {value}"),
         });
 }
 
