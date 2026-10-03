@@ -107,7 +107,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         // lower the counter. The account blob rides along; the core holds the
         // account from here on.
         var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? NewDeviceId();
-        Dispatch(new RestoreCommand(
+        Send(new RestoreCommand(
             _settings.ReadSafely() ?? "",
             _settings.ReadListeningSafely() ?? "",
             fallbackDeviceId,
@@ -119,25 +119,12 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     }
 
     /// <summary>
-    /// Dispatch a command from the UI, then offer the core a threshold sync
-    /// (see <see cref="Dispatch"/> for the plain form the sync flow uses).
+    /// Dispatch one command and apply its update, carrying any request it
+    /// asks for. Every command comes through here — UI, media keys, the tick
+    /// loop, sync begins and settles; the core decides when a routine sync is
+    /// due and answers the tick that crosses the threshold with the push.
     /// </summary>
     public void Send(CascadeCommand command)
-    {
-        Dispatch(command);
-
-        // Routine check after every update: the shell only says it *can* talk;
-        // the core decides whether it is signed in and enough unsynced time has
-        // accrued, and answers with nothing while a sync is already in flight.
-        BeginSync(SyncReason.Threshold);
-    }
-
-    /// <summary>
-    /// Dispatch one command and apply its update, carrying any request it
-    /// asks for. Unlike <see cref="Send"/>, never offers a sync itself — a
-    /// settle dispatches through here so it can't recurse into another begin.
-    /// </summary>
-    private void Dispatch(CascadeCommand command)
     {
         try
         {
@@ -261,7 +248,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     /// </summary>
     private void BeginSync(SyncReason reason)
     {
-        if (SyncConfig.Available) Dispatch(new BeginListeningSyncCommand(reason));
+        if (SyncConfig.Available) Send(new BeginListeningSyncCommand(reason));
     }
 
     /// <summary>
@@ -341,7 +328,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         {
             outcome = failed(e is SyncHttpException { Status: 401 });
         }
-        OnUiThread(() => Dispatch(outcome));
+        OnUiThread(() => Send(outcome));
     }
 
     private Task SettleWithAsync(
