@@ -120,8 +120,9 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
 
     /// <summary>
     /// Dispatch one command and apply its update, carrying any request it
-    /// asks for. The UI, the tick loop and every settle come through here; the
-    /// core decides when a routine sync is due and answers a tick with the push.
+    /// asks for. Every command comes through here — UI, media keys, the tick
+    /// loop, sync begins and settles; the core decides when a routine sync is
+    /// due and answers the tick that crosses the threshold with the push.
     /// </summary>
     public void Send(CascadeCommand command)
     {

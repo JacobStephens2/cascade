@@ -113,7 +113,7 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
         {
             SyncReason.Flush => "flush",
             SyncReason.Refresh => "refresh",
-            _ => throw new System.Text.Json.JsonException($"unknown SyncReason {value}"),
+            _ => throw new System.Text.Json.JsonException($"unknown SyncReason '{value}'"),
         });
 }
 
