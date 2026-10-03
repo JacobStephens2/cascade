@@ -29,7 +29,7 @@ apps/windows/
     │   ├── Dto.cs                # System.Text.Json tagged-enum DTOs
     │   ├── AudioEngine.cs        # MediaPlayer + MediaPlaybackList
     │   ├── SmtcController.cs     # System Media Transport Controls
-    │   ├── TickScheduler.cs      # DispatcherQueueTimer 250ms cadence
+    │   ├── TickScheduler.cs      # DispatcherQueueTimer at the core's tickIntervalMs
     │   ├── SettingsStore.cs      # %LOCALAPPDATA%\Cascade\settings.json
     │   └── PowerController.cs    # SetThreadExecutionState
     ├── Native/
@@ -86,7 +86,7 @@ dotnet build Cascade/Cascade.csproj -c Debug /p:Platform=x64
 | Lock-screen / media keys | `SmtcController.cs` — `SystemMediaTransportControls` rides the same `MediaPlayer` instance. |
 | Settings | `%LOCALAPPDATA%\Cascade\settings.json` — same JSON blob the web / Android / macOS clients round-trip. |
 | Power | `PowerController.cs` — `SetThreadExecutionState(CONTINUOUS|SYSTEM_REQUIRED)` during active sessions. |
-| Tick loop | `DispatcherQueueTimer` at 250 ms; only runs while a timer is active. |
+| Tick loop | `DispatcherQueueTimer` at the snapshot's `tickIntervalMs`; stopped when it is 0. |
 
 The Rust core declares **intent** (`Effect.startPlayback { volumePercent }`);
 the Windows shell decides **how** (MediaPlayer, with a square-law volume

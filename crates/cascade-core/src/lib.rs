@@ -24,7 +24,10 @@ pub use listening::{
     LISTENING_VERSION, MAX_TICK_ACCRUAL_MS,
 };
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
-pub use snapshot::{ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind};
+pub use snapshot::{
+    ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind, PLAYBACK_TICK_INTERVAL_MS,
+    TIMER_TICK_INTERVAL_MS,
+};
 pub use state::{PlaybackIntent, State, TimerMode};
 
 use serde::{Deserialize, Serialize};

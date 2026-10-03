@@ -11,7 +11,6 @@ import kotlinx.coroutines.launch
 import page.stephens.cascade.core.CascadeBridgeHolder
 import page.stephens.cascade.core.Command
 import page.stephens.cascade.core.Snapshot
-import page.stephens.cascade.core.TimerKind
 import page.stephens.cascade.sync.SyncManager
 import page.stephens.cascade.sync.SyncUiState
 
@@ -26,19 +25,11 @@ class CascadeViewModel(
     private var tickInterval = 0L
 
     init {
-        // Tick while a timer is counting (fine cadence) and also while audio is
-        // simply playing (coarse cadence, just to accrue listening time). The
-        // Rust core never reads the clock; it relies on these ticks.
+        // Tick at the cadence the core asks for (0 = stop). The Rust core never
+        // reads the clock; it relies on these ticks.
         viewModelScope.launch {
             bridge.snapshot.collect { snap ->
-                val timerActive = snap.timer.kind == TimerKind.SLEEP ||
-                    snap.timer.kind == TimerKind.POMODORO ||
-                    snap.timer.kind == TimerKind.STOPWATCH
-                val want = when {
-                    timerActive -> TICK_INTERVAL_MS
-                    snap.isPlaying -> LISTENING_TICK_INTERVAL_MS
-                    else -> 0L
-                }
+                val want = snap.tickIntervalMs
                 if (want != tickInterval) {
                     stopTicking()
                     if (want > 0L) startTicking(want)
@@ -82,9 +73,6 @@ class CascadeViewModel(
     }
 
     companion object {
-        private const val TICK_INTERVAL_MS = 250L
-        private const val LISTENING_TICK_INTERVAL_MS = 1000L
-
         fun factory(bridge: CascadeBridgeHolder, syncManager: SyncManager) =
             object : ViewModelProvider.Factory {
                 override fun <T : ViewModel> create(modelClass: Class<T>): T {

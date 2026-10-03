@@ -185,6 +185,23 @@ proptest! {
         prop_assert!(restored);
     }
 
+    /// The core asks for ticks exactly when something needs time to pass: an
+    /// active timer (finely) or intended playback (coarsely, for accrual).
+    #[test]
+    fn ticks_requested_exactly_when_timer_active_or_playing(
+        cmds in prop::collection::vec(command_strategy(), 0..60),
+    ) {
+        let mut core = Core::new();
+        for cmd in cmds {
+            let s = core.dispatch(cmd).snapshot;
+            let timer_active = matches!(
+                s.timer.kind,
+                TimerSnapshotKind::Sleep | TimerSnapshotKind::Pomodoro | TimerSnapshotKind::Stopwatch
+            );
+            prop_assert_eq!(s.tick_interval_ms > 0, timer_active || s.is_playing);
+        }
+    }
+
     /// Pausing — after any history — never starts playback and always lands paused.
     #[test]
     fn pause_never_starts_playback(cmds in prop::collection::vec(command_strategy(), 0..40)) {
