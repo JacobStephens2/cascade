@@ -152,7 +152,7 @@ fn a_transient_failure_acknowledges_nothing() {
         unauthorized: false,
     });
     assert_eq!(update.snapshot.listening.unsynced_ms, 40_000);
-    assert!(!update.effects.contains(&Effect::ClearSession));
+    assert!(update.effects.is_empty(), "{:?}", update.effects);
 }
 
 #[test]
@@ -193,9 +193,9 @@ fn unauthorized_signs_out_and_keeps_local_listening() {
 }
 
 #[test]
-fn a_shell_that_keeps_its_own_account_still_gets_clear_session() {
-    // A shell not yet ported restores without `accountJson`: it syncs
-    // without a session token and drops its own session on `ClearSession`.
+fn a_401_without_a_core_held_account_still_signs_out() {
+    // A shell that restores without `accountJson` syncs without a session
+    // token. A 401 there follows the same rule as any other: sign out.
     let mut core = Core::new();
     core.dispatch(Command::Restore {
         settings_json: String::new(),
@@ -217,7 +217,18 @@ fn a_shell_that_keeps_its_own_account_still_gets_clear_session() {
         }]
     );
     let update = core.dispatch(Command::ListeningSyncFailed { unauthorized: true });
-    assert_eq!(update.effects, vec![Effect::ClearSession]);
+    assert!(
+        update.effects.contains(&Effect::PersistAccount {
+            json: String::new()
+        }),
+        "{:?}",
+        update.effects
+    );
+    assert!(persisted_json(&update.effects).is_some(), "{:?}", update.effects);
+    assert_eq!(
+        update.snapshot.account.status_label.as_deref(),
+        Some("Signed out — sign in again to sync.")
+    );
 }
 
 // ---- device-id lifecycle ---------------------------------------------------
@@ -414,9 +425,5 @@ fn sync_effects_serialize_camel_case() {
     assert_eq!(
         serde_json::to_string(&push).unwrap(),
         r#"{"type":"pushListening","deviceId":"d","deviceTotalMs":7,"sessionToken":"s"}"#
-    );
-    assert_eq!(
-        serde_json::to_string(&Effect::ClearSession).unwrap(),
-        r#"{"type":"clearSession"}"#
     );
 }

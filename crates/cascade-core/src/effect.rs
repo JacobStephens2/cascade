@@ -33,17 +33,13 @@ pub enum Effect {
     /// Emitted only in answer to [`crate::Command::BeginListeningSync`]; the
     /// shell must settle it with `ListeningSyncSucceeded` or
     /// `ListeningSyncFailed`, or no further sync will start. `session_token`
-    /// is the bearer token to send; it is `None` only for a shell that keeps
-    /// its own account (one that restores without `accountJson`).
+    /// is the bearer token to send; it is `None` only for a shell that
+    /// restores without `accountJson`.
     PushListening {
         device_id: String,
         device_total_ms: u64,
         session_token: Option<String>,
     },
-    /// The server rejected the session (401) of a shell that keeps its own
-    /// account. The shell drops its stored session token and tells the user to
-    /// sign in again. Never emitted once the core holds the account.
-    ClearSession,
 
     /// POST a sign-in link request for `email`. Settle with
     /// `SignInLinkSent` or `AccountRequestFailed`.

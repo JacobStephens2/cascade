@@ -59,7 +59,6 @@ export type Effect =
       /** Null only for a shell that keeps its own account; never for web. */
       sessionToken: string | null;
     }
-  | { type: "clearSession" }
   | { type: "sendSignInLink"; email: string }
   | { type: "verifySignInToken"; token: string }
   /** Fire-and-forget: no settle command. */

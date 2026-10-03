@@ -81,7 +81,6 @@ sealed class Effect {
         val deviceTotalMs: Long,
         val sessionToken: String? = null,
     ) : Effect()
-    @Serializable @SerialName("clearSession") data object ClearSession : Effect()
     @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect()
     @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect()
     /** Fire-and-forget: no settle command. */

@@ -348,11 +348,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
         Command::ListeningSyncFailed { unauthorized } => {
             state.listening.sync_failed();
             if unauthorized {
-                if state.account.session.is_some() {
-                    session_expired(state, effects);
-                } else if !state.account.held_by_core {
-                    effects.push(Effect::ClearSession);
-                }
+                session_expired(state, effects);
             }
         }
         Command::ResetListeningData { new_device_id } => {

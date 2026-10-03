@@ -119,10 +119,6 @@ final class AppStore {
                 settings.writeListeningSafely(json)
             case .persistAccount(let json):
                 accountStore.writeAccountJson(json)
-            case .clearSession:
-                // Only for a shell that keeps its own account; this one
-                // restores with `accountJson`, so the core holds it.
-                break
             case .pushListening, .sendSignInLink, .verifySignInToken, .revokeSession,
                  .deleteServerListening, .deleteServerAccount:
                 carry(effect)
@@ -207,7 +203,7 @@ final class AppStore {
                     },
                     failed: accountFailed)
             case .startPlayback, .pausePlayback, .setPlatformVolume, .persistSettings,
-                 .persistListening, .clearSession, .persistAccount:
+                 .persistListening, .persistAccount:
                 // Not requests: `apply` handles these itself.
                 break
             }
