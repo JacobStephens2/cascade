@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import init, { CascadeCore } from "../wasm/cascade_wasm.js";
 import wasmUrl from "../wasm/cascade_wasm_bg.wasm?url";
 import { WebAudioEngine } from "../audio/WebAudioEngine";
+import { carryRequests } from "../sync/carrier";
 import type { Command, Effect, Snapshot, TimerKind } from "./types";
 
 const SETTINGS_STORAGE_KEY = "cascade.settings.v1";
@@ -41,15 +42,21 @@ interface UseCascadeResult {
   ready: boolean;
   snapshot: Snapshot | null;
   loadError: string | null;
-  /** Dispatches and returns the effects of that one command, so a caller can
-   * act on an answer (e.g. `pushListening`) it asked for. */
-  dispatch: (command: Command) => Effect[];
+  /** Dispatches one command. Its request effects are carried like any
+   * dispatch's; `keepalive` lets them outlive a closing page. */
+  dispatch: (command: Command, options?: DispatchOptions) => void;
+}
+
+export interface DispatchOptions {
+  keepalive?: boolean;
 }
 
 /**
  * Owns the cascade-core WASM instance, the audio engine, the tick loop, and
  * the localStorage-backed settings persistence. The whole app reads from
- * `snapshot` and pushes commands through `dispatch`.
+ * `snapshot` and pushes commands through `dispatch`. Every dispatch, ticks
+ * included, hands its request effects to the one carrier, which settles them
+ * through this same dispatch.
  */
 export function useCascade(): UseCascadeResult {
   const coreRef = useRef<CascadeCore | null>(null);
@@ -158,9 +165,9 @@ export function useCascade(): UseCascadeResult {
   // `dispatch` from inside async effects needs a stable reference; the
   // exported `dispatch` (below) just delegates.
   const dispatchInternal = useCallback(
-    (command: Command): Effect[] => {
+    (command: Command, keepalive = false): void => {
       const core = coreRef.current;
-      if (!core) return [];
+      if (!core) return;
       const updateJson = core.dispatch(JSON.stringify(command));
       const update = JSON.parse(updateJson) as {
         snapshot: Snapshot;
@@ -168,13 +175,14 @@ export function useCascade(): UseCascadeResult {
       };
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
-      return update.effects;
+      carryRequests(update.effects, (outcome) => dispatchInternal(outcome), keepalive);
     },
     [runEffects],
   );
 
   const dispatch = useCallback(
-    (command: Command) => dispatchInternal(command),
+    (command: Command, options?: DispatchOptions) =>
+      dispatchInternal(command, options?.keepalive),
     [dispatchInternal],
   );
 
