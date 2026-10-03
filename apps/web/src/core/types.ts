@@ -70,6 +70,8 @@ export interface Snapshot {
   timer: TimerSnapshot;
   errorMessage: string | null;
   listening: ListeningSnapshot;
+  /** How often to send `tick`, in ms; 0 means stop. The core owns the cadence. */
+  tickIntervalMs: number;
 }
 
 export interface Update {

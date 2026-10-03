@@ -133,13 +133,9 @@ final class AppStore {
             }
         }
 
-        // Tick loop: run while a timer is active (fine cadence, so the countdown
-        // reads smoothly) and also while audio is simply playing (coarse cadence,
-        // just to accrue listening time). Restart only when the cadence changes.
-        let timerActive = update.snapshot.timer.kind == .sleep
-            || update.snapshot.timer.kind == .pomodoro
-            || update.snapshot.timer.kind == .stopwatch
-        let desired: UInt64 = timerActive ? 250 : (update.snapshot.isPlaying ? 1000 : 0)
+        // Tick loop: run at the cadence the core asks for (0 = stop). Restart
+        // only when the cadence changes.
+        let desired = update.snapshot.tickIntervalMs
         if desired != tickIntervalMs {
             stopTicking()
             if desired > 0 { startTicking(intervalMs: desired) }
@@ -323,6 +319,7 @@ extension Snapshot {
             displayedTotalMs: 0,
             unsyncedMs: 0,
             totalLabel: "0m"
-        )
+        ),
+        tickIntervalMs: 0
     )
 }

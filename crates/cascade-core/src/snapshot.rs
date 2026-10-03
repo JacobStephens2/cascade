@@ -7,6 +7,13 @@ use crate::listening::format_listening_total;
 use crate::state::{State, DEFAULT_VOLUME_PERCENT};
 use crate::timer::{format_remaining, TimerKind};
 
+/// Tick cadence while any timer is active (playing or paused), so the
+/// countdown or stopwatch reads smoothly.
+pub const TIMER_TICK_INTERVAL_MS: u64 = 250;
+/// Tick cadence while audio is merely playing, so listening time keeps
+/// accruing.
+pub const PLAYBACK_TICK_INTERVAL_MS: u64 = 1_000;
+
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum TimerSnapshotKind {
@@ -64,6 +71,9 @@ pub struct Snapshot {
     pub timer: TimerSnapshot,
     pub error_message: Option<String>,
     pub listening: ListeningSnapshot,
+    /// How often the shell should send [`crate::Command::Tick`], in ms. `0`
+    /// means stop ticking. The core owns the cadence; the shell owns the clock.
+    pub tick_interval_ms: u64,
 }
 
 impl Snapshot {
@@ -141,6 +151,104 @@ impl Snapshot {
                 unsynced_ms: state.listening.unsynced_ms(),
                 total_label: format_listening_total(state.listening.displayed_total_ms()),
             },
+            tick_interval_ms: tick_interval_ms(state),
         }
+    }
+}
+
+/// Fine ticks while any timer is active (a just-completed timer is no longer
+/// active), coarse ticks while playback is intended, otherwise none.
+fn tick_interval_ms(state: &State) -> u64 {
+    if state.active_timer.is_some() {
+        TIMER_TICK_INTERVAL_MS
+    } else if state.intent.is_playing() {
+        PLAYBACK_TICK_INTERVAL_MS
+    } else {
+        0
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::{Command, Core};
+
+    fn interval_after(commands: impl IntoIterator<Item = Command>) -> u64 {
+        let mut core = Core::new();
+        for command in commands {
+            core.dispatch(command);
+        }
+        core.snapshot().tick_interval_ms
+    }
+
+    #[test]
+    fn new_core_does_not_tick() {
+        assert_eq!(Core::new().snapshot().tick_interval_ms, 0);
+    }
+
+    #[test]
+    fn plain_playback_ticks_coarsely() {
+        assert_eq!(interval_after([Command::Play]), PLAYBACK_TICK_INTERVAL_MS);
+    }
+
+    #[test]
+    fn any_active_timer_ticks_finely_whether_playing_or_paused() {
+        let starts = [
+            Command::StartSleepTimer { minutes: 10 },
+            Command::StartPomodoro { minutes: 25 },
+            Command::StartStopwatch,
+        ];
+        for start in starts {
+            assert_eq!(
+                interval_after([Command::Play, start.clone()]),
+                TIMER_TICK_INTERVAL_MS,
+                "playing + {start:?}"
+            );
+            assert_eq!(
+                interval_after([start.clone(), Command::Pause]),
+                TIMER_TICK_INTERVAL_MS,
+                "paused + {start:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn cancelling_timer_while_playing_falls_back_to_coarse() {
+        assert_eq!(
+            interval_after([Command::Play, Command::StartStopwatch, Command::CancelTimer]),
+            PLAYBACK_TICK_INTERVAL_MS
+        );
+    }
+
+    #[test]
+    fn expired_sleep_timer_stops_ticking() {
+        let mut core = Core::new();
+        core.dispatch(Command::Play);
+        core.dispatch(Command::StartSleepTimer { minutes: 1 });
+        let snap = core.dispatch(Command::Tick { elapsed_ms: 61_000 }).snapshot;
+        assert_eq!(snap.timer.kind, TimerSnapshotKind::JustCompleted);
+        assert!(!snap.is_playing);
+        assert_eq!(snap.tick_interval_ms, 0);
+    }
+
+    #[test]
+    fn pausing_with_stopwatch_running_keeps_fine_ticks() {
+        assert_eq!(
+            interval_after([Command::Play, Command::StartStopwatch, Command::Pause]),
+            TIMER_TICK_INTERVAL_MS
+        );
+    }
+
+    // Every shell reads `tickIntervalMs` off the JSON snapshot; a rename would
+    // silently stop their tick loops.
+    #[test]
+    fn tick_interval_serializes_camel_case() {
+        let mut core = Core::new();
+        core.dispatch(Command::Play);
+        let json = serde_json::to_string(&core.snapshot()).unwrap();
+        assert!(
+            json.contains(r#""tickIntervalMs":1000"#),
+            "snapshot JSON: {json}"
+        );
     }
 }

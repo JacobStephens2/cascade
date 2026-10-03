@@ -15,10 +15,6 @@ const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 // the restore fallback, so an existing server slot carries over.
 const LEGACY_DEVICE_KEY = "cascade.device.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
-// Fine cadence while a timer is counting; coarse cadence when we're only
-// accruing listening time during plain playback, to keep the loop cheap.
-const TICK_INTERVAL_MS = 250;
-const LISTENING_TICK_INTERVAL_MS = 1000;
 
 interface SessionState {
   isPlaying: boolean;
@@ -175,21 +171,11 @@ export function useCascade(): UseCascadeResult {
     [dispatchInternal],
   );
 
-  // Tick loop. Runs while a timer is counting (fine cadence, so the readout is
-  // smooth) and also while audio is simply playing (coarse cadence, just to
-  // accrue listening time). When neither is true there's nothing to advance, so
-  // the loop stays parked.
-  const isPlaying = snapshot?.isPlaying ?? false;
-  const isTimerActive =
-    snapshot?.timer.kind === "sleep" ||
-    snapshot?.timer.kind === "pomodoro" ||
-    snapshot?.timer.kind === "stopwatch";
+  // Tick loop. The core decides the cadence (`tickIntervalMs`, 0 = parked);
+  // the shell only owns the clock. Restarts only when the interval changes.
+  const interval = snapshot?.tickIntervalMs ?? 0;
   useEffect(() => {
-    if (!ready) return;
-    if (!isTimerActive && !isPlaying) return;
-    const interval = isTimerActive
-      ? TICK_INTERVAL_MS
-      : LISTENING_TICK_INTERVAL_MS;
+    if (!ready || interval <= 0) return;
 
     let last = performance.now();
     let frame: number;
@@ -204,7 +190,7 @@ export function useCascade(): UseCascadeResult {
     };
     frame = window.setTimeout(tick, interval);
     return () => window.clearTimeout(frame);
-  }, [ready, isTimerActive, isPlaying, dispatchInternal]);
+  }, [ready, interval, dispatchInternal]);
 
   // Restore the listening ledger once, after the core is ready — always, even
   // with no blob, because this is also where the core gets its device id. The

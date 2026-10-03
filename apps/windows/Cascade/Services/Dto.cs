@@ -169,7 +169,9 @@ public sealed record CascadeSnapshot(
     string PrimaryButtonLabel,
     TimerSnapshot Timer,
     string? ErrorMessage,
-    ListeningSnapshot Listening
+    ListeningSnapshot Listening,
+    // How often to send a TickCommand, in ms; 0 means stop. The core owns the cadence.
+    int TickIntervalMs
 );
 
 public sealed record CascadeUpdate(

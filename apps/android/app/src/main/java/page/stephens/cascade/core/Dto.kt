@@ -100,6 +100,8 @@ data class Snapshot(
     val timer: TimerSnapshot,
     val errorMessage: String? = null,
     val listening: ListeningSnapshot,
+    /** How often to send [Command.Tick], in ms; 0 means stop. The core owns the cadence. */
+    val tickIntervalMs: Long,
 )
 
 @Serializable

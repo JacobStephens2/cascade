@@ -178,12 +178,9 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             }
         }
 
-        // Drive the tick loop while a timer is running (fine cadence) and also
-        // while audio is simply playing (coarse cadence, just to accrue
-        // listening time). Restart only when the cadence actually changes.
-        var nowTimer = update.Snapshot.Timer.Kind;
-        var timerActive = nowTimer is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch;
-        var desiredInterval = timerActive ? 250 : (update.Snapshot.IsPlaying ? 1000 : 0);
+        // Drive the tick loop at the cadence the core asks for (0 = stop).
+        // Restart only when the cadence actually changes.
+        var desiredInterval = update.Snapshot.TickIntervalMs;
         if (desiredInterval != _tick.IntervalMs)
         {
             _tick.Stop();

@@ -196,6 +196,8 @@ struct Snapshot: Decodable, Equatable {
     let timer: TimerSnapshot
     let errorMessage: String?
     let listening: ListeningSnapshot
+    /// How often to send `.tick`, in ms; 0 means stop. The core owns the cadence.
+    let tickIntervalMs: UInt64
 }
 
 struct Update: Decodable {
