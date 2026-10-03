@@ -35,7 +35,7 @@ public static class CascadeJson
 [JsonDerivedType(typeof(PlatformPlaybackPausedCommand), "platformPlaybackPaused")]
 [JsonDerivedType(typeof(PlatformPlaybackErrorCommand), "platformPlaybackError")]
 [JsonDerivedType(typeof(SetListeningTrackingCommand), "setListeningTracking")]
-[JsonDerivedType(typeof(RestoreListeningCommand), "restoreListening")]
+[JsonDerivedType(typeof(RestoreCommand), "restore")]
 [JsonDerivedType(typeof(BeginListeningSyncCommand), "beginListeningSync")]
 [JsonDerivedType(typeof(ListeningSyncSucceededCommand), "listeningSyncSucceeded")]
 [JsonDerivedType(typeof(ListeningSyncFailedCommand), "listeningSyncFailed")]
@@ -56,7 +56,7 @@ public sealed record PlatformPlaybackStartedCommand : CascadeCommand;
 public sealed record PlatformPlaybackPausedCommand : CascadeCommand;
 public sealed record PlatformPlaybackErrorCommand(string Message) : CascadeCommand;
 public sealed record SetListeningTrackingCommand(bool Enabled) : CascadeCommand;
-public sealed record RestoreListeningCommand(string Json, string FallbackDeviceId) : CascadeCommand;
+public sealed record RestoreCommand(string SettingsJson, string ListeningJson, string FallbackDeviceId) : CascadeCommand;
 public sealed record BeginListeningSyncCommand(SyncReason Reason) : CascadeCommand;
 public sealed record ListeningSyncSucceededCommand(ulong ServerTotalMs) : CascadeCommand;
 public sealed record ListeningSyncFailedCommand(bool Unauthorized) : CascadeCommand;

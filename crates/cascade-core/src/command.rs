@@ -58,18 +58,28 @@ pub enum Command {
     /// opt-out. Turning it off stops accrual immediately but never erases the
     /// total already counted — use [`Command::ResetListeningData`] for that.
     SetListeningTracking { enabled: bool },
-    /// Restore the persisted listening blob at startup. `json` is the opaque
-    /// string a previous [`crate::Effect::PersistListening`] handed the shell;
-    /// the core owns its schema, so the shell stores and returns it verbatim.
-    /// A missing or unparseable blob is ignored (the in-memory ledger keeps its
-    /// defaults) — restore never *lowers* a live counter.
+    /// Restore persisted data at startup. Every shell boots the same way: a
+    /// fresh core, then this command exactly once. Only the first restore a
+    /// core receives takes effect; any later one changes nothing and returns
+    /// no effects, so a stale blob can never undo a reset.
+    ///
+    /// `settings_json` and `listening_json` are the opaque strings previous
+    /// [`crate::Effect::PersistSettings`] and [`crate::Effect::PersistListening`]
+    /// effects handed the shell; the core owns their schemas, so the shell
+    /// stores and returns them verbatim. An empty string means "no blob". A
+    /// missing, unparseable or unknown-version blob is ignored and the defaults
+    /// stay in place — restore raises no error, and never *lowers* a live
+    /// listening counter. Settings restore touches only the persisted fields
+    /// and emits no `PersistSettings` or volume effect: the core is paused.
     ///
     /// The core owns the device id but has no randomness, so the shell supplies
     /// `fallback_device_id`: a fresh random id (or, once, the id the shell
     /// used to store itself, so an existing server slot carries over). It is
-    /// adopted — and persisted — only if the blob carries no id.
-    RestoreListening {
-        json: String,
+    /// adopted — and persisted at once — only if the listening blob carries no
+    /// id.
+    Restore {
+        settings_json: String,
+        listening_json: String,
         fallback_device_id: String,
     },
     /// The shell is able to talk to the server (online, signed in) and asks

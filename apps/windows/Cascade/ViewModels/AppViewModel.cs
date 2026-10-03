@@ -76,7 +76,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     {
         _dispatcher = dispatcher;
         _settings = new SettingsStore();
-        _bridge = new CoreBridge(_settings.ReadSafely());
+        _bridge = new CoreBridge();
         _audio = new AudioEngine();
         _smtc = new SmtcController(_audio.Player);
         _power = new PowerController();
@@ -88,14 +88,18 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         _smtc.BindDispatch(Send);
         _smtc.Update(snapshot);
 
-        // Restore the listening ledger once at startup — always, even with no
-        // blob, because the core owns the device id but has no randomness: it
-        // adopts the fallback id only if the blob carries none. The id older
-        // builds stored themselves goes first, so an existing server slot
-        // carries over. The core ignores a missing/incompatible blob and never
-        // lets a restore lower the counter.
+        // Boot is one step: a fresh core, then one restore carrying both
+        // persisted blobs (empty = none) and a fallback device id. The core
+        // owns the device id but has no randomness: it adopts the fallback id
+        // only if the listening blob carries none. The id older builds stored
+        // themselves goes first, so an existing server slot carries over. The
+        // core ignores a missing/incompatible blob and never lets a restore
+        // lower the counter.
         var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? Guid.NewGuid().ToString();
-        Send(new RestoreListeningCommand(_settings.ReadListeningSafely() ?? "", fallbackDeviceId));
+        Send(new RestoreCommand(
+            _settings.ReadSafely() ?? "",
+            _settings.ReadListeningSafely() ?? "",
+            fallbackDeviceId));
 
         Account = _accountStore.ReadAccount();
         if (Account is not null)

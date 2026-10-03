@@ -16,6 +16,20 @@ const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 const LEGACY_DEVICE_KEY = "cascade.device.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
 
+interface Update {
+  snapshot: Snapshot;
+  effects: Effect[];
+}
+
+/** A stored string, or `""` if there is none or storage is unavailable. */
+function readStorage(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
+
 interface SessionState {
   isPlaying: boolean;
   timerKind: TimerKind;
@@ -45,10 +59,6 @@ export function useCascade(): UseCascadeResult {
   // overwrite it), replayed once the core is ready.
   const pendingRestoreRef = useRef<SessionState | null>(null);
   const restoredRef = useRef(false);
-  // Listening blob captured at boot, replayed once into the core via
-  // `restoreListening` after it's ready.
-  const pendingListeningRef = useRef<string | null>(null);
-  const listeningRestoredRef = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -70,30 +80,26 @@ export function useCascade(): UseCascadeResult {
           pendingRestoreRef.current = null;
         }
 
-        // Capture the listening ledger blob; it's restored once the core is up.
-        try {
-          pendingListeningRef.current = localStorage.getItem(
-            LISTENING_STORAGE_KEY,
-          );
-        } catch {
-          pendingListeningRef.current = null;
-        }
-
-        const savedJson = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        let core: CascadeCore;
-        if (savedJson) {
-          try {
-            core = CascadeCore.restore(savedJson);
-          } catch (err) {
-            console.warn("Could not restore settings, starting fresh.", err);
-            core = new CascadeCore();
-          }
-        } else {
-          core = new CascadeCore();
-        }
+        // Boot is one step: a fresh core, then one `restore` carrying both
+        // persisted blobs (empty = none) and a fallback device id. The core
+        // ignores a missing/incompatible blob and only adopts the fallback id
+        // if the listening blob has none.
+        const core = new CascadeCore();
         coreRef.current = core;
         audioRef.current = new WebAudioEngine(WATERFALL_URL);
-        setSnapshot(JSON.parse(core.snapshot()) as Snapshot);
+        const update = JSON.parse(
+          core.dispatch(
+            JSON.stringify({
+              type: "restore",
+              settingsJson: readStorage(SETTINGS_STORAGE_KEY),
+              listeningJson: readStorage(LISTENING_STORAGE_KEY),
+              fallbackDeviceId:
+                readStorage(LEGACY_DEVICE_KEY) || crypto.randomUUID(),
+            } satisfies Command),
+          ),
+        ) as Update;
+        setSnapshot(update.snapshot);
+        void runEffects(update.effects);
         setReady(true);
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : String(err));
@@ -155,10 +161,7 @@ export function useCascade(): UseCascadeResult {
       const core = coreRef.current;
       if (!core) return [];
       const updateJson = core.dispatch(JSON.stringify(command));
-      const update = JSON.parse(updateJson) as {
-        snapshot: Snapshot;
-        effects: Effect[];
-      };
+      const update = JSON.parse(updateJson) as Update;
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
       return update.effects;
@@ -191,28 +194,6 @@ export function useCascade(): UseCascadeResult {
     frame = window.setTimeout(tick, interval);
     return () => window.clearTimeout(frame);
   }, [ready, interval, dispatchInternal]);
-
-  // Restore the listening ledger once, after the core is ready — always, even
-  // with no blob, because this is also where the core gets its device id. The
-  // core ignores a missing/incompatible blob, never lets a restore lower the
-  // live counter, and only adopts the fallback id if the blob has none.
-  useEffect(() => {
-    if (!ready || listeningRestoredRef.current) return;
-    listeningRestoredRef.current = true;
-    const json = pendingListeningRef.current ?? "";
-    pendingListeningRef.current = null;
-    let fallbackDeviceId: string | null = null;
-    try {
-      fallbackDeviceId = localStorage.getItem(LEGACY_DEVICE_KEY);
-    } catch {
-      // Storage unavailable — a fresh id is fine.
-    }
-    dispatchInternal({
-      type: "restoreListening",
-      json,
-      fallbackDeviceId: fallbackDeviceId ?? crypto.randomUUID(),
-    });
-  }, [ready, dispatchInternal]);
 
   // Media Session: lets macOS route the keyboard's play/pause media key (and
   // Control Center / Now Playing) to the app. The OS decides whether to send

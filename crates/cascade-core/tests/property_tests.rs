@@ -115,7 +115,12 @@ proptest! {
 
         let persisted = core.state().to_settings();
         let json = serde_json::to_string(&persisted).expect("serialize");
-        let restored = Core::restore(&json).expect("restore");
+        let mut restored = Core::new();
+        restored.dispatch(Command::Restore {
+            settings_json: json,
+            listening_json: String::new(),
+            fallback_device_id: "d".into(),
+        });
 
         prop_assert_eq!(restored.snapshot().volume_percent, persisted.volume_percent);
         prop_assert_eq!(restored.state().default_sleep_minutes, persisted.default_sleep_minutes);
@@ -250,8 +255,9 @@ proptest! {
         cmds in prop::collection::vec(sync_command_strategy(), 1..80),
     ) {
         let mut core = Core::new();
-        core.dispatch(Command::RestoreListening {
-            json: String::new(),
+        core.dispatch(Command::Restore {
+            settings_json: String::new(),
+            listening_json: String::new(),
             fallback_device_id: "original".into(),
         });
         core.dispatch(Command::Play);

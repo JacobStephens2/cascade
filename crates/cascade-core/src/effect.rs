@@ -19,12 +19,13 @@ pub enum Effect {
     /// Update the platform's volume control without changing play/pause state.
     SetPlatformVolume { volume_percent: u8 },
     /// Persist the supplied settings JSON. The platform decides where
-    /// (localStorage, DataStore, file system, …).
+    /// (localStorage, DataStore, file system, …), and hands it back via
+    /// [`crate::Command::Restore`] on the next launch.
     PersistSettings { json: String },
     /// Persist the listening blob. Stored in its own slot
     /// (`cascade.listening.v1`), separate from settings, so the two evolve and
     /// fail independently. The platform stores the string verbatim and hands it
-    /// back via [`crate::Command::RestoreListening`] on the next launch.
+    /// back via [`crate::Command::Restore`] on the next launch.
     PersistListening { json: String },
     /// PUT this device's slot to the listening endpoint, exactly as given.
     /// Emitted only in answer to [`crate::Command::BeginListeningSync`]; the

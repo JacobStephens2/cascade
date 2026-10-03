@@ -267,11 +267,6 @@ void*_Nonnull uniffi_cascade_uniffi_fn_constructor_cascadebridge_new(RustCallSta
     
 );
 #endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_FN_CONSTRUCTOR_CASCADEBRIDGE_RESTORE_OR_NEW
-#define UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_FN_CONSTRUCTOR_CASCADEBRIDGE_RESTORE_OR_NEW
-void*_Nonnull uniffi_cascade_uniffi_fn_constructor_cascadebridge_restore_or_new(RustBuffer settings_json, RustCallStatus *_Nonnull out_status
-);
-#endif
 #ifndef UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_FN_METHOD_CASCADEBRIDGE_DISPATCH
 #define UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_FN_METHOD_CASCADEBRIDGE_DISPATCH
 RustBuffer uniffi_cascade_uniffi_fn_method_cascadebridge_dispatch(void*_Nonnull ptr, RustBuffer command_json, RustCallStatus *_Nonnull out_status
@@ -577,12 +572,6 @@ uint16_t uniffi_cascade_uniffi_checksum_method_cascadebridge_snapshot(void
 #ifndef UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_CHECKSUM_CONSTRUCTOR_CASCADEBRIDGE_NEW
 #define UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_CHECKSUM_CONSTRUCTOR_CASCADEBRIDGE_NEW
 uint16_t uniffi_cascade_uniffi_checksum_constructor_cascadebridge_new(void
-    
-);
-#endif
-#ifndef UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_CHECKSUM_CONSTRUCTOR_CASCADEBRIDGE_RESTORE_OR_NEW
-#define UNIFFI_FFIDEF_UNIFFI_CASCADE_UNIFFI_CHECKSUM_CONSTRUCTOR_CASCADEBRIDGE_RESTORE_OR_NEW
-uint16_t uniffi_cascade_uniffi_checksum_constructor_cascadebridge_restore_or_new(void
     
 );
 #endif
