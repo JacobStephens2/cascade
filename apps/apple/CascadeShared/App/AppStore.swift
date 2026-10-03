@@ -22,7 +22,7 @@ final class AppStore {
     var syncAvailable: Bool { SyncConfig.available }
 
     private let accountStore = AccountStore()
-    private let syncApi = SyncApi()
+    private let serverCarrier = ServerCarrier()
 
     /// Side-channel observer for non-SwiftUI consumers (the iPhone's
     /// `PhoneConnectivityService` uses this to push every snapshot down to
@@ -119,9 +119,8 @@ final class AppStore {
                 settings.writeListeningSafely(json)
             case .persistAccount(let json):
                 accountStore.writeAccountJson(json)
-            case .pushListening, .sendSignInLink, .verifySignInToken, .revokeSession,
-                 .deleteServerListening, .deleteServerAccount:
-                carry(effect)
+            case .serverRequest(let request):
+                carry(request)
             }
         }
 
@@ -138,7 +137,7 @@ final class AppStore {
 
     // MARK: - Sync
 
-    /// Offer the core a listening sync. It answers with a `pushListening` only
+    /// Offer the core a listening sync. It answers with a listening push only
     /// if there is something to send and it holds a session; `apply` carries it.
     func sync(reason: SyncReason) {
         guard syncAvailable else { return }
@@ -151,75 +150,18 @@ final class AppStore {
         dispatch(.submitSignInLink(input: url.absoluteString))
     }
 
-    /// Carry one request effect over HTTP and settle it with the core. Every
-    /// request but `revokeSession` must be settled, or the core won't start
-    /// another; the settle's own effects come back through `apply`. A request
+    /// Carry one request over HTTP and settle it with the core. Every request
+    /// is settled, the sign-out revoke included, or the core won't start
+    /// another; with no sync server, or on a network error, timeout or
+    /// cancellation, the settle carries status 0. The settle is dispatched on
+    /// the main actor, and its own effects come back through `apply`. A request
     /// can come from any dispatch, including a tick, so carry everything
     /// `apply` hands over.
-    private func carry(_ effect: Effect) {
-        let api = syncApi
-        let accountFailed = { (unauthorized: Bool) in Command.accountRequestFailed(unauthorized: unauthorized) }
+    private func carry(_ request: ServerRequest) {
+        let carrier = serverCarrier
         Task { @MainActor in
-            switch effect {
-            case .pushListening(let deviceId, let deviceTotalMs, let sessionToken):
-                await settle(
-                    {
-                        let res = try await api.putListening(
-                            token: sessionToken,
-                            deviceId: deviceId,
-                            deviceTotalMs: Int64(clamping: deviceTotalMs))
-                        return .listeningSyncSucceeded(serverTotalMs: UInt64(max(0, res.serverTotalMs)))
-                    },
-                    failed: { .listeningSyncFailed(unauthorized: $0) })
-            case .sendSignInLink(let email):
-                await settle(
-                    {
-                        try await api.requestLink(email: email)
-                        return .signInLinkSent
-                    },
-                    failed: accountFailed)
-            case .verifySignInToken(let token):
-                await settle(
-                    {
-                        let res = try await api.verify(token: token)
-                        return .signInVerified(sessionToken: res.sessionToken, email: res.email)
-                    },
-                    failed: accountFailed)
-            case .revokeSession(let sessionToken):
-                // Already gone server-side or offline — local sign-out stands.
-                try? await api.logout(token: sessionToken)
-            case .deleteServerListening(let sessionToken):
-                await settle(
-                    {
-                        try await api.deleteListening(token: sessionToken)
-                        return .listeningDataDeleted(newDeviceId: UUID().uuidString)
-                    },
-                    failed: accountFailed)
-            case .deleteServerAccount(let sessionToken):
-                await settle(
-                    {
-                        try await api.deleteAccount(token: sessionToken)
-                        return .accountDeleted(newDeviceId: UUID().uuidString)
-                    },
-                    failed: accountFailed)
-            case .startPlayback, .pausePlayback, .setPlatformVolume, .persistSettings,
-                 .persistListening, .persistAccount:
-                // Not requests: `apply` handles these itself.
-                break
-            }
+            dispatch(await carrier.send(request))
         }
-    }
-
-    /// Run one request and dispatch the command that settles it; `failed` is
-    /// told whether the failure was an HTTP 401.
-    private func settle(_ request: () async throws -> Command, failed: (Bool) -> Command) async {
-        let outcome: Command
-        do {
-            outcome = try await request()
-        } catch {
-            outcome = failed((error as? SyncError)?.status == 401)
-        }
-        dispatch(outcome)
     }
 
     // MARK: - Tick loop
@@ -240,7 +182,7 @@ final class AppStore {
                 let elapsedMs = UInt64(now.timeIntervalSince(last) * 1000)
                 last = now
                 // A tick that brings unsynced listening to the threshold
-                // comes back with a `pushListening`; `apply` carries it.
+                // comes back with a listening push; `apply` carries it.
                 self.dispatch(.tick(elapsedMs: elapsedMs))
             }
         }

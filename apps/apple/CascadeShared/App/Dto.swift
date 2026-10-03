@@ -23,26 +23,25 @@ enum Command: Codable {
     /// Always sent, so the core holds the account.
     case restore(settingsJson: String, listeningJson: String, fallbackDeviceId: String, accountJson: String)
     case beginListeningSync(reason: SyncReason)
-    case listeningSyncSucceeded(serverTotalMs: UInt64)
-    case listeningSyncFailed(unauthorized: Bool)
     case resetListeningData(newDeviceId: String)
-    case requestSignInLink(email: String)
+    /// `platform` names the platform whose app the emailed link hands off to;
+    /// nil leaves it out of the request.
+    case requestSignInLink(email: String, platform: String? = nil)
     /// The whole pasted or opened sign-in link, or the bare token.
     case submitSignInLink(input: String)
     case signOut
-    case deleteListeningData
-    case deleteAccount
-    case signInLinkSent
-    case signInVerified(sessionToken: String, email: String)
-    case listeningDataDeleted(newDeviceId: String)
-    case accountDeleted(newDeviceId: String)
-    /// `unauthorized` is true for an HTTP 401.
-    case accountRequestFailed(unauthorized: Bool)
+    /// `newDeviceId` is a fresh UUID made when the user asks; the core adopts
+    /// it only once the server confirms the delete.
+    case deleteListeningData(newDeviceId: String)
+    case deleteAccount(newDeviceId: String)
+    /// Settles the `serverRequest` with the same `id`: the HTTP status (0 when
+    /// it was not sent or got no response) and the response body verbatim.
+    case serverResponse(id: UInt64, status: UInt16, body: String)
 
     private enum CodingKeys: String, CodingKey {
         case type, percent, minutes, elapsedMs, message, enabled, settingsJson, listeningJson,
              fallbackDeviceId, accountJson, reason,
-             serverTotalMs, unauthorized, newDeviceId, email, input, sessionToken
+             newDeviceId, email, platform, input, id, status, body
     }
 
     func encode(to encoder: Encoder) throws {
@@ -83,38 +82,28 @@ enum Command: Codable {
         case .beginListeningSync(let reason):
             try c.encode("beginListeningSync", forKey: .type)
             try c.encode(reason, forKey: .reason)
-        case .listeningSyncSucceeded(let serverTotalMs):
-            try c.encode("listeningSyncSucceeded", forKey: .type)
-            try c.encode(serverTotalMs, forKey: .serverTotalMs)
-        case .listeningSyncFailed(let unauthorized):
-            try c.encode("listeningSyncFailed", forKey: .type)
-            try c.encode(unauthorized, forKey: .unauthorized)
         case .resetListeningData(let newDeviceId):
             try c.encode("resetListeningData", forKey: .type)
             try c.encode(newDeviceId, forKey: .newDeviceId)
-        case .requestSignInLink(let email):
+        case .requestSignInLink(let email, let platform):
             try c.encode("requestSignInLink", forKey: .type)
             try c.encode(email, forKey: .email)
+            try c.encodeIfPresent(platform, forKey: .platform)
         case .submitSignInLink(let input):
             try c.encode("submitSignInLink", forKey: .type)
             try c.encode(input, forKey: .input)
         case .signOut: try c.encode("signOut", forKey: .type)
-        case .deleteListeningData: try c.encode("deleteListeningData", forKey: .type)
-        case .deleteAccount: try c.encode("deleteAccount", forKey: .type)
-        case .signInLinkSent: try c.encode("signInLinkSent", forKey: .type)
-        case .signInVerified(let sessionToken, let email):
-            try c.encode("signInVerified", forKey: .type)
-            try c.encode(sessionToken, forKey: .sessionToken)
-            try c.encode(email, forKey: .email)
-        case .listeningDataDeleted(let newDeviceId):
-            try c.encode("listeningDataDeleted", forKey: .type)
+        case .deleteListeningData(let newDeviceId):
+            try c.encode("deleteListeningData", forKey: .type)
             try c.encode(newDeviceId, forKey: .newDeviceId)
-        case .accountDeleted(let newDeviceId):
-            try c.encode("accountDeleted", forKey: .type)
+        case .deleteAccount(let newDeviceId):
+            try c.encode("deleteAccount", forKey: .type)
             try c.encode(newDeviceId, forKey: .newDeviceId)
-        case .accountRequestFailed(let unauthorized):
-            try c.encode("accountRequestFailed", forKey: .type)
-            try c.encode(unauthorized, forKey: .unauthorized)
+        case .serverResponse(let id, let status, let body):
+            try c.encode("serverResponse", forKey: .type)
+            try c.encode(id, forKey: .id)
+            try c.encode(status, forKey: .status)
+            try c.encode(body, forKey: .body)
         }
     }
 
@@ -145,30 +134,24 @@ enum Command: Codable {
                 accountJson: try c.decodeIfPresent(String.self, forKey: .accountJson) ?? "")
         case "beginListeningSync":
             self = .beginListeningSync(reason: try c.decode(SyncReason.self, forKey: .reason))
-        case "listeningSyncSucceeded":
-            self = .listeningSyncSucceeded(serverTotalMs: try c.decode(UInt64.self, forKey: .serverTotalMs))
-        case "listeningSyncFailed":
-            self = .listeningSyncFailed(unauthorized: try c.decode(Bool.self, forKey: .unauthorized))
         case "resetListeningData":
             self = .resetListeningData(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
         case "requestSignInLink":
-            self = .requestSignInLink(email: try c.decode(String.self, forKey: .email))
+            self = .requestSignInLink(
+                email: try c.decode(String.self, forKey: .email),
+                platform: try c.decodeIfPresent(String.self, forKey: .platform))
         case "submitSignInLink":
             self = .submitSignInLink(input: try c.decode(String.self, forKey: .input))
         case "signOut": self = .signOut
-        case "deleteListeningData": self = .deleteListeningData
-        case "deleteAccount": self = .deleteAccount
-        case "signInLinkSent": self = .signInLinkSent
-        case "signInVerified":
-            self = .signInVerified(
-                sessionToken: try c.decode(String.self, forKey: .sessionToken),
-                email: try c.decode(String.self, forKey: .email))
-        case "listeningDataDeleted":
-            self = .listeningDataDeleted(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
-        case "accountDeleted":
-            self = .accountDeleted(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
-        case "accountRequestFailed":
-            self = .accountRequestFailed(unauthorized: try c.decode(Bool.self, forKey: .unauthorized))
+        case "deleteListeningData":
+            self = .deleteListeningData(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
+        case "deleteAccount":
+            self = .deleteAccount(newDeviceId: try c.decode(String.self, forKey: .newDeviceId))
+        case "serverResponse":
+            self = .serverResponse(
+                id: try c.decode(UInt64.self, forKey: .id),
+                status: try c.decode(UInt16.self, forKey: .status),
+                body: try c.decodeIfPresent(String.self, forKey: .body) ?? "")
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown command type: \(type)")
         }
@@ -194,19 +177,14 @@ enum Effect: Decodable {
     case setPlatformVolume(gain: Float)
     case persistSettings(json: String)
     case persistListening(json: String)
-    /// `sessionToken` is the bearer token to send.
-    case pushListening(deviceId: String, deviceTotalMs: UInt64, sessionToken: String)
-    case sendSignInLink(email: String)
-    case verifySignInToken(token: String)
-    /// Fire-and-forget: no settle command.
-    case revokeSession(sessionToken: String)
-    case deleteServerListening(sessionToken: String)
-    case deleteServerAccount(sessionToken: String)
+    /// One request to carry to the sync server and settle with
+    /// `.serverResponse`, whichever dispatch produced it.
+    case serverRequest(ServerRequest)
     /// Store verbatim; `""` means delete the stored account.
     case persistAccount(json: String)
 
     private enum CodingKeys: String, CodingKey {
-        case type, gain, json, deviceId, deviceTotalMs, sessionToken, email, token
+        case type, gain, json
     }
 
     init(from decoder: Decoder) throws {
@@ -223,27 +201,33 @@ enum Effect: Decodable {
             self = .persistSettings(json: try c.decode(String.self, forKey: .json))
         case "persistListening":
             self = .persistListening(json: try c.decode(String.self, forKey: .json))
-        case "pushListening":
-            self = .pushListening(
-                deviceId: try c.decode(String.self, forKey: .deviceId),
-                deviceTotalMs: try c.decode(UInt64.self, forKey: .deviceTotalMs),
-                sessionToken: try c.decode(String.self, forKey: .sessionToken))
-        case "sendSignInLink":
-            self = .sendSignInLink(email: try c.decode(String.self, forKey: .email))
-        case "verifySignInToken":
-            self = .verifySignInToken(token: try c.decode(String.self, forKey: .token))
-        case "revokeSession":
-            self = .revokeSession(sessionToken: try c.decode(String.self, forKey: .sessionToken))
-        case "deleteServerListening":
-            self = .deleteServerListening(sessionToken: try c.decode(String.self, forKey: .sessionToken))
-        case "deleteServerAccount":
-            self = .deleteServerAccount(sessionToken: try c.decode(String.self, forKey: .sessionToken))
+        case "serverRequest":
+            self = .serverRequest(try ServerRequest(from: decoder))
         case "persistAccount":
             self = .persistAccount(json: try c.decode(String.self, forKey: .json))
         default:
             throw DecodingError.dataCorruptedError(forKey: .type, in: c, debugDescription: "unknown effect type: \(type)")
         }
     }
+}
+
+/// The HTTP verbs the core's request table uses, sent uppercase.
+enum HttpMethod: String, Decodable {
+    case post = "POST"
+    case put = "PUT"
+    case delete = "DELETE"
+}
+
+/// One request to the sync server, exactly as the core describes it: `method`
+/// to `path` (relative to the sync-server base URL), with a bearer token and
+/// a JSON `body` when there are any. The core owns what each one means.
+struct ServerRequest: Decodable {
+    let id: UInt64
+    let method: HttpMethod
+    let path: String
+    let bearerToken: String?
+    /// Sent verbatim as the JSON request body.
+    let body: String?
 }
 
 enum TimerKind: String, Codable {
