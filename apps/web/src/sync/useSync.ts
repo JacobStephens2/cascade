@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { Command, Effect, Snapshot, SyncReason } from "../core/types";
+import type { Command, Snapshot, SyncReason } from "../core/types";
+import type { DispatchOptions } from "../core/useCascade";
 import * as api from "./api";
 
-type Dispatch = (command: Command) => Effect[];
+type Dispatch = (command: Command, options?: DispatchOptions) => void;
 
 export interface SyncState {
   available: boolean;
@@ -14,96 +15,11 @@ export interface SyncState {
   deleteAccount: () => void;
 }
 
-/** Run one request and turn its result into the command that settles it. */
-async function settleWith<T>(
-  call: () => Promise<T>,
-  succeeded: (res: T) => Command,
-  failed: (unauthorized: boolean) => Command,
-): Promise<Command> {
-  try {
-    return succeeded(await call());
-  } catch (err) {
-    return failed(err instanceof api.HttpError && err.status === 401);
-  }
-}
-
 /**
- * Carry every request effect in `effects` over HTTP and settle it with the
- * core. A settle's own answer is carried too (a sign-in answers with a
- * refresh push). Every request but `revokeSession` must be settled, or the
- * core won't start another.
- */
-function carry(effects: Effect[], dispatch: Dispatch, keepalive = false): void {
-  const settle = (outcome: Command) => carry(dispatch(outcome), dispatch);
-  const accountFailed = (unauthorized: boolean): Command => ({
-    type: "accountRequestFailed",
-    unauthorized,
-  });
-  for (const effect of effects) {
-    switch (effect.type) {
-      case "pushListening":
-        void settleWith(
-          () =>
-            api.putListening(
-              effect.sessionToken,
-              effect.deviceId,
-              effect.deviceTotalMs,
-              keepalive,
-            ),
-          (res) => ({
-            type: "listeningSyncSucceeded",
-            serverTotalMs: res.serverTotalMs,
-          }),
-          (unauthorized) => ({ type: "listeningSyncFailed", unauthorized }),
-        ).then(settle);
-        break;
-      case "sendSignInLink":
-        void settleWith(
-          () => api.requestLink(effect.email),
-          () => ({ type: "signInLinkSent" }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "verifySignInToken":
-        void settleWith(
-          () => api.verify(effect.token),
-          (res) => ({
-            type: "signInVerified",
-            sessionToken: res.sessionToken,
-            email: res.email,
-          }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "revokeSession":
-        // Already gone server-side or offline — local sign-out stands.
-        api.logout(effect.sessionToken).catch(() => {});
-        break;
-      case "deleteServerListening":
-        void settleWith(
-          () => api.deleteListening(effect.sessionToken),
-          () => ({
-            type: "listeningDataDeleted",
-            newDeviceId: crypto.randomUUID(),
-          }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "deleteServerAccount":
-        void settleWith(
-          () => api.deleteAccount(effect.sessionToken),
-          () => ({ type: "accountDeleted", newDeviceId: crypto.randomUUID() }),
-          accountFailed,
-        ).then(settle);
-        break;
-    }
-  }
-}
-
-/**
- * The account and listening-sync transport. The core holds the account and
- * decides what to send; this hook carries the requests it is handed and
- * decides only when it *can* talk (page lifecycle).
+ * The shell's sync triggers. The core holds the account and decides what to
+ * send, including the routine threshold push from a tick; every dispatch's
+ * requests go through the one carrier. This hook only says when the page
+ * *can* talk (launch, leaving) and passes on the user's account intents.
  */
 export function useSync(
   snapshot: Snapshot | null,
@@ -114,9 +30,9 @@ export function useSync(
   const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
   const coreReady = snapshot !== null;
 
-  const dispatchAndCarry = useCallback(
+  const dispatchIfAvailable = useCallback(
     (command: Command) => {
-      if (api.syncAvailable) carry(dispatch(command), dispatch);
+      if (api.syncAvailable) dispatch(command);
     },
     [dispatch],
   );
@@ -124,7 +40,7 @@ export function useSync(
   const sync = useCallback(
     (reason: SyncReason, keepalive = false) => {
       if (api.syncAvailable)
-        carry(dispatch({ type: "beginListeningSync", reason }), dispatch, keepalive);
+        dispatch({ type: "beginListeningSync", reason }, { keepalive });
     },
     [dispatch],
   );
@@ -159,8 +75,8 @@ export function useSync(
       return;
     }
 
-    dispatchAndCarry({ type: "submitSignInLink", input: link });
-  }, [coreReady, dispatchAndCarry]);
+    dispatchIfAvailable({ type: "submitSignInLink", input: link });
+  }, [coreReady, dispatchIfAvailable]);
 
   // On launch, fetch the cross-device total straight away. The core sends
   // nothing while signed out, and answers a fresh sign-in with its own refresh.
@@ -170,14 +86,6 @@ export function useSync(
     launchSyncedRef.current = true;
     sync("refresh");
   }, [coreReady, sync]);
-
-  // As listening accrues, offer the core a sync; it sends once enough is
-  // unsynced.
-  const unsyncedMs = snapshot?.listening.unsyncedMs;
-  useEffect(() => {
-    if (unsyncedMs === undefined) return;
-    sync("threshold");
-  }, [sync, unsyncedMs]);
 
   // Flush on the way out so a closing tab doesn't strand recent listening.
   useEffect(() => {
@@ -197,14 +105,14 @@ export function useSync(
     available: api.syncAvailable,
     desktopHandoff,
     requestSignInLink: useCallback(
-      (email: string) => dispatchAndCarry({ type: "requestSignInLink", email }),
-      [dispatchAndCarry],
+      (email: string) => dispatchIfAvailable({ type: "requestSignInLink", email }),
+      [dispatchIfAvailable],
     ),
-    signOut: useCallback(() => dispatchAndCarry({ type: "signOut" }), [dispatchAndCarry]),
+    signOut: useCallback(() => dispatchIfAvailable({ type: "signOut" }), [dispatchIfAvailable]),
     deleteListeningData: useCallback(
-      () => dispatchAndCarry({ type: "deleteListeningData" }),
-      [dispatchAndCarry],
+      () => dispatchIfAvailable({ type: "deleteListeningData" }),
+      [dispatchIfAvailable],
     ),
-    deleteAccount: useCallback(() => dispatchAndCarry({ type: "deleteAccount" }), [dispatchAndCarry]),
+    deleteAccount: useCallback(() => dispatchIfAvailable({ type: "deleteAccount" }), [dispatchIfAvailable]),
   };
 }
