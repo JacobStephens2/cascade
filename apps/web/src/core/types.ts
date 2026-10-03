@@ -28,19 +28,18 @@ export type Command =
       accountJson: string;
     }
   | { type: "beginListeningSync"; reason: SyncReason }
-  | { type: "listeningSyncSucceeded"; serverTotalMs: number }
-  | { type: "listeningSyncFailed"; unauthorized: boolean }
   | { type: "resetListeningData"; newDeviceId: string }
-  | { type: "requestSignInLink"; email: string }
+  /** `platform` names the platform whose shell the emailed link hands off
+   * to, if any; the web shell has no hand-off and leaves it out. */
+  | { type: "requestSignInLink"; email: string; platform?: string }
   | { type: "submitSignInLink"; input: string }
   | { type: "signOut" }
-  | { type: "deleteListeningData" }
-  | { type: "deleteAccount" }
-  | { type: "signInLinkSent" }
-  | { type: "signInVerified"; sessionToken: string; email: string }
-  | { type: "listeningDataDeleted"; newDeviceId: string }
-  | { type: "accountDeleted"; newDeviceId: string }
-  | { type: "accountRequestFailed"; unauthorized: boolean };
+  /** `newDeviceId` is a fresh UUID, adopted once the server confirms. */
+  | { type: "deleteListeningData"; newDeviceId: string }
+  | { type: "deleteAccount"; newDeviceId: string }
+  /** Settles the `serverRequest` with the same `id`: the HTTP status (0 when
+   * not sent or no response) and the response body verbatim. */
+  | { type: "serverResponse"; id: number; status: number; body: string };
 
 /** Why the shell is asking to sync; the core decides whether to send. The
  * routine threshold sync is the core's own, answered from a tick. */
@@ -53,20 +52,24 @@ export type Effect =
   | { type: "setPlatformVolume"; gain: number }
   | { type: "persistSettings"; json: string }
   | { type: "persistListening"; json: string }
-  | {
-      type: "pushListening";
-      deviceId: string;
-      deviceTotalMs: number;
-      sessionToken: string;
-    }
-  | { type: "sendSignInLink"; email: string }
-  | { type: "verifySignInToken"; token: string }
-  /** Fire-and-forget: no settle command. */
-  | { type: "revokeSession"; sessionToken: string }
-  | { type: "deleteServerListening"; sessionToken: string }
-  | { type: "deleteServerAccount"; sessionToken: string }
+  /** Send to the sync server exactly as described; settle with
+   * `serverResponse`, always. */
+  | ServerRequest
   /** Store verbatim; `""` means delete the stored account. */
   | { type: "persistAccount"; json: string };
+
+/** One request to the sync server. `path` is relative to the base URL;
+ * `body`, when present, is JSON to send verbatim. */
+export interface ServerRequest {
+  type: "serverRequest";
+  id: number;
+  method: HttpMethod;
+  path: string;
+  bearerToken?: string;
+  body?: string;
+}
+
+export type HttpMethod = "POST" | "PUT" | "DELETE";
 
 export type TimerKind =
   | "off"
