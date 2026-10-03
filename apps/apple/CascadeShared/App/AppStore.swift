@@ -153,9 +153,9 @@ final class AppStore {
 
     /// Carry one request effect over HTTP and settle it with the core. Every
     /// request but `revokeSession` must be settled, or the core won't start
-    /// another; the settle's own effects come back through `apply`. Only
-    /// reached with sync available: `sync`, `handleOpenURL` and the account
-    /// controls are the only ways a request starts.
+    /// another; the settle's own effects come back through `apply`. A request
+    /// can come from any dispatch, including a tick, so carry everything
+    /// `apply` hands over.
     private func carry(_ effect: Effect) {
         let api = syncApi
         let accountFailed = { (unauthorized: Bool) in Command.accountRequestFailed(unauthorized: unauthorized) }
@@ -239,10 +239,9 @@ final class AppStore {
                 let now = Date()
                 let elapsedMs = UInt64(now.timeIntervalSince(last) * 1000)
                 last = now
+                // A tick that brings unsynced listening to the threshold
+                // comes back with a `pushListening`; `apply` carries it.
                 self.dispatch(.tick(elapsedMs: elapsedMs))
-                // Routine check: the core sends only once enough unsynced
-                // time has accrued (ticks are the only thing that accrues it).
-                self.sync(reason: .threshold)
             }
         }
         // Schedule on the common run-loop modes so menu interaction doesn't
