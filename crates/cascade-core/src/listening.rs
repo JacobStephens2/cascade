@@ -29,22 +29,20 @@ pub const LISTENING_VERSION: u32 = 1;
 /// has — the per-tick delta the merge consumes.
 pub const MAX_TICK_ACCRUAL_MS: u64 = 5_000;
 
-/// How much unsynced listening a [`SyncReason::Threshold`] sync waits for
-/// before it is worth a PUT. One definition for every shell. After a failed
+/// How much unsynced listening the core's tick-time sync waits for before it
+/// is worth a PUT. One definition for every shell. After a failed
 /// PUT, the threshold counts from what that PUT sent instead.
 pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
 
-/// Why a shell is asking to sync. The shell decides *when it can* talk
-/// (reachability, lifecycle); the reason lets the core decide *whether
-/// there is anything to say*.
+/// Why a shell is asking to sync: one of its lifecycle triggers. The shell
+/// decides *when it can* talk (reachability, lifecycle); the reason lets the
+/// core decide *whether there is anything to say*. The routine sync, once
+/// [`LISTENING_SYNC_THRESHOLD_MS`] is unsynced, is not a shell reason: the
+/// core checks it itself on every tick that counts listening
+/// ([`ListeningLedger::begin_threshold_sync`]).
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub enum SyncReason {
-    /// Routine check: send only once at least [`LISTENING_SYNC_THRESHOLD_MS`]
-    /// is unsynced, counted past any failed PUT. The core runs it itself on
-    /// every tick that counts listening, so shells no longer need to send it;
-    /// it stays accepted until the shells stop.
-    Threshold,
     /// The app is backgrounding or closing: send any unsynced time at all.
     Flush,
     /// Just signed in or launched with an account: always send, so the
@@ -143,20 +141,33 @@ impl ListeningLedger {
         self.device_total_ms = self.device_total_ms.saturating_add(delta);
     }
 
-    /// Decide whether to sync, and if so what to send: `(device_id,
-    /// device_total_ms)`. Marks that total as in flight, so a second call
-    /// returns `None` until [`Self::sync_succeeded`] or [`Self::sync_failed`]
-    /// settles it — the one re-entrancy guard every shell shares.
+    /// Decide whether to sync for a shell's `reason`, and if so what to send:
+    /// `(device_id, device_total_ms)`. Marks that total as in flight, so a
+    /// second call returns `None` until [`Self::sync_succeeded`] or
+    /// [`Self::sync_failed`] settles it — the one re-entrancy guard every
+    /// shell shares.
     pub fn begin_sync(&mut self, reason: SyncReason) -> Option<(String, u64)> {
+        let worth_sending = match reason {
+            SyncReason::Flush => self.unsynced_ms() > 0,
+            SyncReason::Refresh => true,
+        };
+        self.begin_sync_if(worth_sending)
+    }
+
+    /// The core's own routine sync, checked on every tick that counts
+    /// listening: send only once at least [`LISTENING_SYNC_THRESHOLD_MS`] is
+    /// unsynced, counted past any failed PUT. Same result and in-flight guard
+    /// as [`Self::begin_sync`].
+    pub fn begin_threshold_sync(&mut self) -> Option<(String, u64)> {
+        let worth_sending = self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS;
+        self.begin_sync_if(worth_sending)
+    }
+
+    fn begin_sync_if(&mut self, worth_sending: bool) -> Option<(String, u64)> {
         if self.in_flight.is_some() {
             return None;
         }
         let device_id = self.device_id.clone()?;
-        let worth_sending = match reason {
-            SyncReason::Threshold => self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS,
-            SyncReason::Flush => self.unsynced_ms() > 0,
-            SyncReason::Refresh => true,
-        };
         if !worth_sending {
             return None;
         }

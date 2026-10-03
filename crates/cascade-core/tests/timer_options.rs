@@ -281,9 +281,6 @@ fn the_completion_message_survives_everything_the_user_did_not_ask_for() {
     let background = [
         Command::Tick { elapsed_ms: 1_000 },
         Command::BeginListeningSync {
-            reason: SyncReason::Threshold,
-        },
-        Command::BeginListeningSync {
             reason: SyncReason::Flush,
         },
         Command::BeginListeningSync {

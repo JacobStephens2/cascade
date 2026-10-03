@@ -238,9 +238,6 @@ fn sync_command_strategy() -> impl Strategy<Value = Command> {
     prop_oneof![
         (0u64..=10_000).prop_map(|elapsed_ms| Command::Tick { elapsed_ms }),
         Just(Command::BeginListeningSync {
-            reason: SyncReason::Threshold
-        }),
-        Just(Command::BeginListeningSync {
             reason: SyncReason::Flush
         }),
         Just(Command::BeginListeningSync {
