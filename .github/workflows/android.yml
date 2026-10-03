@@ -51,6 +51,6 @@ jobs:
       - uses: Swatinem/rust-cache@v2
       - name: Install cargo-ndk
         run: cargo install cargo-ndk --locked
-      - name: Build debug APK
+      - name: Build debug APK and run unit tests
         working-directory: apps/android
-        run: ./gradlew :app:assembleDebug --no-daemon
+        run: ./gradlew :app:assembleDebug :app:testDebugUnitTest --no-daemon

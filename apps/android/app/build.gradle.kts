@@ -98,6 +98,9 @@ dependencies {
     // UniFFI bindings rely on JNA at runtime.
     implementation("net.java.dev.jna:jna:5.15.0@aar")
 
+    // JVM unit tests (the sync-server adapter and the request wire).
+    testImplementation("junit:junit:4.13.2")
+
     debugImplementation("androidx.compose.ui:ui-tooling")
     debugImplementation("androidx.compose.ui:ui-test-manifest")
 }
