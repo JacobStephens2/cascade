@@ -1,6 +1,6 @@
 # ADR 0001 — Cross-platform listening-time tracking: a pure-core G-Counter with data-minimizing sync
 
-- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18)
+- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issue #31)
 - **Date:** 2026-06-05
 - **Context:** Cascade is one headless Rust core (`cascade-core`) driving six native shells (web, Android, macOS, Windows, iOS, watchOS). We want to show a user the total time they've spent listening, aggregated across every device they use, with an optional account to centralize it — without turning a white-noise app into a surveillance liability.
 
@@ -37,6 +37,16 @@ The account stores an email and **one integer per device** — no timestamps, no
 
 Six shells running decision 5 as first written produced ~20 copies of these four rules, with no test on any shell; they are now one tested module (`crates/cascade-core/tests/listening_sync.rs`) and four thin adapters.
 
+*Amended 2026-10-03 (issue #31).* "Auth state" is no longer on the list of things only a shell knows. Whether the user is signed in, and as whom, is data the core can hold, and four hand-written account flows had drifted with no test on any of them. The core now holds the **Account** — the session and its rules — while reachability, lifecycle, the HTTP transport and storage stay in the shell:
+
+- **Request and settle, as above.** User intents (`RequestSignInLink`, `SubmitSignInLink`, `SignOut`, `DeleteListeningData`, `DeleteAccount`) are answered with one effect describing an HTTP request (`SendSignInLink`, `VerifySignInToken`, `DeleteServerListening`, `DeleteServerAccount`, plus the fire-and-forget `RevokeSession`). The shell settles each with a success command or `AccountRequestFailed { unauthorized }`. One account request runs at a time; `SignOut` always works and drops it.
+- **The session rides on effects.** `PushListening` carries `sessionToken`, and `BeginListeningSync` sends nothing while signed out. The snapshot's `account` section never carries the token.
+- **Signing out forgets the server.** Sign-out, a 401 on any request, and a deleted account forget the cross-device total and supersede any in-flight sync, so neither a stale total nor a late ack outlives the account.
+- **401 rule, revised.** While the core holds a session, `unauthorized: true` signs out and emits an empty `PersistAccount`. `ClearSession` remains only for a shell that still keeps its own account (one that restores without `accountJson`), until every shell is ported.
+- **Storage.** The core persists the account through `PersistAccount { json }` and restores it from `Restore`'s `accountJson`; each shell keeps its own storage location.
+
+The rules are tested once in `crates/cascade-core/tests/account.rs`.
+
 ### 6. Opaque tokens + magic-link, and `device_id` rotation on delete
 
 Auth is email magic-link (no passwords) with **opaque server-side session tokens** (not JWT), so logout / delete-account revoke instantly with one `DELETE`. Tokens are stored only as SHA-256 hashes. "Delete my data" rotates the client's `device_id`, closing the one loophole inherent to grow-only counters: a forgotten offline device can't later resurrect a deleted total by pushing a stale higher counter — it lands in a fresh slot.
@@ -63,6 +73,7 @@ Auth is email magic-link (no passwords) with **opaque server-side session tokens
 - **JWT sessions** — rejected: revocation requires either short expiries or a denylist; opaque tokens make logout/delete a single `DELETE` on a single VPS.
 - **OAuth / passwords** — rejected: disproportionate for an opt-in counter; magic-link is the smallest cross-platform path with the least PII.
 - **Sync orchestration in the core** — rejected: the core can't know reachability/lifecycle/auth; that knowledge belongs in each shell. (Sync *policy* — threshold, payload, 401 rule, device-id lifecycle — was later moved into the core; see the decision 5 amendment.)
+- **The account in the shell** — first chosen as "auth state" in decision 5, and reversed in its 2026-10-03 amendment: the session is data the core can hold, and four shell copies of the account flow drifted. Reachability, lifecycle, transport and storage stay in the shell.
 - **Transport in the core** (a Rust HTTP client) — rejected in the amendment: it would drag an async HTTP stack into the wasm build and fight each platform's lifecycle.
 
 ## Validation

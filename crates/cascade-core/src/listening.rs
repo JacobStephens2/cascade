@@ -34,7 +34,7 @@ pub const MAX_TICK_ACCRUAL_MS: u64 = 5_000;
 pub const LISTENING_SYNC_THRESHOLD_MS: u64 = 30_000;
 
 /// Why a shell is asking to sync. The shell decides *when it can* talk
-/// (reachability, lifecycle, auth); the reason lets the core decide *whether
+/// (reachability, lifecycle); the reason lets the core decide *whether
 /// there is anything to say*.
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]

@@ -1,6 +1,6 @@
 //! Listening-sync policy, driven only through `Core::dispatch` — no network.
 //!
-//! The shell owns *when* it can talk (reachability, lifecycle, auth); the core
+//! The shell owns *when* it can talk (reachability, lifecycle); the core
 //! owns *whether there is anything to say, and what*. These tests pin the core
 //! half: the threshold, the payload, the synced high-water mark, the 401 rule,
 //! and the device-id lifecycle.
