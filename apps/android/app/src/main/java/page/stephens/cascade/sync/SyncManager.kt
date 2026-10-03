@@ -13,10 +13,10 @@ import java.util.UUID
  * Carries the account's and listening sync's requests on Android. The core
  * holds the account and decides what to send — the request table, the
  * threshold, the in-flight guard, the device id, the session, the status copy
- * and the 401 rule all live there. This is the one request carrier: it takes
- * every [page.stephens.cascade.core.Effect.ServerRequest] any dispatch
- * produced (a tick's threshold push included) from the bridge, sends it
- * through [ServerHttp] and settles it with its [Command.ServerResponse]. The
+ * and the 401 rule all live there. This routes the bridge's request channel
+ * to the HTTP adapter: every [page.stephens.cascade.core.Effect.ServerRequest]
+ * any dispatch produced (a tick's threshold push included) goes to
+ * [ServerHttp], which settles it with its [Command.ServerResponse]. The
  * shell decides only when it can talk (lifecycle triggers) and what the user
  * asked for.
  */

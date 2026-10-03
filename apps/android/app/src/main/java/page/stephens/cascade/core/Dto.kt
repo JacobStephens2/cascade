@@ -45,7 +45,8 @@ sealed class Command {
     ) : Command()
     @Serializable @SerialName("beginListeningSync") data class BeginListeningSync(val reason: SyncReason) : Command()
     @Serializable @SerialName("resetListeningData") data class ResetListeningData(val newDeviceId: String) : Command()
-    /** [platform] names the shell's link hand-off; omitted from the wire when null. */
+    /** [platform] names the platform whose app the emailed link should hand off
+     *  to; omitted from the wire when null. Android sends none. */
     @Serializable @SerialName("requestSignInLink") data class RequestSignInLink(
         val email: String,
         @EncodeDefault(EncodeDefault.Mode.NEVER) val platform: String? = null,

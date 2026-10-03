@@ -1,6 +1,7 @@
 package page.stephens.cascade.sync
 
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
@@ -30,15 +31,15 @@ class ServerHttp(
 ) {
     /**
      * Send [request] in [scope] and hand its [Command.ServerResponse] to
-     * [settle], exactly once — including when the request is cancelled
-     * mid-flight, which settles with status 0. Until it is settled the core
-     * holds the next account request or listening sync.
+     * [settle], exactly once — including when the request is cancelled,
+     * before it starts or mid-flight, which settles with status 0. Until it
+     * is settled the core holds the next account request or listening sync.
      */
     fun carry(
         request: Effect.ServerRequest,
         scope: CoroutineScope,
         settle: (Command.ServerResponse) -> Unit,
-    ): Job = scope.launch {
+    ): Job = scope.launch(start = CoroutineStart.ATOMIC) {
         var response = unanswered(request)
         try {
             response = send(request)
@@ -75,8 +76,8 @@ class ServerHttp(
             }
             val status = conn.responseCode
             val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-            val body = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
-            return Command.ServerResponse(request.id, status, body)
+            val responseBody = stream?.bufferedReader()?.use { it.readText() }.orEmpty()
+            return Command.ServerResponse(request.id, status, responseBody)
         } finally {
             conn.disconnect()
         }
