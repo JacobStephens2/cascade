@@ -2,6 +2,7 @@
 
 package page.stephens.cascade.core
 
+import kotlinx.serialization.EncodeDefault
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonClassDiscriminator
@@ -43,19 +44,26 @@ sealed class Command {
         val accountJson: String,
     ) : Command()
     @Serializable @SerialName("beginListeningSync") data class BeginListeningSync(val reason: SyncReason) : Command()
-    @Serializable @SerialName("listeningSyncSucceeded") data class ListeningSyncSucceeded(val serverTotalMs: Long) : Command()
-    @Serializable @SerialName("listeningSyncFailed") data class ListeningSyncFailed(val unauthorized: Boolean) : Command()
     @Serializable @SerialName("resetListeningData") data class ResetListeningData(val newDeviceId: String) : Command()
-    @Serializable @SerialName("requestSignInLink") data class RequestSignInLink(val email: String) : Command()
+    /** [platform] names the platform whose app the emailed link should hand off
+     *  to; omitted from the wire when null. Android sends none. */
+    @Serializable @SerialName("requestSignInLink") data class RequestSignInLink(
+        val email: String,
+        @EncodeDefault(EncodeDefault.Mode.NEVER) val platform: String? = null,
+    ) : Command()
     @Serializable @SerialName("submitSignInLink") data class SubmitSignInLink(val input: String) : Command()
     @Serializable @SerialName("signOut") data object SignOut : Command()
-    @Serializable @SerialName("deleteListeningData") data object DeleteListeningData : Command()
-    @Serializable @SerialName("deleteAccount") data object DeleteAccount : Command()
-    @Serializable @SerialName("signInLinkSent") data object SignInLinkSent : Command()
-    @Serializable @SerialName("signInVerified") data class SignInVerified(val sessionToken: String, val email: String) : Command()
-    @Serializable @SerialName("listeningDataDeleted") data class ListeningDataDeleted(val newDeviceId: String) : Command()
-    @Serializable @SerialName("accountDeleted") data class AccountDeleted(val newDeviceId: String) : Command()
-    @Serializable @SerialName("accountRequestFailed") data class AccountRequestFailed(val unauthorized: Boolean) : Command()
+    /** [newDeviceId] is a fresh random id, adopted only once the server confirms. */
+    @Serializable @SerialName("deleteListeningData") data class DeleteListeningData(val newDeviceId: String) : Command()
+    /** [newDeviceId] is a fresh random id, adopted only once the server confirms. */
+    @Serializable @SerialName("deleteAccount") data class DeleteAccount(val newDeviceId: String) : Command()
+    /** Settles the [Effect.ServerRequest] with this [id]: the HTTP [status] (0
+     *  when not sent or no response) and the response [body] verbatim. */
+    @Serializable @SerialName("serverResponse") data class ServerResponse(
+        val id: Long,
+        val status: Int,
+        val body: String,
+    ) : Command()
 }
 
 /** Why the shell is asking to sync; the core decides whether it's worth a PUT.
@@ -66,10 +74,6 @@ enum class SyncReason {
     @SerialName("refresh") REFRESH,
 }
 
-/** An HTTP request the shell's one carrier runs and settles. Sealed, so the
- *  carrier's `when` is exhaustive: a new request can't be silently dropped. */
-sealed interface RequestEffect
-
 @Serializable
 @JsonClassDiscriminator("type")
 sealed class Effect {
@@ -79,17 +83,16 @@ sealed class Effect {
     @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val gain: Float) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
     @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
-    @Serializable @SerialName("pushListening") data class PushListening(
-        val deviceId: String,
-        val deviceTotalMs: Long,
-        val sessionToken: String,
-    ) : Effect(), RequestEffect
-    @Serializable @SerialName("sendSignInLink") data class SendSignInLink(val email: String) : Effect(), RequestEffect
-    @Serializable @SerialName("verifySignInToken") data class VerifySignInToken(val token: String) : Effect(), RequestEffect
-    /** Fire-and-forget: no settle command. */
-    @Serializable @SerialName("revokeSession") data class RevokeSession(val sessionToken: String) : Effect(), RequestEffect
-    @Serializable @SerialName("deleteServerListening") data class DeleteServerListening(val sessionToken: String) : Effect(), RequestEffect
-    @Serializable @SerialName("deleteServerAccount") data class DeleteServerAccount(val sessionToken: String) : Effect(), RequestEffect
+    /** One request to the sync server: [method] to the base URL plus [path],
+     *  with `Authorization: Bearer` when [bearerToken] is set and [body] sent
+     *  verbatim as JSON when set. Always settled with [Command.ServerResponse]. */
+    @Serializable @SerialName("serverRequest") data class ServerRequest(
+        val id: Long,
+        val method: String,
+        val path: String,
+        val bearerToken: String? = null,
+        val body: String? = null,
+    ) : Effect()
     /** Store verbatim; `""` means delete the stored account. */
     @Serializable @SerialName("persistAccount") data class PersistAccount(val json: String) : Effect()
 }

@@ -41,13 +41,13 @@ class CascadeBridgeHolder(
     }
     private val dispatchLock = Any()
 
-    /** Request effects from every dispatch, in the order the core produced
+    /** Server requests from every dispatch, in the order the core produced
      *  them, for the one request carrier (SyncManager). A channel rather than a
      *  StateFlow, so none is overwritten or dropped: each is received, and so
      *  settled, exactly once — whether a tick, a playback report, a UI command
      *  or a settle produced it. */
-    private val _requests = Channel<RequestEffect>(Channel.UNLIMITED)
-    val requests: ReceiveChannel<RequestEffect> = _requests
+    private val _requests = Channel<Effect.ServerRequest>(Channel.UNLIMITED)
+    val requests: ReceiveChannel<Effect.ServerRequest> = _requests
 
     private val bridge = CascadeBridge()
 
@@ -100,7 +100,7 @@ class CascadeBridgeHolder(
                 is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
                 is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
                 is Effect.PersistAccount -> writes.trySend { accountStore.write(effect.json) }
-                is RequestEffect -> _requests.trySend(effect)
+                is Effect.ServerRequest -> _requests.trySend(effect)
                 else -> {}
             }
         }
@@ -115,7 +115,7 @@ class CascadeBridgeHolder(
     private fun forHandlers(effects: List<Effect>): List<Effect> = effects.filter {
         when (it) {
             is Effect.PersistSettings, is Effect.PersistListening, is Effect.PersistAccount -> false
-            is RequestEffect -> false
+            is Effect.ServerRequest -> false
             else -> true
         }
     }
