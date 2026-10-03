@@ -66,9 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import page.stephens.cascade.core.AccountSnapshot
 import page.stephens.cascade.core.TimerKind
 import page.stephens.cascade.core.TimerOptions
-import page.stephens.cascade.sync.SyncUiState
 
 private val PillShape = RoundedCornerShape(percent = 50)
 private val CardShape = RoundedCornerShape(14.dp)
@@ -76,7 +76,6 @@ private val CardShape = RoundedCornerShape(14.dp)
 @Composable
 fun CascadeScreen(viewModel: CascadeViewModel) {
     val snapshot by viewModel.snapshot.collectAsStateWithLifecycle()
-    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
 
     Surface(modifier = Modifier.fillMaxSize(), color = CascadeColors.BgDeep) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -129,12 +128,12 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                         onStartStopwatch = viewModel::startStopwatch,
                         onCancel = viewModel::cancelTimer,
                     )
-                    if (syncState.available) {
+                    if (viewModel.accountAvailable) {
                         Spacer(Modifier.height(28.dp))
                         AccountControls(
-                            state = syncState,
-                            onSignIn = viewModel::signIn,
-                            onCompleteSignIn = viewModel::completeSignInFromLink,
+                            account = snapshot.account,
+                            onRequestSignInLink = viewModel::requestSignInLink,
+                            onSubmitSignInLink = viewModel::submitSignInLink,
                             onSignOut = viewModel::signOut,
                             onDeleteData = viewModel::deleteListeningData,
                             onDeleteAccount = viewModel::deleteAccount,
@@ -555,11 +554,12 @@ private fun CustomDurationSection(
     }
 }
 
+/** The core holds the account; this renders its snapshot and sends its commands. */
 @Composable
 private fun AccountControls(
-    state: SyncUiState,
-    onSignIn: (String) -> Unit,
-    onCompleteSignIn: (String) -> Unit,
+    account: AccountSnapshot,
+    onRequestSignInLink: (String) -> Unit,
+    onSubmitSignInLink: (String) -> Unit,
     onSignOut: () -> Unit,
     onDeleteData: () -> Unit,
     onDeleteAccount: () -> Unit,
@@ -571,9 +571,9 @@ private fun AccountControls(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val account = state.account
-        if (account != null) {
-            SectionLabel("Syncing · ${account.email}")
+        val signedInLabel = account.signedInLabel
+        if (signedInLabel != null) {
+            SectionLabel(signedInLabel)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onSignOut) { Text("Sign out") }
                 TextButton(onClick = { showManage = !showManage }) { Text("Manage data") }
@@ -581,11 +581,11 @@ private fun AccountControls(
             if (showManage) {
                 TextButton(
                     onClick = onDeleteData,
-                    enabled = !state.busy,
+                    enabled = !account.busy,
                 ) { Text("Delete listening data", color = CascadeColors.Danger) }
                 TextButton(
                     onClick = onDeleteAccount,
-                    enabled = !state.busy,
+                    enabled = !account.busy,
                 ) { Text("Delete account", color = CascadeColors.Danger) }
             }
         } else {
@@ -614,8 +614,8 @@ private fun AccountControls(
                 )
                 Button(
                     shape = PillShape,
-                    onClick = { if (email.isNotBlank()) onSignIn(email.trim()) },
-                    enabled = !state.busy && email.isNotBlank(),
+                    onClick = { onRequestSignInLink(email) },
+                    enabled = !account.busy,
                 ) { Text("Email link") }
             }
             Spacer(Modifier.height(8.dp))
@@ -635,12 +635,12 @@ private fun AccountControls(
                 )
                 Button(
                     shape = PillShape,
-                    onClick = { if (link.isNotBlank()) onCompleteSignIn(link.trim()) },
-                    enabled = !state.busy && link.isNotBlank(),
+                    onClick = { onSubmitSignInLink(link) },
+                    enabled = !account.busy,
                 ) { Text("Sign in") }
             }
         }
-        state.status?.let {
+        account.statusLabel?.let {
             Spacer(Modifier.height(8.dp))
             Text(
                 it,

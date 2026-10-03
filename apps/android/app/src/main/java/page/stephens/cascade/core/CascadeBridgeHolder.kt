@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import page.stephens.cascade.settings.SettingsStore
+import page.stephens.cascade.sync.AccountStore
 import uniffi.cascade_uniffi.CascadeBridge
 import java.util.UUID
 
@@ -20,13 +21,13 @@ import java.util.UUID
  * The bridge itself is thread-safe (Rust `Mutex` inside), so we can dispatch
  * from any coroutine context.
  *
- * [legacyDeviceId] reads the device id older builds stored in the shell. It is
- * offered to the core once, at restore, so an existing server slot carries over;
- * the core owns the id from then on.
+ * [accountStore] holds the core's account blob, and the device id older builds
+ * stored in the shell. That id is offered to the core once, at restore, so an
+ * existing server slot carries over; the core owns the id from then on.
  */
 class CascadeBridgeHolder(
     private val settingsStore: SettingsStore,
-    private val legacyDeviceId: suspend () -> String?,
+    private val accountStore: AccountStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -41,7 +42,7 @@ class CascadeBridgeHolder(
 
     private val bridge = CascadeBridge()
 
-    /** Boot is one step: restore both persisted blobs (empty = none) and the
+    /** Boot is one step: restore the persisted blobs (empty = none) and the
      *  fallback device id in a single dispatch. Blocks once during app startup;
      *  the reads are local DataStore IO and complete in single-digit ms, and
      *  doing this async would just mean the first render shows defaults. */
@@ -50,7 +51,8 @@ class CascadeBridgeHolder(
             Command.Restore(
                 settingsJson = settingsStore.read().orEmpty(),
                 listeningJson = settingsStore.readListening().orEmpty(),
-                fallbackDeviceId = legacyDeviceId() ?: UUID.randomUUID().toString(),
+                fallbackDeviceId = accountStore.legacyDeviceId() ?: UUID.randomUUID().toString(),
+                accountJson = accountStore.read(),
             )
         }
         send(restore)
@@ -66,8 +68,8 @@ class CascadeBridgeHolder(
 
     /** Synchronous dispatch. Updates the snapshot and returns this update's
      *  effects, so a caller can act on the ones it asked for (e.g. the sync
-     *  loop reading PushListening). Effect handlers also receive them via
-     *  [effects]. */
+     *  side carrying PushListening and the account requests). Effect handlers
+     *  also receive them via [effects]. */
     fun dispatch(command: Command): List<Effect> = synchronized(dispatchLock) {
         // Locked so writes are queued in the same order the core produced them,
         // even when dispatches race in from different threads.
@@ -88,6 +90,7 @@ class CascadeBridgeHolder(
             when (effect) {
                 is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
                 is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
+                is Effect.PersistAccount -> writes.trySend { accountStore.write(effect.json) }
                 else -> {}
             }
         }
@@ -97,9 +100,15 @@ class CascadeBridgeHolder(
     /** Only what the effect handlers act on. [effects] is a StateFlow and keeps
      *  just the latest value, so the sync loop's per-snapshot
      *  BeginListeningSync must not replace a StartPlayback before it's applied.
-     *  Sync effects reach their caller via the return value. */
+     *  Persist effects are written here; sync and account effects reach the
+     *  sync side via the return value. */
     private fun forHandlers(effects: List<Effect>): List<Effect> = effects.filter {
-        it !is Effect.PersistSettings && it !is Effect.PersistListening &&
-            it !is Effect.PushListening && it != Effect.ClearSession
+        when (it) {
+            is Effect.PersistSettings, is Effect.PersistListening, is Effect.PersistAccount,
+            is Effect.PushListening, Effect.ClearSession,
+            is Effect.SendSignInLink, is Effect.VerifySignInToken, is Effect.RevokeSession,
+            is Effect.DeleteServerListening, is Effect.DeleteServerAccount -> false
+            else -> true
+        }
     }
 }

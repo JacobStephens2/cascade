@@ -12,14 +12,15 @@ import page.stephens.cascade.core.CascadeBridgeHolder
 import page.stephens.cascade.core.Command
 import page.stephens.cascade.core.Snapshot
 import page.stephens.cascade.sync.SyncManager
-import page.stephens.cascade.sync.SyncUiState
+import page.stephens.cascade.sync.syncAvailable
 
 class CascadeViewModel(
     private val bridge: CascadeBridgeHolder,
     private val syncManager: SyncManager,
 ) : ViewModel() {
     val snapshot: StateFlow<Snapshot> = bridge.snapshot
-    val syncState: StateFlow<SyncUiState> = syncManager.state
+    /** Whether a sync backend is configured; the account section shows only then. */
+    val accountAvailable: Boolean = syncAvailable
 
     private var tickJob: Job? = null
     private var tickInterval = 0L
@@ -47,10 +48,10 @@ class CascadeViewModel(
     fun cancelTimer() { bridge.dispatch(Command.CancelTimer) }
     fun setListeningTracking(enabled: Boolean) { bridge.dispatch(Command.SetListeningTracking(enabled)) }
 
-    fun signIn(email: String) = syncManager.signIn(email)
-    fun completeSignInFromLink(input: String) = syncManager.completeSignInFromLink(input)
+    fun requestSignInLink(email: String) = syncManager.requestSignInLink(email)
+    fun submitSignInLink(input: String) = syncManager.submitSignInLink(input)
     fun signOut() = syncManager.signOut()
-    fun deleteListeningData() = syncManager.deleteData()
+    fun deleteListeningData() = syncManager.deleteListeningData()
     fun deleteAccount() = syncManager.deleteAccount()
 
     private fun startTicking(intervalMs: Long) {
