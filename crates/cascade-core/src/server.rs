@@ -9,6 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::account::Session;
 use crate::effect::Effect;
 
 /// The HTTP verbs the request table uses, sent uppercase.
@@ -151,11 +152,14 @@ struct VerifiedBody {
     email: String,
 }
 
-/// The `(session_token, email)` a successful verify returned. `None` when the
-/// body does not parse or carries an empty token, which is no session.
-pub fn parse_verified(body: &str) -> Option<(String, String)> {
+/// The session a successful verify returned. `None` when the body does not
+/// parse or carries an empty token, which is no session.
+pub fn parse_verified(body: &str) -> Option<Session> {
     let verified: VerifiedBody = serde_json::from_str(body).ok()?;
-    (!verified.session_token.is_empty()).then_some((verified.session_token, verified.email))
+    (!verified.session_token.is_empty()).then_some(Session {
+        session_token: verified.session_token,
+        email: verified.email,
+    })
 }
 
 #[derive(Deserialize)]

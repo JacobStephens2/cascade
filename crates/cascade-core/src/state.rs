@@ -181,7 +181,8 @@ fn begin_listening_sync(
     let id = state.next_request_id;
     if let Some((device_id, device_total_ms)) = begin(&mut state.listening, id) {
         let request = Request::push_listening(&device_id, device_total_ms, session_token);
-        send(state, request, effects);
+        let sent = send(state, request, effects);
+        debug_assert_eq!(sent, id, "the push must carry the id the ledger remembers");
     }
 }
 
@@ -511,9 +512,7 @@ fn account_response(
             state.account.status = Some(AccountStatus::LinkSent { email });
         }
         PendingRequest::Verify if succeeded => match parse_verified(body) {
-            Some((session_token, email)) => {
-                signed_in(state, session_token, email, effects);
-            }
+            Some(session) => signed_in(state, session, effects),
             None => state.account.status = Some(AccountStatus::LinkInvalid),
         },
         PendingRequest::DeleteListening { new_device_id } if succeeded => {
@@ -545,19 +544,16 @@ fn account_response(
 
 /// The sign-in token was redeemed for a session: persist the account and
 /// start a refresh sync for the cross-device total.
-fn signed_in(state: &mut State, session_token: String, email: String, effects: &mut Vec<Effect>) {
+fn signed_in(state: &mut State, session: Session, effects: &mut Vec<Effect>) {
     // Signing in over another account: nothing of its total may show.
     if state.account.session.is_some() {
         state.listening.forget_server();
         push_persist_listening(state, effects);
     }
     state.account.status = Some(AccountStatus::SignedIn {
-        email: email.clone(),
+        email: session.email.clone(),
     });
-    state.account.session = Some(Session {
-        session_token,
-        email,
-    });
+    state.account.session = Some(session);
     push_persist_account(state, effects);
     begin_listening_sync(state, effects, |l, id| {
         l.begin_sync(SyncReason::Refresh, id)
