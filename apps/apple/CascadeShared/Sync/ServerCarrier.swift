@@ -1,11 +1,5 @@
 import Foundation
 
-/// Base URL of cascade-sync-server. Empty disables the sync feature.
-enum SyncConfig {
-    static let apiBase = "https://sync.cascade.stephens.page"
-    static var available: Bool { !apiBase.isEmpty }
-}
-
 /// Carries the core's `serverRequest` effects to the sync server (URLSession).
 /// It decides nothing per request: it sends what it is given and answers with
 /// the `serverResponse` that settles it, holding the status and body verbatim.

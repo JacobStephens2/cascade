@@ -150,13 +150,11 @@ final class AppStore {
         dispatch(.submitSignInLink(input: url.absoluteString))
     }
 
-    /// Carry one request over HTTP and settle it with the core. Every request
-    /// is settled, the sign-out revoke included, or the core won't start
-    /// another; with no sync server, or on a network error, timeout or
-    /// cancellation, the settle carries status 0. The settle is dispatched on
-    /// the main actor, and its own effects come back through `apply`. A request
-    /// can come from any dispatch, including a tick, so carry everything
-    /// `apply` hands over.
+    /// Carry one request over HTTP and settle it with the core, on the main
+    /// actor. Every request is settled, the sign-out revoke included, or the
+    /// core won't start another; the settle's own effects come back through
+    /// `apply`. A request can come from any dispatch, including a tick, so
+    /// carry everything `apply` hands over.
     private func carry(_ request: ServerRequest) {
         let carrier = serverCarrier
         Task { @MainActor in
