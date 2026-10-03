@@ -114,7 +114,7 @@ export function useSync(
   const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
   const coreReady = snapshot !== null;
 
-  const send = useCallback(
+  const dispatchAndCarry = useCallback(
     (command: Command) => {
       if (api.syncAvailable) carry(dispatch(command), dispatch);
     },
@@ -159,8 +159,8 @@ export function useSync(
       return;
     }
 
-    send({ type: "submitSignInLink", input: link });
-  }, [coreReady, send]);
+    dispatchAndCarry({ type: "submitSignInLink", input: link });
+  }, [coreReady, dispatchAndCarry]);
 
   // On launch, fetch the cross-device total straight away. The core sends
   // nothing while signed out, and answers a fresh sign-in with its own refresh.
@@ -197,14 +197,14 @@ export function useSync(
     available: api.syncAvailable,
     desktopHandoff,
     requestSignInLink: useCallback(
-      (email: string) => send({ type: "requestSignInLink", email }),
-      [send],
+      (email: string) => dispatchAndCarry({ type: "requestSignInLink", email }),
+      [dispatchAndCarry],
     ),
-    signOut: useCallback(() => send({ type: "signOut" }), [send]),
+    signOut: useCallback(() => dispatchAndCarry({ type: "signOut" }), [dispatchAndCarry]),
     deleteListeningData: useCallback(
-      () => send({ type: "deleteListeningData" }),
-      [send],
+      () => dispatchAndCarry({ type: "deleteListeningData" }),
+      [dispatchAndCarry],
     ),
-    deleteAccount: useCallback(() => send({ type: "deleteAccount" }), [send]),
+    deleteAccount: useCallback(() => dispatchAndCarry({ type: "deleteAccount" }), [dispatchAndCarry]),
   };
 }
