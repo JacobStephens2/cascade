@@ -303,18 +303,18 @@
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBox PlaceholderText="you@example.com" Width="240" CornerRadius="9"
                                          Text="{x:Bind ViewModel.EmailInput, Mode=TwoWay}" />
-                                <Button Content="Email me a link" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.RequestLinkCommand}" />
+                                <Button Content="Email me a link" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.RequestSignInLinkCommand}" />
                             </StackPanel>
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <TextBox PlaceholderText="paste the sign-in link" Width="240" CornerRadius="9"
                                          Text="{x:Bind ViewModel.SignInLinkInput, Mode=TwoWay}" />
-                                <Button Content="Sign in" Style="{StaticResource PrimaryChipButtonStyle}" Command="{x:Bind ViewModel.CompleteSignInCommand}" />
+                                <Button Content="Sign in" Style="{StaticResource PrimaryChipButtonStyle}" Command="{x:Bind ViewModel.SubmitSignInLinkCommand}" />
                             </StackPanel>
                         </StackPanel>
 
                         <!-- Signed in -->
                         <StackPanel Spacing="6" Visibility="{x:Bind ViewModel.SignedInVisibility, Mode=OneWay}">
-                            <TextBlock Text="{x:Bind local:Converters.SyncingLabel(ViewModel.AccountEmail), Mode=OneWay}" Style="{StaticResource CaptionTextStyle}" />
+                            <TextBlock Text="{x:Bind ViewModel.Snapshot.Account.SignedInLabel, Mode=OneWay}" Style="{StaticResource CaptionTextStyle}" />
                             <StackPanel Orientation="Horizontal" Spacing="8">
                                 <HyperlinkButton Content="Sign out" Style="{StaticResource QuietLinkButtonStyle}" Command="{x:Bind ViewModel.SignOutCommand}" />
                                 <HyperlinkButton Content="Delete data" Style="{StaticResource QuietLinkButtonStyle}" Command="{x:Bind ViewModel.DeleteListeningDataCommand}" />
@@ -323,7 +323,7 @@
                         </StackPanel>
 
                         <TextBlock
-                            Text="{x:Bind ViewModel.SyncStatus, Mode=OneWay}"
+                            Text="{x:Bind ViewModel.Snapshot.Account.StatusLabel, Mode=OneWay}"
                             Foreground="{StaticResource InkDimBrush}"
                             FontSize="12"
                             TextWrapping="Wrap" />

@@ -40,6 +40,16 @@ public static class CascadeJson
 [JsonDerivedType(typeof(ListeningSyncSucceededCommand), "listeningSyncSucceeded")]
 [JsonDerivedType(typeof(ListeningSyncFailedCommand), "listeningSyncFailed")]
 [JsonDerivedType(typeof(ResetListeningDataCommand), "resetListeningData")]
+[JsonDerivedType(typeof(RequestSignInLinkCommand), "requestSignInLink")]
+[JsonDerivedType(typeof(SubmitSignInLinkCommand), "submitSignInLink")]
+[JsonDerivedType(typeof(SignOutCommand), "signOut")]
+[JsonDerivedType(typeof(DeleteListeningDataCommand), "deleteListeningData")]
+[JsonDerivedType(typeof(DeleteAccountCommand), "deleteAccount")]
+[JsonDerivedType(typeof(SignInLinkSentCommand), "signInLinkSent")]
+[JsonDerivedType(typeof(SignInVerifiedCommand), "signInVerified")]
+[JsonDerivedType(typeof(ListeningDataDeletedCommand), "listeningDataDeleted")]
+[JsonDerivedType(typeof(AccountDeletedCommand), "accountDeleted")]
+[JsonDerivedType(typeof(AccountRequestFailedCommand), "accountRequestFailed")]
 public abstract record CascadeCommand;
 
 public sealed record PlayCommand : CascadeCommand;
@@ -56,11 +66,28 @@ public sealed record PlatformPlaybackStartedCommand : CascadeCommand;
 public sealed record PlatformPlaybackPausedCommand : CascadeCommand;
 public sealed record PlatformPlaybackErrorCommand(string Message) : CascadeCommand;
 public sealed record SetListeningTrackingCommand(bool Enabled) : CascadeCommand;
-public sealed record RestoreCommand(string SettingsJson, string ListeningJson, string FallbackDeviceId) : CascadeCommand;
+// AccountJson is the stored account blob, verbatim; "" for none.
+public sealed record RestoreCommand(string SettingsJson, string ListeningJson, string FallbackDeviceId, string AccountJson) : CascadeCommand;
 public sealed record BeginListeningSyncCommand(SyncReason Reason) : CascadeCommand;
 public sealed record ListeningSyncSucceededCommand(ulong ServerTotalMs) : CascadeCommand;
 public sealed record ListeningSyncFailedCommand(bool Unauthorized) : CascadeCommand;
 public sealed record ResetListeningDataCommand(string NewDeviceId) : CascadeCommand;
+
+// What the user does with the account. Every one but SignOut is ignored while
+// an account request is pending (account.busy).
+public sealed record RequestSignInLinkCommand(string Email) : CascadeCommand;
+public sealed record SubmitSignInLinkCommand(string Input) : CascadeCommand;
+public sealed record SignOutCommand : CascadeCommand;
+public sealed record DeleteListeningDataCommand : CascadeCommand;
+public sealed record DeleteAccountCommand : CascadeCommand;
+
+// How an account request settled: one command per success, one shared failure
+// (unauthorized = HTTP 401).
+public sealed record SignInLinkSentCommand : CascadeCommand;
+public sealed record SignInVerifiedCommand(string SessionToken, string Email) : CascadeCommand;
+public sealed record ListeningDataDeletedCommand(string NewDeviceId) : CascadeCommand;
+public sealed record AccountDeletedCommand(string NewDeviceId) : CascadeCommand;
+public sealed record AccountRequestFailedCommand(bool Unauthorized) : CascadeCommand;
 
 /// <summary>
 /// Why the shell is asking to sync. The shell decides when it can talk; the
@@ -102,6 +129,12 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
 [JsonDerivedType(typeof(PersistListeningEffect), "persistListening")]
 [JsonDerivedType(typeof(PushListeningEffect), "pushListening")]
 [JsonDerivedType(typeof(ClearSessionEffect), "clearSession")]
+[JsonDerivedType(typeof(SendSignInLinkEffect), "sendSignInLink")]
+[JsonDerivedType(typeof(VerifySignInTokenEffect), "verifySignInToken")]
+[JsonDerivedType(typeof(RevokeSessionEffect), "revokeSession")]
+[JsonDerivedType(typeof(DeleteServerListeningEffect), "deleteServerListening")]
+[JsonDerivedType(typeof(DeleteServerAccountEffect), "deleteServerAccount")]
+[JsonDerivedType(typeof(PersistAccountEffect), "persistAccount")]
 public abstract record CascadeEffect;
 
 // Gain is the final output level, 0–1, mute and curve already applied.
@@ -110,8 +143,20 @@ public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(double Gain) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
-public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs) : CascadeEffect;
+// SessionToken is null only for a shell that keeps its own account; never here.
+public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs, string? SessionToken) : CascadeEffect;
+// Only sent to a shell that keeps its own account; never here. Still decoded,
+// so an unknown discriminator can't throw.
 public sealed record ClearSessionEffect : CascadeEffect;
+// Account requests: carry each over HTTP and settle it with its success
+// command or AccountRequestFailed. RevokeSession is fire-and-forget.
+public sealed record SendSignInLinkEffect(string Email) : CascadeEffect;
+public sealed record VerifySignInTokenEffect(string Token) : CascadeEffect;
+public sealed record RevokeSessionEffect(string SessionToken) : CascadeEffect;
+public sealed record DeleteServerListeningEffect(string SessionToken) : CascadeEffect;
+public sealed record DeleteServerAccountEffect(string SessionToken) : CascadeEffect;
+// Store verbatim; "" means delete the stored account.
+public sealed record PersistAccountEffect(string Json) : CascadeEffect;
 
 // ---------- Snapshot ----------
 
@@ -182,6 +227,18 @@ public sealed record ListeningSnapshot(
     string TotalLabel
 );
 
+// The account view. Never carries the session token.
+public sealed record AccountSnapshot(
+    // Null when signed out.
+    string? Email,
+    // "Syncing · {email}"; null when signed out.
+    string? SignedInLabel,
+    // What the user was last told; null when there is nothing to say.
+    string? StatusLabel,
+    // An account request is out; every account control but sign-out waits.
+    bool Busy
+);
+
 public sealed record CascadeSnapshot(
     string Title,
     string Subtitle,
@@ -195,6 +252,7 @@ public sealed record CascadeSnapshot(
     TimerOptions TimerOptions,
     string? ErrorMessage,
     ListeningSnapshot Listening,
+    AccountSnapshot Account,
     // How often to send a TickCommand, in ms; 0 means stop. The core owns the cadence.
     int TickIntervalMs
 );
