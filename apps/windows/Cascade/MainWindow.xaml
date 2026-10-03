@@ -7,6 +7,7 @@
     xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
     xmlns:local="using:Cascade"
     xmlns:vm="using:Cascade.ViewModels"
+    xmlns:services="using:Cascade.Services"
     Title="Cascade"
     mc:Ignorable="d">
 
@@ -109,7 +110,7 @@
                                 Minimum="0" Maximum="1"
                                 Width="240" Height="2"
                                 CornerRadius="1"
-                                Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+                                Visibility="{x:Bind local:Converters.VisibleIf(ViewModel.Snapshot.Timer.IsActive), Mode=OneWay}" />
                         </StackPanel>
 
                         <!-- Circular play / pause with glow + rotating outer ring -->
@@ -194,28 +195,42 @@
 
                     <!-- Timer controls. The web collapses every preset section to a
                          single centered "Cancel timer" while a timer runs; mirror
-                         that by gating the whole preset block on the timer kind. -->
+                         that by gating the whole preset block on timer.isActive. -->
                     <StackPanel Spacing="40"
-                                Visibility="{x:Bind local:Converters.TimerInactiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}">
+                                Visibility="{x:Bind local:Converters.CollapsedIf(ViewModel.Snapshot.Timer.IsActive), Mode=OneWay}">
 
                         <!-- Focus session: solid chips. -->
                         <StackPanel Spacing="8">
                             <TextBlock Text="FOCUS SESSION" Style="{StaticResource SectionHeadingTextStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="30 min" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartThirtyCommand}" />
-                                <Button Content="1 hr" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartSixtyCommand}" />
-                                <Button Content="8 hr" Style="{StaticResource ChipButtonStyle}" Command="{x:Bind ViewModel.StartEightHoursCommand}" />
-                            </StackPanel>
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Snapshot.TimerOptions.FocusPresets, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="services:TimerPreset">
+                                        <Button Content="{x:Bind Label}" Style="{StaticResource ChipButtonStyle}" Click="OnStartFocusPreset" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
 
                         <!-- Sleep timer: ghost (outline) chips. -->
                         <StackPanel Spacing="8">
                             <TextBlock Text="SLEEP TIMER" Style="{StaticResource SectionHeadingTextStyle}" />
-                            <StackPanel Orientation="Horizontal" Spacing="8">
-                                <Button Content="15 min" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepFifteenCommand}" />
-                                <Button Content="30 min" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepThirtyCommand}" />
-                                <Button Content="1 hr" Style="{StaticResource GhostChipButtonStyle}" Command="{x:Bind ViewModel.StartSleepSixtyCommand}" />
-                            </StackPanel>
+                            <ItemsControl ItemsSource="{x:Bind ViewModel.Snapshot.TimerOptions.SleepPresets, Mode=OneWay}">
+                                <ItemsControl.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="8" />
+                                    </ItemsPanelTemplate>
+                                </ItemsControl.ItemsPanel>
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate x:DataType="services:TimerPreset">
+                                        <Button Content="{x:Bind Label}" Style="{StaticResource GhostChipButtonStyle}" Click="OnStartSleepPreset" />
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
                         </StackPanel>
 
                         <!-- Stopwatch: ghost chip. -->
@@ -235,7 +250,6 @@
                                     <RadioButton x:Name="CustomSleepRadio" Content="Sleep" GroupName="CustomMode" Checked="OnCustomModeChanged" />
                                     <NumberBox
                                         x:Name="CustomMinutes"
-                                        Value="45" Minimum="1" Maximum="1440"
                                         SpinButtonPlacementMode="Inline"
                                         Width="140" />
                                     <Button x:Name="StartCustomButton" Content="Start session" Style="{StaticResource PrimaryChipButtonStyle}" Click="OnStartCustom" />
@@ -249,7 +263,7 @@
                             Style="{StaticResource GhostChipButtonStyle}"
                             HorizontalAlignment="Center"
                             Command="{x:Bind ViewModel.CancelTimerCommand}"
-                            Visibility="{x:Bind local:Converters.TimerActiveVisibility(ViewModel.Snapshot.Timer.Kind), Mode=OneWay}" />
+                            Visibility="{x:Bind local:Converters.VisibleIf(ViewModel.Snapshot.Timer.IsActive), Mode=OneWay}" />
 
                     <!-- Listening time card: centered total + caption over a
                          "Track my listening time" checkbox, matching the web. -->

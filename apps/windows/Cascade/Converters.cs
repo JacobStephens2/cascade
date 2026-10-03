@@ -1,4 +1,3 @@
-using Cascade.Services;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
@@ -11,18 +10,11 @@ namespace Cascade;
 /// </summary>
 public static class Converters
 {
-    public static Visibility TimerActiveVisibility(TimerKind kind) =>
-        kind is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch
-            ? Visibility.Visible
-            : Visibility.Collapsed;
-
-    /// Inverse of <see cref="TimerActiveVisibility"/>: the web collapses every
-    /// preset section to a lone "Cancel timer" while a timer runs, so the preset
-    /// block is visible only when no timer is active.
-    public static Visibility TimerInactiveVisibility(TimerKind kind) =>
-        kind is TimerKind.Sleep or TimerKind.Pomodoro or TimerKind.Stopwatch
-            ? Visibility.Collapsed
-            : Visibility.Visible;
+    /// Inverse of <see cref="VisibleIf"/>: the web collapses every preset
+    /// section to a lone "Cancel timer" while a timer runs, so the preset block
+    /// is visible only when no timer is active.
+    public static Visibility CollapsedIf(bool b) =>
+        b ? Visibility.Collapsed : Visibility.Visible;
 
     public static string PercentLabel(int percent) => $"{percent}%";
 

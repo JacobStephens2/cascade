@@ -150,7 +150,28 @@ public sealed record TimerSnapshot(
     string RemainingLabel,
     ulong RemainingMs,
     ulong TotalMs,
-    float Progress
+    float Progress,
+    // A timer is running (something to cancel); false when off or just completed.
+    bool IsActive,
+    // One-line status, e.g. "Playing · 12:34 left".
+    string StatusLabel
+);
+
+// A ready-made timer length the core offers.
+public sealed record TimerPreset(
+    int Minutes,
+    string Label,
+    string ShortLabel
+);
+
+// The timer choices the core offers: presets, limits and the custom pre-fill.
+public sealed record TimerOptions(
+    List<TimerPreset> FocusPresets,
+    List<TimerPreset> SleepPresets,
+    int MinMinutes,
+    int MaxMinutes,
+    int CustomFocusMinutes,
+    int CustomSleepMinutes
 );
 
 public sealed record ListeningSnapshot(
@@ -171,6 +192,7 @@ public sealed record CascadeSnapshot(
     double OutputGain,
     string PrimaryButtonLabel,
     TimerSnapshot Timer,
+    TimerOptions TimerOptions,
     string? ErrorMessage,
     ListeningSnapshot Listening,
     // How often to send a TickCommand, in ms; 0 means stop. The core owns the cadence.
