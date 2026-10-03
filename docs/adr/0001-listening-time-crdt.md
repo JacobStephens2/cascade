@@ -1,6 +1,6 @@
 # ADR 0001 — Cross-platform listening-time tracking: a pure-core G-Counter with data-minimizing sync
 
-- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issues #31 and #44)
+- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issues #31, #44 and #49)
 - **Date:** 2026-06-05
 - **Context:** Cascade is one headless Rust core (`cascade-core`) driving six native shells (web, Android, macOS, Windows, iOS, watchOS). We want to show a user the total time they've spent listening, aggregated across every device they use, with an optional account to centralize it — without turning a white-noise app into a surveillance liability.
 

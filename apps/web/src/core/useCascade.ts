@@ -165,7 +165,7 @@ export function useCascade(): UseCascadeResult {
   // `dispatch` from inside async effects needs a stable reference; the
   // exported `dispatch` (below) just delegates.
   const dispatchInternal = useCallback(
-    (command: Command, keepalive = false): void => {
+    (command: Command, options?: DispatchOptions): void => {
       const core = coreRef.current;
       if (!core) return;
       const updateJson = core.dispatch(JSON.stringify(command));
@@ -175,14 +175,14 @@ export function useCascade(): UseCascadeResult {
       };
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
-      carryRequests(update.effects, (outcome) => dispatchInternal(outcome), keepalive);
+      carryRequests(update.effects, (outcome) => dispatchInternal(outcome), options);
     },
     [runEffects],
   );
 
   const dispatch = useCallback(
     (command: Command, options?: DispatchOptions) =>
-      dispatchInternal(command, options?.keepalive),
+      dispatchInternal(command, options),
     [dispatchInternal],
   );
 

@@ -1,4 +1,5 @@
 import type { Command, Effect } from "../core/types";
+import type { DispatchOptions } from "../core/useCascade";
 import * as api from "./api";
 
 /** Dispatches a settle; that dispatch carries the settle's own effects. */
@@ -31,7 +32,7 @@ async function settleWith<T>(
 export function carryRequests(
   effects: Effect[],
   settle: Settle,
-  keepalive = false,
+  { keepalive = false }: DispatchOptions = {},
 ): void {
   const accountFailed = (unauthorized: boolean): Command => ({
     type: "accountRequestFailed",

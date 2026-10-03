@@ -26,8 +26,9 @@ pub enum TimerSnapshotKind {
     /// Count-up stopwatch. `remaining_label`/`remaining_ms` carry the elapsed
     /// time, `total_ms` is 0, and `progress` is 0 (no end to progress toward).
     Stopwatch,
-    /// Timer just finished on the most recent tick. UIs can show a chime /
-    /// toast before transitioning back to `Off` on the next snapshot.
+    /// Timer finished. Stays until the user plays, pauses, or starts or
+    /// cancels a timer, so UIs can show "Sleep timer ended" / "Session
+    /// complete" until then; background commands leave it.
     JustCompleted,
 }
 
