@@ -9,10 +9,10 @@ use crate::timer::{format_remaining, TimerKind};
 
 /// Tick cadence while any timer is active (playing or paused), so the
 /// countdown or stopwatch reads smoothly.
-pub const TIMER_TICK_INTERVAL_MS: u32 = 250;
+pub const TIMER_TICK_INTERVAL_MS: u64 = 250;
 /// Tick cadence while audio is merely playing, so listening time keeps
 /// accruing.
-pub const PLAYBACK_TICK_INTERVAL_MS: u32 = 1_000;
+pub const PLAYBACK_TICK_INTERVAL_MS: u64 = 1_000;
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -73,7 +73,7 @@ pub struct Snapshot {
     pub listening: ListeningSnapshot,
     /// How often the shell should send [`crate::Command::Tick`], in ms. `0`
     /// means stop ticking. The core owns the cadence; the shell owns the clock.
-    pub tick_interval_ms: u32,
+    pub tick_interval_ms: u64,
 }
 
 impl Snapshot {
@@ -151,14 +151,20 @@ impl Snapshot {
                 unsynced_ms: state.listening.unsynced_ms(),
                 total_label: format_listening_total(state.listening.displayed_total_ms()),
             },
-            tick_interval_ms: if state.active_timer.is_some() {
-                TIMER_TICK_INTERVAL_MS
-            } else if state.intent.is_playing() {
-                PLAYBACK_TICK_INTERVAL_MS
-            } else {
-                0
-            },
+            tick_interval_ms: tick_interval_ms(state),
         }
+    }
+}
+
+/// Fine ticks while any timer is active (a just-completed timer is no longer
+/// active), coarse ticks while playback is intended, otherwise none.
+fn tick_interval_ms(state: &State) -> u64 {
+    if state.active_timer.is_some() {
+        TIMER_TICK_INTERVAL_MS
+    } else if state.intent.is_playing() {
+        PLAYBACK_TICK_INTERVAL_MS
+    } else {
+        0
     }
 }
 
@@ -167,7 +173,7 @@ mod tests {
     use super::*;
     use crate::{Command, Core};
 
-    fn interval_after(commands: impl IntoIterator<Item = Command>) -> u32 {
+    fn interval_after(commands: impl IntoIterator<Item = Command>) -> u64 {
         let mut core = Core::new();
         for command in commands {
             core.dispatch(command);
