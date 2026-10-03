@@ -41,7 +41,7 @@ public sealed class SyncApi
     public Task LogoutAsync(string sessionToken) =>
         PostAsync("/auth/logout", null, sessionToken);
 
-    public async Task<ListeningResponse> PutListeningAsync(string? sessionToken, string deviceId, long deviceTotalMs)
+    public async Task<ListeningResponse> PutListeningAsync(string sessionToken, string deviceId, long deviceTotalMs)
     {
         using var resp = await SendAsync(HttpMethod.Put, "/listening",
             new { deviceId, deviceTotalMs }, sessionToken);

@@ -106,7 +106,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         // core ignores a missing/incompatible blob and never lets a restore
         // lower the counter. The account blob rides along; the core holds the
         // account from here on.
-        var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? Guid.NewGuid().ToString();
+        var fallbackDeviceId = _accountStore.ReadLegacyDeviceId() ?? NewDeviceId();
         Dispatch(new RestoreCommand(
             _settings.ReadSafely() ?? "",
             _settings.ReadListeningSafely() ?? "",
@@ -278,8 +278,9 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
         {
             case PushListeningEffect push:
                 _ = SettleWithAsync(
+                    // Never null here: this shell hands the core its account.
                     () => _syncApi.PutListeningAsync(
-                        push.SessionToken, push.DeviceId, (long)push.DeviceTotalMs),
+                        push.SessionToken!, push.DeviceId, (long)push.DeviceTotalMs),
                     res => new ListeningSyncSucceededCommand((ulong)Math.Max(0L, res.ServerTotalMs)),
                     unauthorized => new ListeningSyncFailedCommand(unauthorized));
                 break;
@@ -301,17 +302,21 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             case DeleteServerListeningEffect delete:
                 _ = SettleWithAsync(
                     () => _syncApi.DeleteListeningAsync(delete.SessionToken),
-                    () => new ListeningDataDeletedCommand(Guid.NewGuid().ToString()),
+                    () => new ListeningDataDeletedCommand(NewDeviceId()),
                     AccountFailed);
                 break;
             case DeleteServerAccountEffect delete:
                 _ = SettleWithAsync(
                     () => _syncApi.DeleteAccountAsync(delete.SessionToken),
-                    () => new AccountDeletedCommand(Guid.NewGuid().ToString()),
+                    () => new AccountDeletedCommand(NewDeviceId()),
                     AccountFailed);
                 break;
         }
     }
+
+    /// A fresh random device id. The core has no randomness, so the shell
+    /// supplies one for the fallback id and each delete's slot rotation.
+    private static string NewDeviceId() => Guid.NewGuid().ToString();
 
     /// Fire-and-forget: nothing settles a revoke.
     private async Task RevokeAsync(string sessionToken)

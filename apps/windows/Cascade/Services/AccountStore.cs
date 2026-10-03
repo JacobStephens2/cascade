@@ -32,10 +32,9 @@ public sealed class AccountStore
     /// <summary>
     /// The stored account blob for <c>Restore</c>'s <c>accountJson</c>, or ""
     /// if there is none. Builds before the core held the account stored a
-    /// PascalCase <c>{ SessionToken, Email }</c> record; that is converted to
-    /// the version-less <c>{ sessionToken, email }</c> shape the core accepts,
-    /// so an existing sign-in survives the upgrade. The file is rewritten on
-    /// the core's next <c>PersistAccount</c>.
+    /// PascalCase <c>{ SessionToken, Email }</c> record; that is converted once
+    /// to the version-less <c>{ sessionToken, email }</c> shape the core
+    /// accepts, and stored, so an existing sign-in survives the upgrade.
     /// </summary>
     public string ReadAccountJson()
     {
@@ -43,7 +42,10 @@ public sealed class AccountStore
         {
             if (!File.Exists(_accountPath)) return "";
             var json = File.ReadAllText(_accountPath);
-            return FromLegacyRecord(json) ?? json;
+            var converted = FromLegacyRecord(json);
+            if (converted is null) return json;
+            WriteAccountJson(converted);
+            return converted;
         }
         catch
         {
