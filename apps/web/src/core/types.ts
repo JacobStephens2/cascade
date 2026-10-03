@@ -29,7 +29,8 @@ export type Command =
     }
   | { type: "beginListeningSync"; reason: SyncReason }
   | { type: "resetListeningData"; newDeviceId: string }
-  /** `platform` names the app the emailed link hands off to, if any. */
+  /** `platform` names the platform whose shell the emailed link hands off
+   * to, if any; the web shell has no hand-off and leaves it out. */
   | { type: "requestSignInLink"; email: string; platform?: string }
   | { type: "submitSignInLink"; input: string }
   | { type: "signOut" }
