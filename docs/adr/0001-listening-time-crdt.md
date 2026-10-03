@@ -33,7 +33,7 @@ The account stores an email and **one integer per device** — no timestamps, no
 - **Threshold and payload.** The shell dispatches `BeginListeningSync { reason }` (`threshold` / `flush` / `refresh`). If there is something worth sending (≥ 30 s unsynced for `threshold`, anything for `flush`, always for `refresh`) the core answers with one `PushListening { deviceId, deviceTotalMs }`, and the shell PUTs exactly that.
 - **High-water mark.** The shell reports `ListeningSyncSucceeded { serverTotalMs }` or `ListeningSyncFailed { unauthorized }`. The core marks as synced exactly the total it sent — never a shell-reconstructed value — so accrual during the request stays unsynced.
 - **Re-entrancy.** A sync in flight blocks the next `BeginListeningSync` until it is settled — including one sent for a slot a reset has since replaced, whose ack is then dropped.
-- **401 rule.** `unauthorized: true` makes the core emit `ClearSession`; the shell drops its token.
+- **401 rule.** `unauthorized: true` makes the core emit `ClearSession`; the shell drops its token. *(Superseded by the issue #31 amendment below.)*
 
 Six shells running decision 5 as first written produced ~20 copies of these four rules, with no test on any shell; they are now one tested module (`crates/cascade-core/tests/listening_sync.rs`) and four thin adapters.
 
@@ -42,8 +42,8 @@ Six shells running decision 5 as first written produced ~20 copies of these four
 - **Request and settle, as above.** User intents (`RequestSignInLink`, `SubmitSignInLink`, `SignOut`, `DeleteListeningData`, `DeleteAccount`) are answered with one effect describing an HTTP request (`SendSignInLink`, `VerifySignInToken`, `DeleteServerListening`, `DeleteServerAccount`, plus the fire-and-forget `RevokeSession`). The shell settles each with a success command or `AccountRequestFailed { unauthorized }`. One account request runs at a time; `SignOut` always works and drops it.
 - **The session rides on effects.** `PushListening` carries `sessionToken`, and `BeginListeningSync` sends nothing while signed out. The snapshot's `account` section never carries the token.
 - **Signing out forgets the server.** Sign-out, a 401 on any request, and a deleted account forget the cross-device total and supersede any in-flight sync, so neither a stale total nor a late ack outlives the account.
-- **401 rule, revised.** `unauthorized: true` signs out and emits an empty `PersistAccount`. For a listening sync this holds whether or not the core held a session; only a sync that sign-out or a reset has already superseded is ignored. *(Issue #36: `ClearSession` is gone, since every shell now takes the account from the core.)*
-- **Storage.** The core persists the account through `PersistAccount { json }` and restores it from `Restore`'s `accountJson`; each shell keeps its own storage location.
+- **401 rule, revised.** `unauthorized: true` signs out and emits an empty `PersistAccount`. Only a sync that sign-out or a reset has already superseded is ignored: its 401 may belong to a session already dropped. *(Issue #36: `ClearSession` is gone, since every shell now takes the account from the core.)*
+- **Storage.** The core persists the account through `PersistAccount { json }` and restores it from `Restore`'s `accountJson` (missing means empty: signed out); each shell keeps its own storage location.
 
 The rules are tested once in `crates/cascade-core/tests/account.rs`.
 
