@@ -30,3 +30,7 @@ The Apple Watch client. It is not independently installed; it comes with the iPh
 **Timer preset**:
 A ready-made timer length the core offers for a focus session or sleep timer, alongside the user's own custom duration.
 _Avoid_: hard-coding preset lengths or labels in a shell
+
+**Account**:
+The optional sign-in, an email and a session, that syncs listening time across a user's devices. The core holds it; a shell only carries its requests.
+_Avoid_: login, user (for it)

@@ -1,6 +1,6 @@
 //! Listening-sync policy, driven only through `Core::dispatch` — no network.
 //!
-//! The shell owns *when* it can talk (reachability, lifecycle, auth); the core
+//! The shell owns *when* it can talk (reachability, lifecycle); the core
 //! owns *whether there is anything to say, and what*. These tests pin the core
 //! half: the threshold, the payload, the synced high-water mark, the 401 rule,
 //! and the device-id lifecycle.
@@ -9,15 +9,18 @@ use cascade_core::{Command, Core, Effect, SyncReason, LISTENING_SYNC_THRESHOLD_M
 
 const DEVICE_A: &str = "device-a";
 const DEVICE_B: &str = "device-b";
+/// A stored account, so the core holds a session and may sync.
+const SIGNED_IN: &str = r#"{"version":1,"sessionToken":"session","email":"a@example.com"}"#;
 
-/// A core that has restored (nothing) with `DEVICE_A` as its fallback id and
-/// has accrued `listened_ms` of confirmed audio.
+/// A signed-in core that has restored no listening, with `DEVICE_A` as its
+/// fallback id, and has accrued `listened_ms` of confirmed audio.
 fn core_with_listening(listened_ms: u64) -> Core {
     let mut core = Core::new();
     core.dispatch(Command::Restore {
         settings_json: String::new(),
         listening_json: String::new(),
         fallback_device_id: DEVICE_A.into(),
+        account_json: Some(SIGNED_IN.into()),
     });
     core.dispatch(Command::Play);
     core.dispatch(Command::PlatformPlaybackStarted);
@@ -36,6 +39,7 @@ fn pushed(effects: &[Effect]) -> Option<(String, u64)> {
         Effect::PushListening {
             device_id,
             device_total_ms,
+            ..
         } => Some((device_id.clone(), *device_total_ms)),
         _ => None,
     })
@@ -179,13 +183,41 @@ fn a_successful_sync_persists_the_new_high_water_mark() {
 // ---- 401 rule --------------------------------------------------------------
 
 #[test]
-fn unauthorized_clears_the_session_and_keeps_local_listening() {
+fn unauthorized_signs_out_and_keeps_local_listening() {
     let mut core = core_with_listening(40_000);
     begin(&mut core, SyncReason::Threshold);
     let update = core.dispatch(Command::ListeningSyncFailed { unauthorized: true });
-    assert!(update.effects.contains(&Effect::ClearSession));
+    assert_eq!(update.snapshot.account.email, None);
     assert_eq!(update.snapshot.listening.device_total_ms, 40_000);
     assert_eq!(update.snapshot.listening.unsynced_ms, 40_000);
+}
+
+#[test]
+fn a_shell_that_keeps_its_own_account_still_gets_clear_session() {
+    // A shell not yet ported restores without `accountJson`: it syncs
+    // without a session token and drops its own session on `ClearSession`.
+    let mut core = Core::new();
+    core.dispatch(Command::Restore {
+        settings_json: String::new(),
+        listening_json: String::new(),
+        fallback_device_id: DEVICE_A.into(),
+        account_json: None,
+    });
+    let effects = core
+        .dispatch(Command::BeginListeningSync {
+            reason: SyncReason::Refresh,
+        })
+        .effects;
+    assert_eq!(
+        effects,
+        vec![Effect::PushListening {
+            device_id: DEVICE_A.into(),
+            device_total_ms: 0,
+            session_token: None,
+        }]
+    );
+    let update = core.dispatch(Command::ListeningSyncFailed { unauthorized: true });
+    assert_eq!(update.effects, vec![Effect::ClearSession]);
 }
 
 // ---- device-id lifecycle ---------------------------------------------------
@@ -198,6 +230,7 @@ fn restore_without_a_stored_id_adopts_and_persists_the_fallback() {
             settings_json: String::new(),
             listening_json: String::new(),
             fallback_device_id: DEVICE_A.into(),
+            account_json: Some(SIGNED_IN.into()),
         })
         .effects;
     let json = persisted_json(&effects).expect("a freshly adopted id is made durable at once");
@@ -215,6 +248,7 @@ fn a_stored_id_wins_over_the_fallback_across_restarts() {
             settings_json: String::new(),
             listening_json: blob,
             fallback_device_id: DEVICE_B.into(),
+            account_json: Some(SIGNED_IN.into()),
         })
         .effects;
     assert!(
@@ -237,6 +271,7 @@ fn a_legacy_blob_without_an_id_keeps_its_total_and_adopts_the_fallback() {
         settings_json: String::new(),
         listening_json: legacy.into(),
         fallback_device_id: DEVICE_B.into(),
+        account_json: Some(SIGNED_IN.into()),
     });
     assert_eq!(
         begin(&mut core, SyncReason::Flush),
@@ -269,6 +304,7 @@ fn reset_rotates_the_id_and_zeroes_the_slot_in_one_persisted_write() {
         settings_json: String::new(),
         listening_json: json,
         fallback_device_id: "unused".into(),
+        account_json: Some(SIGNED_IN.into()),
     });
     assert_eq!(
         begin(&mut restarted, SyncReason::Refresh),
@@ -373,10 +409,11 @@ fn sync_effects_serialize_camel_case() {
     let push = Effect::PushListening {
         device_id: "d".into(),
         device_total_ms: 7,
+        session_token: Some("s".into()),
     };
     assert_eq!(
         serde_json::to_string(&push).unwrap(),
-        r#"{"type":"pushListening","deviceId":"d","deviceTotalMs":7}"#
+        r#"{"type":"pushListening","deviceId":"d","deviceTotalMs":7,"sessionToken":"s"}"#
     );
     assert_eq!(
         serde_json::to_string(&Effect::ClearSession).unwrap(),

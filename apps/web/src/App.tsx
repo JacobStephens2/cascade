@@ -122,7 +122,7 @@ export function App() {
           }
         />
 
-        <AccountControls sync={sync} />
+        <AccountControls account={snapshot.account} sync={sync} />
       </main>
 
       <footer className="cascade-footer">

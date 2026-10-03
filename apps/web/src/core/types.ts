@@ -24,11 +24,23 @@ export type Command =
       settingsJson: string;
       listeningJson: string;
       fallbackDeviceId: string;
+      /** The stored account blob, verbatim; `""` for none. */
+      accountJson: string;
     }
   | { type: "beginListeningSync"; reason: SyncReason }
   | { type: "listeningSyncSucceeded"; serverTotalMs: number }
   | { type: "listeningSyncFailed"; unauthorized: boolean }
-  | { type: "resetListeningData"; newDeviceId: string };
+  | { type: "resetListeningData"; newDeviceId: string }
+  | { type: "requestSignInLink"; email: string }
+  | { type: "submitSignInLink"; input: string }
+  | { type: "signOut" }
+  | { type: "deleteListeningData" }
+  | { type: "deleteAccount" }
+  | { type: "signInLinkSent" }
+  | { type: "signInVerified"; sessionToken: string; email: string }
+  | { type: "listeningDataDeleted"; newDeviceId: string }
+  | { type: "accountDeleted"; newDeviceId: string }
+  | { type: "accountRequestFailed"; unauthorized: boolean };
 
 /** Why the shell is asking to sync; the core decides whether to send. */
 export type SyncReason = "threshold" | "flush" | "refresh";
@@ -40,8 +52,22 @@ export type Effect =
   | { type: "setPlatformVolume"; gain: number }
   | { type: "persistSettings"; json: string }
   | { type: "persistListening"; json: string }
-  | { type: "pushListening"; deviceId: string; deviceTotalMs: number }
-  | { type: "clearSession" };
+  | {
+      type: "pushListening";
+      deviceId: string;
+      deviceTotalMs: number;
+      /** Null only for a shell that keeps its own account; never for web. */
+      sessionToken: string | null;
+    }
+  | { type: "clearSession" }
+  | { type: "sendSignInLink"; email: string }
+  | { type: "verifySignInToken"; token: string }
+  /** Fire-and-forget: no settle command. */
+  | { type: "revokeSession"; sessionToken: string }
+  | { type: "deleteServerListening"; sessionToken: string }
+  | { type: "deleteServerAccount"; sessionToken: string }
+  /** Store verbatim; `""` means delete the stored account. */
+  | { type: "persistAccount"; json: string };
 
 export type TimerKind =
   | "off"
@@ -87,6 +113,18 @@ export interface ListeningSnapshot {
   totalLabel: string;
 }
 
+/** The account view. Never carries the session token. */
+export interface AccountSnapshot {
+  /** Null when signed out. */
+  email: string | null;
+  /** "Syncing · {email}"; null when signed out. */
+  signedInLabel: string | null;
+  /** What the user was last told; null when there is nothing to say. */
+  statusLabel: string | null;
+  /** An account request is out; every account control but sign-out waits. */
+  busy: boolean;
+}
+
 export interface Snapshot {
   title: string;
   subtitle: string;
@@ -100,6 +138,7 @@ export interface Snapshot {
   timerOptions: TimerOptions;
   errorMessage: string | null;
   listening: ListeningSnapshot;
+  account: AccountSnapshot;
   /** How often to send `tick`, in ms; 0 means stop. The core owns the cadence. */
   tickIntervalMs: number;
 }

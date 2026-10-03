@@ -129,6 +129,7 @@ proptest! {
             settings_json: json,
             listening_json: String::new(),
             fallback_device_id: "d".into(),
+            account_json: None,
         });
 
         prop_assert_eq!(restored.snapshot().volume_percent, persisted.volume_percent);
@@ -268,6 +269,7 @@ proptest! {
             settings_json: String::new(),
             listening_json: String::new(),
             fallback_device_id: "original".into(),
+            account_json: None,
         });
         core.dispatch(Command::Play);
         core.dispatch(Command::PlatformPlaybackStarted);
@@ -276,7 +278,7 @@ proptest! {
             let l = &core.state().listening;
             prop_assert!(l.synced_through_ms <= l.device_total_ms);
             for e in &update.effects {
-                if let Effect::PushListening { device_id, device_total_ms } = e {
+                if let Effect::PushListening { device_id, device_total_ms, .. } = e {
                     prop_assert_eq!(Some(device_id), l.device_id.as_ref());
                     prop_assert_eq!(*device_total_ms, l.device_total_ms);
                 }

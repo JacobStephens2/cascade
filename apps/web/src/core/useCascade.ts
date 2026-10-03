@@ -14,6 +14,10 @@ const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 // Where this shell kept its device id before the core owned it. Read once, as
 // the restore fallback, so an existing server slot carries over.
 const LEGACY_DEVICE_KEY = "cascade.device.v1";
+// The account blob, owned by the Rust core. Before the core held the account
+// this shell stored `{ sessionToken, email }` here; the core reads that shape
+// too, so the stored string is passed through unchanged.
+const ACCOUNT_STORAGE_KEY = "cascade.account.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
 
 /** A stored string, or `""` if there is none or storage is unavailable. */
@@ -75,7 +79,7 @@ export function useCascade(): UseCascadeResult {
           pendingSessionRef.current = null;
         }
 
-        // Boot is one step: a fresh core, then one `restore` carrying both
+        // Boot is one step: a fresh core, then one `restore` carrying the
         // persisted blobs (empty = none) and a fallback device id. The core
         // ignores a missing/incompatible blob and only adopts the fallback id
         // if the listening blob has none.
@@ -87,6 +91,7 @@ export function useCascade(): UseCascadeResult {
           listeningJson: readStorage(LISTENING_STORAGE_KEY),
           fallbackDeviceId:
             readStorage(LEGACY_DEVICE_KEY) || crypto.randomUUID(),
+          accountJson: readStorage(ACCOUNT_STORAGE_KEY),
         });
         setReady(true);
       } catch (err) {
@@ -136,6 +141,14 @@ export function useCascade(): UseCascadeResult {
             localStorage.setItem(LISTENING_STORAGE_KEY, effect.json);
           } catch (err) {
             console.warn("Could not persist listening data", err);
+          }
+          break;
+        case "persistAccount":
+          try {
+            if (effect.json) localStorage.setItem(ACCOUNT_STORAGE_KEY, effect.json);
+            else localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+          } catch (err) {
+            console.warn("Could not persist the account", err);
           }
           break;
       }
