@@ -108,7 +108,7 @@ fn a_missing_settings_blob_keeps_the_defaults() {
 
 #[test]
 fn an_unparseable_or_old_version_settings_blob_is_ignored() {
-    let fresh = Core::new().snapshot();
+    let fresh = Core::new();
     let wrong_version = format!(
         r#"{{"version":{},"volumePercent":10,"defaultSleepMinutes":5,"defaultPomodoroMinutes":5}}"#,
         SETTINGS_VERSION + 1
@@ -117,10 +117,15 @@ fn an_unparseable_or_old_version_settings_blob_is_ignored() {
         let mut core = Core::new();
         let update = core.dispatch(restore(blob, "", DEVICE_A));
         assert_eq!(
-            update.snapshot.volume_percent, fresh.volume_percent,
+            update.snapshot.volume_percent,
+            fresh.snapshot().volume_percent,
             "{blob}"
         );
-        assert_eq!(core.state().default_sleep_minutes, Some(30), "{blob}");
+        assert_eq!(
+            core.state().default_sleep_minutes,
+            fresh.state().default_sleep_minutes,
+            "{blob}"
+        );
         // A bad settings blob doesn't stop the listening half from running.
         assert!(persisted_listening(&update.effects).is_some(), "{blob}");
     }

@@ -42,9 +42,9 @@ final class AppStore {
     /// Interval the tick loop is currently running at, in ms; 0 when stopped.
     private var tickIntervalMs: UInt64 = 0
 
-    /// Bootstrap from disk. Failures fall back to defaults — the user never
-    /// gets stuck on a startup error for something as trivial as malformed
-    /// settings JSON.
+    /// Bootstrap from disk. The core's `restore` keeps its defaults for any
+    /// missing or malformed blob, so the user never gets stuck on a startup
+    /// error for something as trivial as malformed settings JSON.
     static func bootstrap() -> AppStore {
         let settings = SettingsStore()
         let store = AppStore(bridge: CoreBridge(), settings: settings)

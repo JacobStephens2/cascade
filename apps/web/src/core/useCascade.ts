@@ -16,11 +16,6 @@ const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 const LEGACY_DEVICE_KEY = "cascade.device.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
 
-interface Update {
-  snapshot: Snapshot;
-  effects: Effect[];
-}
-
 /** A stored string, or `""` if there is none or storage is unavailable. */
 function readStorage(key: string): string {
   try {
@@ -57,8 +52,8 @@ export function useCascade(): UseCascadeResult {
   const audioRef = useRef<WebAudioEngine | null>(null);
   // Session captured from localStorage at boot (before any dispatch can
   // overwrite it), replayed once the core is ready.
-  const pendingRestoreRef = useRef<SessionState | null>(null);
-  const restoredRef = useRef(false);
+  const pendingSessionRef = useRef<SessionState | null>(null);
+  const sessionReplayedRef = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -73,33 +68,26 @@ export function useCascade(): UseCascadeResult {
         // Capture the live session now, before the persist effect can rewrite it.
         try {
           const sessionJson = localStorage.getItem(SESSION_STORAGE_KEY);
-          pendingRestoreRef.current = sessionJson
+          pendingSessionRef.current = sessionJson
             ? (JSON.parse(sessionJson) as SessionState)
             : null;
         } catch {
-          pendingRestoreRef.current = null;
+          pendingSessionRef.current = null;
         }
 
         // Boot is one step: a fresh core, then one `restore` carrying both
         // persisted blobs (empty = none) and a fallback device id. The core
         // ignores a missing/incompatible blob and only adopts the fallback id
         // if the listening blob has none.
-        const core = new CascadeCore();
-        coreRef.current = core;
+        coreRef.current = new CascadeCore();
         audioRef.current = new WebAudioEngine(WATERFALL_URL);
-        const update = JSON.parse(
-          core.dispatch(
-            JSON.stringify({
-              type: "restore",
-              settingsJson: readStorage(SETTINGS_STORAGE_KEY),
-              listeningJson: readStorage(LISTENING_STORAGE_KEY),
-              fallbackDeviceId:
-                readStorage(LEGACY_DEVICE_KEY) || crypto.randomUUID(),
-            } satisfies Command),
-          ),
-        ) as Update;
-        setSnapshot(update.snapshot);
-        void runEffects(update.effects);
+        dispatchInternal({
+          type: "restore",
+          settingsJson: readStorage(SETTINGS_STORAGE_KEY),
+          listeningJson: readStorage(LISTENING_STORAGE_KEY),
+          fallbackDeviceId:
+            readStorage(LEGACY_DEVICE_KEY) || crypto.randomUUID(),
+        });
         setReady(true);
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : String(err));
@@ -161,7 +149,10 @@ export function useCascade(): UseCascadeResult {
       const core = coreRef.current;
       if (!core) return [];
       const updateJson = core.dispatch(JSON.stringify(command));
-      const update = JSON.parse(updateJson) as Update;
+      const update = JSON.parse(updateJson) as {
+        snapshot: Snapshot;
+        effects: Effect[];
+      };
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
       return update.effects;
@@ -230,10 +221,10 @@ export function useCascade(): UseCascadeResult {
   // Restore the session (running timer/stopwatch + play state) once, after the
   // core is ready. Runs exactly once; the saved blob was captured at boot.
   useEffect(() => {
-    if (!ready || restoredRef.current) return;
-    restoredRef.current = true;
-    const r = pendingRestoreRef.current;
-    pendingRestoreRef.current = null;
+    if (!ready || sessionReplayedRef.current) return;
+    sessionReplayedRef.current = true;
+    const r = pendingSessionRef.current;
+    pendingSessionRef.current = null;
     if (!r) return;
 
     // Catch the stopwatch/countdown up for the time the page was gone.

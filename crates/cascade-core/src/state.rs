@@ -82,6 +82,14 @@ impl Default for State {
 }
 
 impl State {
+    /// Take the persisted fields from `s`. Playback intent, timers and mute
+    /// are live-session state and stay as they are.
+    pub fn apply_settings(&mut self, s: &PersistedSettings) {
+        self.volume_percent = Some(clamp_volume(s.volume_percent));
+        self.default_sleep_minutes = s.default_sleep_minutes;
+        self.default_pomodoro_minutes = s.default_pomodoro_minutes;
+    }
+
     pub fn to_settings(&self) -> PersistedSettings {
         PersistedSettings {
             version: SETTINGS_VERSION,
@@ -250,9 +258,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             // already correct, and restore must never lower a live counter.
             if let Ok(settings) = serde_json::from_str::<PersistedSettings>(&settings_json) {
                 if settings.version == SETTINGS_VERSION {
-                    state.volume_percent = Some(clamp_volume(settings.volume_percent));
-                    state.default_sleep_minutes = settings.default_sleep_minutes;
-                    state.default_pomodoro_minutes = settings.default_pomodoro_minutes;
+                    state.apply_settings(&settings);
                 }
             }
             if let Ok(restored) = serde_json::from_str::<PersistedListening>(&listening_json) {
