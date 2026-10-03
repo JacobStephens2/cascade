@@ -12,15 +12,12 @@ import page.stephens.cascade.core.CascadeBridgeHolder
 import page.stephens.cascade.core.Command
 import page.stephens.cascade.core.Snapshot
 import page.stephens.cascade.sync.SyncManager
-import page.stephens.cascade.sync.syncAvailable
 
 class CascadeViewModel(
     private val bridge: CascadeBridgeHolder,
     private val syncManager: SyncManager,
 ) : ViewModel() {
     val snapshot: StateFlow<Snapshot> = bridge.snapshot
-    /** Whether a sync backend is configured; the account section shows only then. */
-    val accountAvailable: Boolean = syncAvailable
 
     private var tickJob: Job? = null
     private var tickInterval = 0L

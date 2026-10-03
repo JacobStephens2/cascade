@@ -12,8 +12,8 @@ import java.util.UUID
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The account and listening-sync transport on Android. The core holds the
- * account and decides what to send — the threshold, the in-flight guard, the
+ * Carries the account's and listening sync's requests on Android. The core
+ * holds the account and decides what to send — the threshold, the in-flight guard, the
  * device id, the session, the status copy and the 401 rule all live there.
  * This dispatches the account commands and `BeginListeningSync`, carries each
  * request effect it is handed over HTTP, and settles it with its outcome
@@ -64,34 +64,34 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
     private fun carry(effects: List<Effect>) {
         for (effect in effects) {
             when (effect) {
-                is Effect.PushListening -> settle(
+                is Effect.PushListening -> carryRequest(
                     call = {
                         SyncApi.putListening(effect.sessionToken, effect.deviceId, effect.deviceTotalMs)
                     },
                     succeeded = { Command.ListeningSyncSucceeded(serverTotalMs = it.serverTotalMs) },
                     failed = { Command.ListeningSyncFailed(unauthorized = it) },
                 )
-                is Effect.SendSignInLink -> settle(
+                is Effect.SendSignInLink -> carryRequest(
                     call = { SyncApi.requestLink(effect.email) },
                     succeeded = { Command.SignInLinkSent },
-                    failed = ::accountRequestFailed,
+                    failed = { Command.AccountRequestFailed(unauthorized = it) },
                 )
-                is Effect.VerifySignInToken -> settle(
+                is Effect.VerifySignInToken -> carryRequest(
                     call = { SyncApi.verify(effect.token) },
                     succeeded = { Command.SignInVerified(sessionToken = it.sessionToken, email = it.email) },
-                    failed = ::accountRequestFailed,
+                    failed = { Command.AccountRequestFailed(unauthorized = it) },
                 )
                 // Already gone server-side or offline — local sign-out stands.
                 is Effect.RevokeSession -> scope.launch { runCatching { SyncApi.logout(effect.sessionToken) } }
-                is Effect.DeleteServerListening -> settle(
+                is Effect.DeleteServerListening -> carryRequest(
                     call = { SyncApi.deleteListening(effect.sessionToken) },
                     succeeded = { Command.ListeningDataDeleted(newDeviceId = UUID.randomUUID().toString()) },
-                    failed = ::accountRequestFailed,
+                    failed = { Command.AccountRequestFailed(unauthorized = it) },
                 )
-                is Effect.DeleteServerAccount -> settle(
+                is Effect.DeleteServerAccount -> carryRequest(
                     call = { SyncApi.deleteAccount(effect.sessionToken) },
                     succeeded = { Command.AccountDeleted(newDeviceId = UUID.randomUUID().toString()) },
-                    failed = ::accountRequestFailed,
+                    failed = { Command.AccountRequestFailed(unauthorized = it) },
                 )
                 else -> {}
             }
@@ -99,10 +99,10 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
     }
 
     /**
-     * Run one request and settle it with the command its result maps to (an
+     * Run one request, settle it with the command its result maps to (an
      * HTTP 401 is `unauthorized`), then carry what the core answers.
      */
-    private fun <T> settle(
+    private fun <T> carryRequest(
         call: suspend () -> T,
         succeeded: (T) -> Command,
         failed: (unauthorized: Boolean) -> Command,
@@ -121,6 +121,4 @@ class SyncManager(private val bridge: CascadeBridgeHolder) {
             carry(bridge.dispatch(outcome))
         }
     }
-
-    private fun accountRequestFailed(unauthorized: Boolean) = Command.AccountRequestFailed(unauthorized)
 }

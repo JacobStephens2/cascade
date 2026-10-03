@@ -69,6 +69,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import page.stephens.cascade.core.AccountSnapshot
 import page.stephens.cascade.core.TimerKind
 import page.stephens.cascade.core.TimerOptions
+import page.stephens.cascade.sync.syncAvailable
 
 private val PillShape = RoundedCornerShape(percent = 50)
 private val CardShape = RoundedCornerShape(14.dp)
@@ -128,7 +129,7 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                         onStartStopwatch = viewModel::startStopwatch,
                         onCancel = viewModel::cancelTimer,
                     )
-                    if (viewModel.accountAvailable) {
+                    if (syncAvailable) {
                         Spacer(Modifier.height(28.dp))
                         AccountControls(
                             account = snapshot.account,
