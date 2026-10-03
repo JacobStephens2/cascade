@@ -173,7 +173,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                     _accountStore.WriteAccountJson(persistAccount.Json);
                     break;
                 case ServerRequestEffect request:
-                    _ = CarryAsync(request);
+                    _ = CarryAndSettleAsync(request);
                     break;
             }
         }
@@ -247,7 +247,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     /// <summary>
     /// The shell decides when it can talk; the core decides whether there is
     /// anything to say, and what. The push in the answer is carried by
-    /// <see cref="CarryAsync"/>.
+    /// <see cref="CarryAndSettleAsync"/>.
     /// </summary>
     private void BeginSync(SyncReason reason)
     {
@@ -259,7 +259,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
     /// request is settled, failures and the sign-out revoke included (status
     /// 0 when nothing came back), or the core never starts another.
     /// </summary>
-    private async Task CarryAsync(ServerRequestEffect request)
+    private async Task CarryAndSettleAsync(ServerRequestEffect request)
     {
         var response = await _syncServer.CarryAsync(request);
         // Settle on the UI thread, which owns the dispatch and the bound
