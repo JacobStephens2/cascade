@@ -43,9 +43,6 @@ public static class Converters
     public static Brush ListeningValueBrush(bool enabled) =>
         (Brush)Application.Current.Resources[enabled ? "InkBrush" : "InkFaintBrush"];
 
-    /// Web signed-in label reads "Syncing · you@example.com".
-    public static string SyncingLabel(string email) => $"Syncing · {email}";
-
     public static Visibility VisibleIf(bool b) =>
         b ? Visibility.Visible : Visibility.Collapsed;
 }

@@ -4,16 +4,15 @@ using System.Text.Json;
 
 namespace Cascade.Services;
 
-public sealed record Account(string SessionToken, string Email);
-
 /// <summary>
-/// Persists the optional sync account (session token + email) as JSON under
-/// %LOCALAPPDATA%\Cascade. The device id is owned by the core (it lives in the
-/// listening blob, so rotating it and zeroing the slot are one write); this
-/// store only reads the id it used to persist, so an existing install keeps
-/// its server slot. (This app ships unpackaged, so we use plain files rather
-/// than ApplicationData; Credential Locker / DPAPI is the on-device hardening
-/// follow-up.)
+/// Stores the account blob the core hands over in <c>PersistAccount</c>, as
+/// <c>account.json</c> under %LOCALAPPDATA%\Cascade. The core owns the blob's
+/// shape; this store keeps it verbatim. The device id is owned by the core too
+/// (it lives in the listening blob, so rotating it and zeroing the slot are one
+/// write); this store only reads the id it used to persist, so an existing
+/// install keeps its server slot. (This app ships unpackaged, so we use plain
+/// files rather than ApplicationData; Credential Locker / DPAPI is the
+/// on-device hardening follow-up.)
 /// </summary>
 public sealed class AccountStore
 {
@@ -30,30 +29,55 @@ public sealed class AccountStore
         _devicePath = Path.Combine(dir, "device.txt");
     }
 
-    public Account? ReadAccount()
+    /// <summary>
+    /// The stored account blob for <c>Restore</c>'s <c>accountJson</c>, or ""
+    /// if there is none. Builds before the core held the account stored a
+    /// PascalCase <c>{ SessionToken, Email }</c> record; that is converted to
+    /// the version-less <c>{ sessionToken, email }</c> shape the core accepts,
+    /// so an existing sign-in survives the upgrade. The file is rewritten on
+    /// the core's next <c>PersistAccount</c>.
+    /// </summary>
+    public string ReadAccountJson()
     {
         try
         {
-            return File.Exists(_accountPath)
-                ? JsonSerializer.Deserialize<Account>(File.ReadAllText(_accountPath))
-                : null;
+            if (!File.Exists(_accountPath)) return "";
+            var json = File.ReadAllText(_accountPath);
+            return FromLegacyRecord(json) ?? json;
         }
         catch
         {
-            return null;
+            return "";
         }
     }
 
-    public void WriteAccount(Account account)
+    /// <summary>Store the core's account blob verbatim; "" deletes it.</summary>
+    public void WriteAccountJson(string json)
     {
-        try { File.WriteAllText(_accountPath, JsonSerializer.Serialize(account)); }
+        try
+        {
+            if (json.Length > 0) File.WriteAllText(_accountPath, json);
+            else if (File.Exists(_accountPath)) File.Delete(_accountPath);
+        }
         catch { /* best-effort */ }
     }
 
-    public void ClearAccount()
+    /// The version-less blob for a PascalCase record from an older build, or
+    /// null if <paramref name="json"/> is not one (property names match
+    /// case-sensitively, so the core's camelCase blob passes through).
+    private static string? FromLegacyRecord(string json)
     {
-        try { if (File.Exists(_accountPath)) File.Delete(_accountPath); }
-        catch { /* best-effort */ }
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        if (root.ValueKind != JsonValueKind.Object ||
+            !root.TryGetProperty("SessionToken", out var token) ||
+            !root.TryGetProperty("Email", out var email))
+            return null;
+        return JsonSerializer.Serialize(new
+        {
+            sessionToken = token.GetString(),
+            email = email.GetString(),
+        });
     }
 
     /// <summary>
