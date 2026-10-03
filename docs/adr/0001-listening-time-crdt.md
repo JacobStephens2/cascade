@@ -1,6 +1,6 @@
 # ADR 0001 — Cross-platform listening-time tracking: a pure-core G-Counter with data-minimizing sync
 
-- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issues #31, #44 and #49)
+- **Status:** Accepted; decisions 5 and 6 amended 2026-09-27 (issue #18); decision 5 amended again 2026-10-03 (issues #31, #44 and #49, and issue #58: the request table moved into the core)
 - **Date:** 2026-06-05
 - **Context:** Cascade is one headless Rust core (`cascade-core`) driving six native shells (web, Android, macOS, Windows, iOS, watchOS). We want to show a user the total time they've spent listening, aggregated across every device they use, with an optional account to centralize it — without turning a white-noise app into a surveillance liability.
 
@@ -54,6 +54,16 @@ The rules are tested once in `crates/cascade-core/tests/account.rs`.
 - **A failed sync waits for another threshold of listening.** The core remembers the total the failed push sent and counts the next threshold from there, so an offline device no longer retries on every tick. The mark is measured in listened milliseconds, so it needs no clock. `flush` and `refresh` ignore it; it is never persisted, and a successful sync, a reset, or losing the account clears it.
 
 The rules are tested in `crates/cascade-core/tests/listening_sync.rs`.
+
+*Amended 2026-10-03 (issue #58).* The **request table** moves into the core as well. The effects above each named one request, so every shell held its own copy of the table — endpoint, method, JSON body, which response fields to read, which settle command to build, what a 401 means — about 650 untested lines across four languages, and the copies had drifted (a negative server total clamped on two shells and rejected on two; a dropped request on Windows that never cleared the in-flight guard). The core now describes every call as one generic request and hears back through one generic response:
+
+- **One request, one response.** `PushListening`, `SendSignInLink`, `VerifySignInToken`, `RevokeSession`, `DeleteServerListening` and `DeleteServerAccount` become `ServerRequest { id, method, path, bearerToken?, body? }`; the seven settle commands become `ServerResponse { id, status, body }`. `status` is the HTTP status, or `0` when the request was not sent or got no response. Ids come from a counter in core state, starting at 1 and never persisted; the pending account request and the in-flight listening sync (superseded or not) each remember theirs, and a response is routed by id.
+- **The core owns the table.** Endpoints, bodies, response parsing and outcome routing live in one module (`crates/cascade-core/src/server.rs`): POST `/auth/request`, POST `/auth/verify`, POST `/auth/logout`, PUT `/listening`, DELETE `/listening`, DELETE `/account`. Any 2xx is success; a 401 follows the 401 rule above; status 0, any other status, and a 2xx whose body does not parse are plain failures. `serverTotalMs` is read as a signed integer and clamped at 0.
+- **The revoke is settled like any other request.** Every `ServerRequest` gets a `ServerResponse`, with no fire-and-forget exception. A response the core is not waiting for — the revoke's, or one for a request sign-out or a reset superseded — changes nothing.
+- **Fresh device ids arrive with the delete intent.** `DeleteListeningData` and `DeleteAccount` carry `newDeviceId`, held with the pending request and adopted only when the server confirms the delete, in one persisted listening write (decision 6). The response stays generic. Likewise `RequestSignInLink` carries an optional `platform` (Windows's link hand-off), added to the request body only when given.
+- **Transport stays in the shells.** Base URL, the HTTP stack, timeouts, threading, reachability and lifecycle (including the web's `keepalive` flush) are still each shell's; a shell with no sync server settles every request with status 0. Each shell's request carrier becomes one HTTP adapter with no per-request branching. This keeps the rejection of transport in the core below: the core describes the request, the shell sends it.
+
+The table and its routing are tested through `Core::dispatch` in `crates/cascade-core/tests/account.rs` and `crates/cascade-core/tests/listening_sync.rs`.
 
 ### 6. Opaque tokens + magic-link, and `device_id` rotation on delete
 

@@ -5,6 +5,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::server::HttpMethod;
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(
     tag = "type",
@@ -29,34 +31,30 @@ pub enum Effect {
     /// fail independently. The platform stores the string verbatim and hands it
     /// back via [`crate::Command::Restore`] on the next launch.
     PersistListening { json: String },
-    /// PUT this device's slot to the listening endpoint, exactly as given.
-    /// Emitted in answer to [`crate::Command::BeginListeningSync`], a
-    /// [`crate::Command::Tick`] that crosses the sync threshold, or a sign-in's
-    /// refresh ([`crate::Command::SignInVerified`]); the shell must settle it
-    /// with `ListeningSyncSucceeded` or `ListeningSyncFailed`, or no further
-    /// sync will start. `session_token` is the bearer token to send; there is
-    /// never a push without one.
-    PushListening {
-        device_id: String,
-        device_total_ms: u64,
-        session_token: String,
+    /// Send one request to the sync server, exactly as described: `method`
+    /// to `path` (relative to the shell's sync-server base URL), with
+    /// `Authorization: Bearer {bearer_token}` when there is one, and `body`
+    /// verbatim as `application/json` when there is one. The core owns the
+    /// request table (see [`crate::server`]); the shell decides nothing per
+    /// request.
+    ///
+    /// The shell settles every request, with no exceptions, by dispatching
+    /// [`crate::Command::ServerResponse`] with the same `id`: the HTTP status
+    /// and the response body, or status `0` when it was not sent or got no
+    /// response (no sync server configured, a network error, a timeout).
+    /// Until it is settled, the core's in-flight guard holds the next account
+    /// request or listening sync. A response the core is no longer waiting
+    /// for (a sign-out revoke, or a request sign-out or a reset superseded)
+    /// changes nothing.
+    ServerRequest {
+        id: u64,
+        method: HttpMethod,
+        path: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        bearer_token: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        body: Option<String>,
     },
-
-    /// POST a sign-in link request for `email`. Settle with
-    /// `SignInLinkSent` or `AccountRequestFailed`.
-    SendSignInLink { email: String },
-    /// POST `token` for verification. Settle with `SignInVerified` or
-    /// `AccountRequestFailed`.
-    VerifySignInToken { token: String },
-    /// POST a sign-out for `session_token`. Fire-and-forget: there is no settle
-    /// command, and its result changes nothing — sign-out is local.
-    RevokeSession { session_token: String },
-    /// DELETE the server's listening data. Settle with `ListeningDataDeleted`
-    /// or `AccountRequestFailed`.
-    DeleteServerListening { session_token: String },
-    /// DELETE the account. Settle with `AccountDeleted` or
-    /// `AccountRequestFailed`.
-    DeleteServerAccount { session_token: String },
     /// Persist the account blob, verbatim, and hand it back as `accountJson`
     /// in [`crate::Command::Restore`] on the next launch. An empty `json`
     /// means "delete the stored account".
