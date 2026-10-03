@@ -21,7 +21,7 @@ fn restore(account_json: &str) -> Command {
         settings_json: String::new(),
         listening_json: String::new(),
         fallback_device_id: DEVICE_A.into(),
-        account_json: Some(account_json.into()),
+        account_json: account_json.into(),
     }
 }
 
@@ -302,7 +302,7 @@ fn a_verified_sign_in_persists_the_account_and_refreshes_the_total() {
             Effect::PushListening {
                 device_id: DEVICE_A.into(),
                 device_total_ms: 3_000,
-                session_token: Some(TOKEN.into()),
+                session_token: TOKEN.into(),
             },
         ]
     );
@@ -398,7 +398,7 @@ fn a_push_carries_the_session_token() {
         Some(Effect::PushListening {
             device_id: DEVICE_A.into(),
             device_total_ms: 0,
-            session_token: Some(TOKEN.into()),
+            session_token: TOKEN.into(),
         })
     );
 }
@@ -665,7 +665,7 @@ fn deleted_listening_data_rotates_the_id_and_zeroes_the_slot_in_one_write() {
         Some(Effect::PushListening {
             device_id: DEVICE_B.into(),
             device_total_ms: 0,
-            session_token: Some(TOKEN.into()),
+            session_token: TOKEN.into(),
         })
     );
 }

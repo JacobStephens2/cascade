@@ -8,13 +8,15 @@ use cascade_core::{Command, Core, Effect, SyncReason, SETTINGS_VERSION};
 
 const DEVICE_A: &str = "device-a";
 const DEVICE_B: &str = "device-b";
+/// A stored account, so the core holds a session and its syncs go out.
+const SIGNED_IN: &str = r#"{"version":1,"sessionToken":"t","email":"a@example.com"}"#;
 
 fn restore(settings_json: &str, listening_json: &str, fallback_device_id: &str) -> Command {
     Command::Restore {
         settings_json: settings_json.into(),
         listening_json: listening_json.into(),
         fallback_device_id: fallback_device_id.into(),
-        account_json: None,
+        account_json: SIGNED_IN.into(),
     }
 }
 
@@ -184,11 +186,11 @@ fn restore_account(account_json: &str) -> Command {
         settings_json: String::new(),
         listening_json: String::new(),
         fallback_device_id: DEVICE_A.into(),
-        account_json: Some(account_json.into()),
+        account_json: account_json.into(),
     }
 }
 
-fn pushed_session_token(core: &mut Core) -> Option<Option<String>> {
+fn pushed_session_token(core: &mut Core) -> Option<String> {
     core.dispatch(Command::BeginListeningSync {
         reason: SyncReason::Refresh,
     })
@@ -218,7 +220,7 @@ fn restore_signs_in_from_the_versioned_account_blob() {
         "restore re-persists no account: {:?}",
         update.effects
     );
-    assert_eq!(pushed_session_token(&mut core), Some(Some("t".into())));
+    assert_eq!(pushed_session_token(&mut core), Some("t".into()));
 }
 
 #[test]
@@ -231,7 +233,7 @@ fn restore_accepts_the_version_less_legacy_account_blob() {
         ))
         .snapshot;
     assert_eq!(snap.account.email.as_deref(), Some("a@example.com"));
-    assert_eq!(pushed_session_token(&mut core), Some(Some("t".into())));
+    assert_eq!(pushed_session_token(&mut core), Some("t".into()));
 }
 
 #[test]
@@ -257,8 +259,8 @@ fn an_older_restore_without_account_json_still_restores() {
     let mut core = Core::new();
     let snap = core.dispatch(command).snapshot;
     assert_eq!(snap.account.email, None);
-    // That shell never handed the core an account, so its syncs still go out.
-    assert_eq!(pushed_session_token(&mut core), Some(None));
+    // A missing `accountJson` is an empty one: signed out, so nothing syncs.
+    assert_eq!(pushed_session_token(&mut core), None);
 }
 
 #[test]
@@ -271,7 +273,7 @@ fn restoring_signed_out_forgets_a_leftover_cross_device_total() {
         settings_json: String::new(),
         listening_json: listening.into(),
         fallback_device_id: DEVICE_A.into(),
-        account_json: Some(String::new()),
+        account_json: String::new(),
     });
     assert_eq!(update.snapshot.listening.displayed_total_ms, 100);
     let json = persisted_listening(&update.effects).expect("the forgotten total is persisted");
@@ -285,7 +287,15 @@ fn restore_accepts_the_shells_camel_case_json() {
     let json =
         r#"{"type":"restore","settingsJson":"s","listeningJson":"l","fallbackDeviceId":"d"}"#;
     let parsed: Command = serde_json::from_str(json).unwrap();
-    assert_eq!(parsed, restore("s", "l", "d"));
+    assert_eq!(
+        parsed,
+        Command::Restore {
+            settings_json: "s".into(),
+            listening_json: "l".into(),
+            fallback_device_id: "d".into(),
+            account_json: String::new(),
+        }
+    );
 }
 
 #[test]
@@ -298,7 +308,7 @@ fn restore_accepts_account_json() {
             settings_json: "s".into(),
             listening_json: "l".into(),
             fallback_device_id: "d".into(),
-            account_json: Some("a".into()),
+            account_json: "a".into(),
         }
     );
 }

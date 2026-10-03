@@ -33,12 +33,11 @@ pub enum Effect {
     /// Emitted only in answer to [`crate::Command::BeginListeningSync`]; the
     /// shell must settle it with `ListeningSyncSucceeded` or
     /// `ListeningSyncFailed`, or no further sync will start. `session_token`
-    /// is the bearer token to send; it is `None` only for a shell that
-    /// restores without `accountJson`.
+    /// is the bearer token to send; there is never a push without one.
     PushListening {
         device_id: String,
         device_total_ms: u64,
-        session_token: Option<String>,
+        session_token: String,
     },
 
     /// POST a sign-in link request for `email`. Settle with
@@ -47,7 +46,7 @@ pub enum Effect {
     /// POST `token` for verification. Settle with `SignInVerified` or
     /// `AccountRequestFailed`.
     VerifySignInToken { token: String },
-    /// POST a logout for `session_token`. Fire-and-forget: there is no settle
+    /// POST a sign-out for `session_token`. Fire-and-forget: there is no settle
     /// command, and its result changes nothing — sign-out is local.
     RevokeSession { session_token: String },
     /// DELETE the server's listening data. Settle with `ListeningDataDeleted`

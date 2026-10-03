@@ -83,16 +83,14 @@ pub enum Command {
     ///
     /// `account_json` is the string the last [`crate::Effect::PersistAccount`]
     /// handed the shell, or the version-less `{ sessionToken, email }` a shell
-    /// stored before the core held the account. Empty or garbage means no
-    /// account. Sending the field at all — even empty — hands the account to
-    /// the core; a shell that omits it syncs without a session token, and a
-    /// 401 still signs out.
+    /// stored before the core held the account. Empty, garbage or missing
+    /// means no account.
     Restore {
         settings_json: String,
         listening_json: String,
         fallback_device_id: String,
         #[serde(default)]
-        account_json: Option<String>,
+        account_json: String,
     },
     /// The shell is able to talk to the server (online) and asks whether
     /// there is anything to send. If so, the update carries one

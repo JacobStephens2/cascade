@@ -153,14 +153,14 @@ fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
 /// Start a listening sync if there is anything to send and the account allows
 /// it, answering with one `PushListening`.
 fn begin_listening_sync(state: &mut State, reason: SyncReason, effects: &mut Vec<Effect>) {
-    if !state.account.may_sync() {
+    let Some(session_token) = state.account.session_token() else {
         return;
-    }
+    };
     if let Some((device_id, device_total_ms)) = state.listening.begin_sync(reason) {
         effects.push(Effect::PushListening {
             device_id,
             device_total_ms,
-            session_token: state.account.session_token(),
+            session_token,
         });
     }
 }
@@ -325,15 +325,12 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             // Persist a newly adopted id right away, so the next launch sees
             // the same slot rather than another fallback.
             let mut persist_listening = state.listening.adopt_device_id(fallback_device_id);
-            if let Some(account_json) = account_json {
-                state.account.held_by_core = true;
-                state.account.session = Account::session_from_json(&account_json);
-                // A cross-device total with no account behind it is left over
-                // from a sign-out before the core held the account.
-                if state.account.session.is_none() && state.listening.server_total_ms.is_some() {
-                    state.listening.forget_server();
-                    persist_listening = true;
-                }
+            state.account.session = Account::session_from_json(&account_json);
+            // A cross-device total with no account behind it is left over
+            // from a sign-out before the core held the account.
+            if state.account.session.is_none() && state.listening.server_total_ms.is_some() {
+                state.listening.forget_server();
+                persist_listening = true;
             }
             if persist_listening {
                 push_persist_listening(state, effects);
@@ -432,10 +429,9 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             session_token,
             email,
         } => {
-            if state.account.pending != Some(PendingRequest::Verify) {
+            if !state.account.settle(PendingRequest::Verify) {
                 return;
             }
-            state.account.pending = None;
             // Signing in over another account: nothing of its total may show.
             if state.account.session.is_some() {
                 state.listening.forget_server();
@@ -452,19 +448,17 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             begin_listening_sync(state, SyncReason::Refresh, effects);
         }
         Command::ListeningDataDeleted { new_device_id } => {
-            if state.account.pending != Some(PendingRequest::DeleteListening) {
+            if !state.account.settle(PendingRequest::DeleteListening) {
                 return;
             }
-            state.account.pending = None;
             state.account.status = Some(AccountStatus::ListeningDeleted);
             state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
         }
         Command::AccountDeleted { new_device_id } => {
-            if state.account.pending != Some(PendingRequest::DeleteAccount) {
+            if !state.account.settle(PendingRequest::DeleteAccount) {
                 return;
             }
-            state.account.pending = None;
             state.account.status = Some(AccountStatus::AccountDeleted);
             // The reset forgets the server total and supersedes any in-flight
             // sync too, so the slot and the sign-out share one listening write.
@@ -808,7 +802,7 @@ mod tests {
                 settings_json: String::new(),
                 listening_json: blob,
                 fallback_device_id: "fallback".into(),
-                account_json: None,
+                account_json: r#"{"sessionToken":"t","email":"a@b.c"}"#.into(),
             },
         );
         assert_eq!(s.listening.device_total_ms, 7_200_000);

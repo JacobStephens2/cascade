@@ -69,10 +69,6 @@ impl AccountStatus {
 /// The account as the core holds it. Held inside [`crate::State`].
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Account {
-    /// Whether the shell has handed the account to the core, by restoring
-    /// with an `accountJson` (even an empty one). Without one, the core syncs
-    /// without a session; a 401 still signs out.
-    pub held_by_core: bool,
     pub session: Option<Session>,
     pub pending: Option<PendingRequest>,
     pub status: Option<AccountStatus>,
@@ -84,14 +80,18 @@ impl Account {
         self.pending.is_some()
     }
 
-    pub fn session_token(&self) -> Option<String> {
-        self.session.as_ref().map(|s| s.session_token.clone())
+    /// Settle the pending request if it is `expected`. An outcome with
+    /// nothing pending, or for another request, changes nothing.
+    pub fn settle(&mut self, expected: PendingRequest) -> bool {
+        let settles = self.pending.as_ref() == Some(&expected);
+        if settles {
+            self.pending = None;
+        }
+        settles
     }
 
-    /// Whether a listening sync may start: the core holds a session, or the
-    /// shell restored without `accountJson`.
-    pub fn may_sync(&self) -> bool {
-        !self.held_by_core || self.session.is_some()
+    pub fn session_token(&self) -> Option<String> {
+        self.session.as_ref().map(|s| s.session_token.clone())
     }
 
     /// The blob for [`crate::Effect::PersistAccount`]: empty when signed out,
