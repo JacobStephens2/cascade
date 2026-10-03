@@ -13,6 +13,7 @@ pub mod account;
 pub mod command;
 pub mod effect;
 pub mod listening;
+pub mod server;
 pub mod settings;
 pub mod snapshot;
 pub mod state;
@@ -25,6 +26,7 @@ pub use listening::{
     InFlight, ListeningLedger, PersistedListening, SyncReason, LISTENING_SYNC_THRESHOLD_MS,
     LISTENING_VERSION, MAX_TICK_ACCRUAL_MS,
 };
+pub use server::HttpMethod;
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
 pub use snapshot::{
     AccountSnapshot, ListeningSnapshot, Snapshot, TimerOptions, TimerSnapshot, TimerSnapshotKind,

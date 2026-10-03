@@ -6,10 +6,13 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::account::{parse_sign_in_token, Account, AccountStatus, PendingRequest, Session};
+use crate::account::{
+    parse_sign_in_token, Account, AccountStatus, Pending, PendingRequest, Session,
+};
 use crate::command::Command;
 use crate::effect::Effect;
 use crate::listening::{ListeningLedger, PersistedListening, SyncReason};
+use crate::server::{parse_server_total, parse_verified, Request, StatusClass};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
 use crate::timer::{clamp_minutes, ActiveTimer, TimerKind, DEFAULT_TIMER_MINUTES};
 
@@ -63,6 +66,10 @@ pub struct State {
     /// The optional sign-in. Restored from its own blob via
     /// [`Command::Restore`]'s `account_json`.
     pub account: Account,
+    /// The id the next [`Effect::ServerRequest`] gets. Starts at 1 and only
+    /// grows; never persisted, since a restart forgets every request in
+    /// flight along with the shell process that was carrying it.
+    next_request_id: u64,
     /// Whether [`Command::Restore`] has already run. Only the first restore
     /// takes effect, so a replayed stale blob can't undo a later reset.
     restored: bool,
@@ -82,6 +89,7 @@ impl Default for State {
             audio_confirmed_playing: false,
             listening: ListeningLedger::default(),
             account: Account::default(),
+            next_request_id: 1,
             restored: false,
         }
     }
@@ -151,22 +159,29 @@ fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
     });
 }
 
+/// Hand the shell `request` under a fresh id, and return that id.
+fn send(state: &mut State, request: Request, effects: &mut Vec<Effect>) -> u64 {
+    let id = state.next_request_id;
+    state.next_request_id += 1;
+    effects.push(request.into_effect(id));
+    id
+}
+
 /// Start a listening sync if `begin` finds anything to send and the account
-/// allows it, answering with one `PushListening`.
+/// allows it, answering with one push. `begin` is handed the id the push
+/// will carry, so the ledger can remember it.
 fn begin_listening_sync(
     state: &mut State,
     effects: &mut Vec<Effect>,
-    begin: impl FnOnce(&mut ListeningLedger) -> Option<(String, u64)>,
+    begin: impl FnOnce(&mut ListeningLedger, u64) -> Option<(String, u64)>,
 ) {
     let Some(session_token) = state.account.session_token() else {
         return;
     };
-    if let Some((device_id, device_total_ms)) = begin(&mut state.listening) {
-        effects.push(Effect::PushListening {
-            device_id,
-            device_total_ms,
-            session_token,
-        });
+    let id = state.next_request_id;
+    if let Some((device_id, device_total_ms)) = begin(&mut state.listening, id) {
+        let request = Request::push_listening(&device_id, device_total_ms, session_token);
+        send(state, request, effects);
     }
 }
 
@@ -176,12 +191,15 @@ fn begin_account_request(
     state: &mut State,
     pending: PendingRequest,
     status: Option<AccountStatus>,
-    request: Effect,
+    request: Request,
     effects: &mut Vec<Effect>,
 ) {
-    state.account.pending = Some(pending);
+    let id = send(state, request, effects);
+    state.account.pending = Some(Pending {
+        id,
+        request: pending,
+    });
     state.account.status = status;
-    effects.push(request);
 }
 
 /// Drop the session and everything learned through it: the stored blob, the
@@ -222,19 +240,13 @@ fn clears_timer_completion(command: &Command) -> bool {
         | Command::SetListeningTracking { .. }
         | Command::Restore { .. }
         | Command::BeginListeningSync { .. }
-        | Command::ListeningSyncSucceeded { .. }
-        | Command::ListeningSyncFailed { .. }
         | Command::ResetListeningData { .. }
         | Command::RequestSignInLink { .. }
         | Command::SubmitSignInLink { .. }
         | Command::SignOut
-        | Command::DeleteListeningData
-        | Command::DeleteAccount
-        | Command::SignInLinkSent
-        | Command::SignInVerified { .. }
-        | Command::ListeningDataDeleted { .. }
-        | Command::AccountDeleted { .. }
-        | Command::AccountRequestFailed { .. } => false,
+        | Command::DeleteListeningData { .. }
+        | Command::DeleteAccount { .. }
+        | Command::ServerResponse { .. } => false,
     }
 }
 
@@ -384,18 +396,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             }
         }
         Command::BeginListeningSync { reason } => {
-            begin_listening_sync(state, effects, |l| l.begin_sync(reason))
-        }
-        Command::ListeningSyncSucceeded { server_total_ms } => {
-            if state.listening.sync_succeeded(server_total_ms) {
-                push_persist_listening(state, effects);
-            }
-        }
-        Command::ListeningSyncFailed { unauthorized } => {
-            // A superseded sync's 401 refers to a session already dropped.
-            if state.listening.sync_failed() && unauthorized {
-                session_expired(state, effects);
-            }
+            begin_listening_sync(state, effects, |l, id| l.begin_sync(reason, id))
         }
         Command::ResetListeningData { new_device_id } => {
             state.listening.reset(new_device_id);
@@ -406,18 +407,16 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
         // cuts in.
         Command::RequestSignInLink { .. }
         | Command::SubmitSignInLink { .. }
-        | Command::DeleteListeningData
-        | Command::DeleteAccount
+        | Command::DeleteListeningData { .. }
+        | Command::DeleteAccount { .. }
             if state.account.busy() => {}
-        Command::RequestSignInLink { email } => {
+        Command::RequestSignInLink { email, platform } => {
             let email = email.trim().to_string();
             if email.is_empty() {
                 state.account.status = Some(AccountStatus::EnterEmail);
                 return;
             }
-            let request = Effect::SendSignInLink {
-                email: email.clone(),
-            };
+            let request = Request::sign_in_link(&email, platform.as_deref());
             begin_account_request(
                 state,
                 PendingRequest::SignInLink { email },
@@ -431,29 +430,29 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 state,
                 PendingRequest::Verify,
                 Some(AccountStatus::SigningIn),
-                Effect::VerifySignInToken { token },
+                Request::verify(&token),
                 effects,
             ),
             None => state.account.status = Some(AccountStatus::PasteFullLink),
         },
-        Command::DeleteListeningData => {
+        Command::DeleteListeningData { new_device_id } => {
             if let Some(session_token) = state.account.session_token() {
                 begin_account_request(
                     state,
-                    PendingRequest::DeleteListening,
+                    PendingRequest::DeleteListening { new_device_id },
                     None,
-                    Effect::DeleteServerListening { session_token },
+                    Request::delete_listening(session_token),
                     effects,
                 );
             }
         }
-        Command::DeleteAccount => {
+        Command::DeleteAccount { new_device_id } => {
             if let Some(session_token) = state.account.session_token() {
                 begin_account_request(
                     state,
-                    PendingRequest::DeleteAccount,
+                    PendingRequest::DeleteAccount { new_device_id },
                     None,
-                    Effect::DeleteServerAccount { session_token },
+                    Request::delete_account(session_token),
                     effects,
                 );
             }
@@ -462,52 +461,67 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.account.pending = None;
             state.account.status = None;
             if let Some(session_token) = state.account.session_token() {
-                effects.push(Effect::RevokeSession { session_token });
+                // Remembered nowhere, so its response is ignored.
+                send(state, Request::revoke(session_token), effects);
                 forget_session(state, effects);
             }
         }
-        Command::SignInLinkSent => {
-            if let Some(PendingRequest::SignInLink { email }) = &state.account.pending {
-                state.account.status = Some(AccountStatus::LinkSent {
-                    email: email.clone(),
-                });
-                state.account.pending = None;
+        Command::ServerResponse { id, status, body } => {
+            let class = StatusClass::of(status);
+            if let Some(request) = state.account.settle(id) {
+                account_response(state, request, class, &body, effects);
+            } else if state.listening.awaits(id) {
+                sync_response(state, class, &body, effects);
             }
         }
-        Command::SignInVerified {
-            session_token,
-            email,
-        } => {
-            if !state.account.settle(PendingRequest::Verify) {
-                return;
-            }
-            // Signing in over another account: nothing of its total may show.
-            if state.account.session.is_some() {
-                state.listening.forget_server();
-                push_persist_listening(state, effects);
-            }
-            state.account.status = Some(AccountStatus::SignedIn {
-                email: email.clone(),
-            });
-            state.account.session = Some(Session {
-                session_token,
-                email,
-            });
-            push_persist_account(state, effects);
-            begin_listening_sync(state, effects, |l| l.begin_sync(SyncReason::Refresh));
+    }
+}
+
+/// Settle the in-flight listening push. A superseded push only frees the
+/// slot: its success or 401 refers to a slot or session already replaced.
+fn sync_response(state: &mut State, class: StatusClass, body: &str, effects: &mut Vec<Effect>) {
+    let server_total_ms = match class {
+        StatusClass::Success => parse_server_total(body),
+        StatusClass::Unauthorized | StatusClass::Failed => None,
+    };
+    if let Some(server_total_ms) = server_total_ms {
+        if state.listening.sync_succeeded(server_total_ms) {
+            push_persist_listening(state, effects);
         }
-        Command::ListeningDataDeleted { new_device_id } => {
-            if !state.account.settle(PendingRequest::DeleteListening) {
-                return;
+    } else if state.listening.sync_failed() && class == StatusClass::Unauthorized {
+        session_expired(state, effects);
+    }
+}
+
+/// Settle the pending account `request`, already taken off the account.
+fn account_response(
+    state: &mut State,
+    request: PendingRequest,
+    class: StatusClass,
+    body: &str,
+    effects: &mut Vec<Effect>,
+) {
+    if class == StatusClass::Unauthorized && state.account.session.is_some() {
+        session_expired(state, effects);
+        return;
+    }
+    let succeeded = class == StatusClass::Success;
+    match request {
+        PendingRequest::SignInLink { email } if succeeded => {
+            state.account.status = Some(AccountStatus::LinkSent { email });
+        }
+        PendingRequest::Verify if succeeded => match parse_verified(body) {
+            Some((session_token, email)) => {
+                signed_in(state, session_token, email, effects);
             }
+            None => state.account.status = Some(AccountStatus::LinkInvalid),
+        },
+        PendingRequest::DeleteListening { new_device_id } if succeeded => {
             state.account.status = Some(AccountStatus::ListeningDeleted);
             state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
         }
-        Command::AccountDeleted { new_device_id } => {
-            if !state.account.settle(PendingRequest::DeleteAccount) {
-                return;
-            }
+        PendingRequest::DeleteAccount { new_device_id } if succeeded => {
             state.account.status = Some(AccountStatus::AccountDeleted);
             // The reset forgets the server total and supersedes any in-flight
             // sync too, so the slot and the sign-out share one listening write.
@@ -516,22 +530,38 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.account.session = None;
             push_persist_account(state, effects);
         }
-        Command::AccountRequestFailed { unauthorized } => {
-            let Some(pending) = state.account.pending.take() else {
-                return;
-            };
-            if unauthorized && state.account.session.is_some() {
-                session_expired(state, effects);
-                return;
-            }
-            state.account.status = Some(match pending {
-                PendingRequest::SignInLink { .. } => AccountStatus::LinkFailed,
-                PendingRequest::Verify => AccountStatus::LinkInvalid,
-                PendingRequest::DeleteListening => AccountStatus::ListeningDeleteFailed,
-                PendingRequest::DeleteAccount => AccountStatus::AccountDeleteFailed,
-            });
+        PendingRequest::SignInLink { .. } => {
+            state.account.status = Some(AccountStatus::LinkFailed);
+        }
+        PendingRequest::Verify => state.account.status = Some(AccountStatus::LinkInvalid),
+        PendingRequest::DeleteListening { .. } => {
+            state.account.status = Some(AccountStatus::ListeningDeleteFailed);
+        }
+        PendingRequest::DeleteAccount { .. } => {
+            state.account.status = Some(AccountStatus::AccountDeleteFailed);
         }
     }
+}
+
+/// The sign-in token was redeemed for a session: persist the account and
+/// start a refresh sync for the cross-device total.
+fn signed_in(state: &mut State, session_token: String, email: String, effects: &mut Vec<Effect>) {
+    // Signing in over another account: nothing of its total may show.
+    if state.account.session.is_some() {
+        state.listening.forget_server();
+        push_persist_listening(state, effects);
+    }
+    state.account.status = Some(AccountStatus::SignedIn {
+        email: email.clone(),
+    });
+    state.account.session = Some(Session {
+        session_token,
+        email,
+    });
+    push_persist_account(state, effects);
+    begin_listening_sync(state, effects, |l, id| {
+        l.begin_sync(SyncReason::Refresh, id)
+    });
 }
 
 /// The server rejected the session (a 401 on any request): sign out and tell

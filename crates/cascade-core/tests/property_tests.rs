@@ -232,34 +232,54 @@ proptest! {
     }
 }
 
+/// One step a shell (or the network) could produce: a command, or a response
+/// to a recent request — the latest, or one `back` requests before it, so
+/// stale and superseded ids are answered too.
+#[derive(Debug, Clone)]
+enum SyncStep {
+    Dispatch(Command),
+    Answer {
+        back: u64,
+        status: u16,
+        server_total_ms: i64,
+    },
+}
+
 /// Listening accrual interleaved with every step of the sync protocol, in any
 /// order a shell (or the network) could produce.
-fn sync_command_strategy() -> impl Strategy<Value = Command> {
+fn sync_step_strategy() -> impl Strategy<Value = SyncStep> {
     prop_oneof![
-        (0u64..=10_000).prop_map(|elapsed_ms| Command::Tick { elapsed_ms }),
-        Just(Command::BeginListeningSync {
+        (0u64..=10_000).prop_map(|elapsed_ms| SyncStep::Dispatch(Command::Tick { elapsed_ms })),
+        Just(SyncStep::Dispatch(Command::BeginListeningSync {
             reason: SyncReason::Flush
-        }),
-        Just(Command::BeginListeningSync {
+        })),
+        Just(SyncStep::Dispatch(Command::BeginListeningSync {
             reason: SyncReason::Refresh
-        }),
-        any::<u64>()
-            .prop_map(|server_total_ms| Command::ListeningSyncSucceeded { server_total_ms }),
-        any::<bool>().prop_map(|unauthorized| Command::ListeningSyncFailed { unauthorized }),
-        Just(Command::ResetListeningData {
+        })),
+        (
+            0u64..3,
+            prop::sample::select(vec![0u16, 200, 204, 401, 500]),
+            any::<i64>(),
+        )
+            .prop_map(|(back, status, server_total_ms)| SyncStep::Answer {
+                back,
+                status,
+                server_total_ms,
+            }),
+        Just(SyncStep::Dispatch(Command::ResetListeningData {
             new_device_id: "rotated".into()
-        }),
+        })),
     ]
 }
 
 proptest! {
-    /// Whatever the order of ticks, syncs, acks, failures and resets, the
-    /// synced high-water mark never runs past what the device has actually
-    /// counted — so the server is never told a slot was delivered that wasn't
-    /// — and every push carries the live device id and total.
+    /// Whatever the order of ticks, syncs, responses, failures and resets,
+    /// the synced high-water mark never runs past what the device has
+    /// actually counted — so the server is never told a slot was delivered
+    /// that wasn't — and every push carries the live device id and total.
     #[test]
     fn synced_mark_never_exceeds_device_total(
-        cmds in prop::collection::vec(sync_command_strategy(), 1..80),
+        steps in prop::collection::vec(sync_step_strategy(), 1..80),
     ) {
         let mut core = Core::new();
         core.dispatch(Command::Restore {
@@ -271,14 +291,25 @@ proptest! {
         });
         core.dispatch(Command::Play);
         core.dispatch(Command::PlatformPlaybackStarted);
-        for cmd in cmds {
-            let update = core.dispatch(cmd);
+        let mut last_request: u64 = 0;
+        for step in steps {
+            let command = match step {
+                SyncStep::Dispatch(command) => command,
+                SyncStep::Answer { back, status, server_total_ms } => Command::ServerResponse {
+                    id: last_request.saturating_sub(back),
+                    status,
+                    body: format!(r#"{{"serverTotalMs":{server_total_ms}}}"#),
+                },
+            };
+            let update = core.dispatch(command);
             let l = &core.state().listening;
             prop_assert!(l.synced_through_ms <= l.device_total_ms);
             for e in &update.effects {
-                if let Effect::PushListening { device_id, device_total_ms, .. } = e {
-                    prop_assert_eq!(Some(device_id), l.device_id.as_ref());
-                    prop_assert_eq!(*device_total_ms, l.device_total_ms);
+                if let Effect::ServerRequest { id, body: Some(body), .. } = e {
+                    last_request = *id;
+                    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+                    prop_assert_eq!(body["deviceId"].as_str(), l.device_id.as_deref());
+                    prop_assert_eq!(body["deviceTotalMs"].as_u64(), Some(l.device_total_ms));
                 }
             }
         }

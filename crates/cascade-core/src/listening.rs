@@ -79,16 +79,29 @@ pub struct ListeningLedger {
     pub failed_through_ms: Option<u64>,
 }
 
-/// A listening PUT the shell has been told to send and hasn't settled yet.
+/// A listening PUT the shell has been told to send and hasn't settled yet,
+/// with the request id its response will carry.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum InFlight {
     /// Sent for the current slot, carrying this `device_total_ms`.
-    Sent { device_total_ms: u64 },
-    /// Sent for a slot a reset has since replaced. Its ack says nothing about
-    /// the current slot and is dropped — but it still blocks the next sync,
-    /// because acks carry no request identity and it could otherwise settle
-    /// a newer PUT.
-    Superseded,
+    Sent { id: u64, device_total_ms: u64 },
+    /// Sent for a slot or an account that a reset or sign-out has since
+    /// replaced. Its response says nothing about the current slot and is
+    /// dropped, but it still blocks the next sync until it is settled, so
+    /// only one PUT is ever out at a time.
+    Superseded { id: u64 },
+}
+
+impl InFlight {
+    pub fn id(self) -> u64 {
+        match self {
+            Self::Sent { id, .. } | Self::Superseded { id } => id,
+        }
+    }
+
+    fn superseded(self) -> Self {
+        Self::Superseded { id: self.id() }
+    }
 }
 
 impl Default for ListeningLedger {
@@ -106,6 +119,11 @@ impl Default for ListeningLedger {
 }
 
 impl ListeningLedger {
+    /// Whether the PUT in flight (superseded or not) is request `id`.
+    pub fn awaits(&self, id: u64) -> bool {
+        self.in_flight.is_some_and(|f| f.id() == id)
+    }
+
     /// Milliseconds accrued locally that the server has not yet acknowledged.
     /// Saturating so a hand-edited or partially-written blob can never
     /// underflow.
@@ -142,28 +160,28 @@ impl ListeningLedger {
     }
 
     /// Decide whether to sync for a shell's `reason`, and if so what to send:
-    /// `(device_id, device_total_ms)`. Marks that total as in flight, so a
-    /// second call returns `None` until [`Self::sync_succeeded`] or
-    /// [`Self::sync_failed`] settles it — the one re-entrancy guard every
-    /// shell shares.
-    pub fn begin_sync(&mut self, reason: SyncReason) -> Option<(String, u64)> {
+    /// `(device_id, device_total_ms)`. Marks that total as in flight as
+    /// request `id`, so a second call returns `None` until
+    /// [`Self::sync_succeeded`] or [`Self::sync_failed`] settles it — the one
+    /// re-entrancy guard every shell shares.
+    pub fn begin_sync(&mut self, reason: SyncReason, id: u64) -> Option<(String, u64)> {
         let worth_sending = match reason {
             SyncReason::Flush => self.unsynced_ms() > 0,
             SyncReason::Refresh => true,
         };
-        self.begin_sync_if(worth_sending)
+        self.begin_sync_if(worth_sending, id)
     }
 
     /// The core's own routine sync, checked on every tick that counts
     /// listening: send only once at least [`LISTENING_SYNC_THRESHOLD_MS`] is
     /// unsynced, counted past any failed PUT. Same result and in-flight guard
     /// as [`Self::begin_sync`].
-    pub fn begin_threshold_sync(&mut self) -> Option<(String, u64)> {
+    pub fn begin_threshold_sync(&mut self, id: u64) -> Option<(String, u64)> {
         let worth_sending = self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS;
-        self.begin_sync_if(worth_sending)
+        self.begin_sync_if(worth_sending, id)
     }
 
-    fn begin_sync_if(&mut self, worth_sending: bool) -> Option<(String, u64)> {
+    fn begin_sync_if(&mut self, worth_sending: bool, id: u64) -> Option<(String, u64)> {
         if self.in_flight.is_some() {
             return None;
         }
@@ -172,6 +190,7 @@ impl ListeningLedger {
             return None;
         }
         self.in_flight = Some(InFlight::Sent {
+            id,
             device_total_ms: self.device_total_ms,
         });
         Some((device_id, self.device_total_ms))
@@ -183,10 +202,12 @@ impl ListeningLedger {
     /// display baseline forward; it never touches `device_total_ms`, and is
     /// monotonic so an out-of-order ack can't rewind the high-water mark.
     /// Returns `false` (and changes nothing else) if no sync for the current
-    /// slot was in flight.
+    /// slot was in flight. The caller has already matched the response's id
+    /// to [`Self::in_flight`].
     pub fn sync_succeeded(&mut self, server_total_ms: u64) -> bool {
         let Some(InFlight::Sent {
             device_total_ms: sent,
+            ..
         }) = self.in_flight.take()
         else {
             return false;
@@ -204,6 +225,7 @@ impl ListeningLedger {
     pub fn sync_failed(&mut self) -> bool {
         let Some(InFlight::Sent {
             device_total_ms: sent,
+            ..
         }) = self.in_flight.take()
         else {
             return false;
@@ -236,9 +258,7 @@ impl ListeningLedger {
         self.server_total_ms = None;
         self.device_id = Some(new_device_id);
         self.failed_through_ms = None;
-        if self.in_flight.is_some() {
-            self.in_flight = Some(InFlight::Superseded);
-        }
+        self.in_flight = self.in_flight.map(InFlight::superseded);
     }
 
     /// Forget the cross-device total when the account goes away (sign-out, a
@@ -250,9 +270,7 @@ impl ListeningLedger {
     pub fn forget_server(&mut self) {
         self.server_total_ms = None;
         self.failed_through_ms = None;
-        if self.in_flight.is_some() {
-            self.in_flight = Some(InFlight::Superseded);
-        }
+        self.in_flight = self.in_flight.map(InFlight::superseded);
     }
 
     /// Adopt a restored ledger without ever *lowering* the live counters. A
@@ -336,7 +354,7 @@ mod tests {
     /// Send whatever is unsynced and have the server accept it.
     fn sync(l: &mut ListeningLedger, server_total_ms: u64) {
         l.device_id.get_or_insert_with(|| "device".into());
-        l.begin_sync(SyncReason::Refresh)
+        l.begin_sync(SyncReason::Refresh, 1)
             .expect("nothing in flight");
         assert!(l.sync_succeeded(server_total_ms));
     }
@@ -406,10 +424,11 @@ mod tests {
         l.accrue(4_000);
         sync(&mut l, 9_000);
         l.accrue(1_000);
-        l.begin_sync(SyncReason::Flush).expect("nothing in flight");
+        l.begin_sync(SyncReason::Flush, 2)
+            .expect("nothing in flight");
         l.forget_server();
         assert_eq!(l.server_total_ms, None);
-        assert_eq!(l.in_flight, Some(InFlight::Superseded));
+        assert_eq!(l.in_flight, Some(InFlight::Superseded { id: 2 }));
         assert_eq!(l.device_total_ms, 5_000);
         assert_eq!(l.synced_through_ms, 4_000);
         assert_eq!(l.displayed_total_ms(), 5_000);
@@ -457,7 +476,10 @@ mod tests {
             server_total_ms: Some(9),
             tracking_enabled: true,
             device_id: Some("d".into()),
-            in_flight: Some(InFlight::Sent { device_total_ms: 7 }),
+            in_flight: Some(InFlight::Sent {
+                id: 1,
+                device_total_ms: 7,
+            }),
             failed_through_ms: Some(7),
         };
         let json = serde_json::to_string(&l.to_persisted()).unwrap();

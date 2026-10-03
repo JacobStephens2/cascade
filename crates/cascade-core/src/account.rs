@@ -3,8 +3,8 @@
 //!
 //! The core holds the session and every account rule: what to send, when a
 //! request may start, what the user is told, and what success, failure and a
-//! 401 do. A shell only carries the requests it is handed (one effect per
-//! request, settled with one outcome command) and stores the blob.
+//! 401 do. A shell only carries the requests it is handed (each one generic
+//! request, settled with one generic response) and stores the blob.
 
 use serde::{Deserialize, Serialize};
 
@@ -19,14 +19,28 @@ pub struct Session {
     pub email: String,
 }
 
-/// The one account request the shell is carrying, if any. Only one runs at a
-/// time, so its outcome command needs no request identity.
+/// The one account request the shell is carrying, if any, and the id its
+/// response will carry. Only one runs at a time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Pending {
+    pub id: u64,
+    pub request: PendingRequest,
+}
+
+/// What a pending account request is for, and what its success needs.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PendingRequest {
-    SignInLink { email: String },
+    SignInLink {
+        email: String,
+    },
     Verify,
-    DeleteListening,
-    DeleteAccount,
+    /// Holds the fresh id to rotate to once the server confirms the delete.
+    DeleteListening {
+        new_device_id: String,
+    },
+    DeleteAccount {
+        new_device_id: String,
+    },
 }
 
 /// What the user was last told about their account. [`Self::label`] holds the
@@ -70,7 +84,7 @@ impl AccountStatus {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Account {
     pub session: Option<Session>,
-    pub pending: Option<PendingRequest>,
+    pub pending: Option<Pending>,
     pub status: Option<AccountStatus>,
 }
 
@@ -80,14 +94,13 @@ impl Account {
         self.pending.is_some()
     }
 
-    /// Settle the pending request if it is `expected`. An outcome with
-    /// nothing pending, or for another request, changes nothing.
-    pub fn settle(&mut self, expected: PendingRequest) -> bool {
-        let settles = self.pending.as_ref() == Some(&expected);
-        if settles {
-            self.pending = None;
+    /// Take the pending request if response `id` settles it. A response for
+    /// anything else (nothing pending, or a dropped request) changes nothing.
+    pub fn settle(&mut self, id: u64) -> Option<PendingRequest> {
+        if self.pending.as_ref()?.id != id {
+            return None;
         }
-        settles
+        self.pending.take().map(|p| p.request)
     }
 
     pub fn session_token(&self) -> Option<String> {
