@@ -45,7 +45,11 @@ fn pushed_device_id(core: &mut Core) -> Option<String> {
     .effects
     .into_iter()
     .find_map(|e| match e {
-        Effect::PushListening { device_id, .. } => Some(device_id),
+        Effect::ServerRequest {
+            body: Some(body), ..
+        } => serde_json::from_str::<serde_json::Value>(&body).unwrap()["deviceId"]
+            .as_str()
+            .map(String::from),
         _ => None,
     })
 }
@@ -197,7 +201,7 @@ fn pushed_session_token(core: &mut Core) -> Option<String> {
     .effects
     .into_iter()
     .find_map(|e| match e {
-        Effect::PushListening { session_token, .. } => Some(session_token),
+        Effect::ServerRequest { bearer_token, .. } => bearer_token,
         _ => None,
     })
 }

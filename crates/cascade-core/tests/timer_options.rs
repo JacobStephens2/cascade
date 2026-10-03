@@ -7,8 +7,8 @@
 //! rules on the snapshot.
 
 use cascade_core::{
-    Command, Core, Effect, PersistedSettings, Snapshot, SyncReason, TimerSnapshotKind, Update,
-    LISTENING_SYNC_THRESHOLD_MS,
+    Command, Core, Effect, HttpMethod, PersistedSettings, Snapshot, SyncReason, TimerSnapshotKind,
+    Update, LISTENING_SYNC_THRESHOLD_MS,
 };
 
 fn core_after(commands: impl IntoIterator<Item = Command>) -> Core {
@@ -286,26 +286,22 @@ fn the_completion_message_survives_everything_the_user_did_not_ask_for() {
         Command::BeginListeningSync {
             reason: SyncReason::Refresh,
         },
-        Command::ListeningSyncSucceeded { server_total_ms: 0 },
-        Command::ListeningSyncFailed {
-            unauthorized: false,
+        // Responses the core is not waiting for.
+        Command::ServerResponse {
+            id: 1,
+            status: 200,
+            body: r#"{"serverTotalMs":0}"#.into(),
         },
-        Command::ListeningSyncFailed { unauthorized: true },
-        Command::SignInLinkSent,
-        Command::SignInVerified {
-            session_token: "t".into(),
-            email: "a@example.com".into(),
+        Command::ServerResponse {
+            id: 2,
+            status: 0,
+            body: String::new(),
         },
-        Command::ListeningDataDeleted {
-            new_device_id: "d".into(),
+        Command::ServerResponse {
+            id: 3,
+            status: 401,
+            body: String::new(),
         },
-        Command::AccountDeleted {
-            new_device_id: "d".into(),
-        },
-        Command::AccountRequestFailed {
-            unauthorized: false,
-        },
-        Command::AccountRequestFailed { unauthorized: true },
         Command::PlatformPlaybackStarted,
         Command::PlatformPlaybackPaused,
         Command::SetVolume { percent: 30 },
@@ -322,10 +318,17 @@ fn the_completion_message_survives_everything_the_user_did_not_ask_for() {
     }
 }
 
+/// One step of a shell's traffic: a command, or the response to the last
+/// request the core sent.
+enum Step {
+    Send(Command),
+    Answer(u16, &'static str),
+}
+
 #[test]
 fn the_completion_message_survives_sync_and_account_traffic_that_lands() {
-    // Signed in, so each request really goes out and each settle really
-    // lands on a pending request.
+    // Signed in, so each request really goes out and each response really
+    // lands on a request the core is waiting for.
     let mut core = Core::new();
     core.dispatch(Command::Restore {
         settings_json: String::new(),
@@ -336,51 +339,81 @@ fn the_completion_message_survives_sync_and_account_traffic_that_lands() {
     core.dispatch(Command::Play);
     core.dispatch(Command::StartSleepTimer { minutes: 1 });
     core.dispatch(Command::Tick { elapsed_ms: 60_000 });
-    let refresh = Command::BeginListeningSync {
-        reason: SyncReason::Refresh,
+    let refresh = || {
+        Step::Send(Command::BeginListeningSync {
+            reason: SyncReason::Refresh,
+        })
     };
-    let sign_in = [
-        Command::SubmitSignInLink {
-            input: "raw-token".into(),
-        },
-        Command::SignInVerified {
-            session_token: "t2".into(),
-            email: "a@example.com".into(),
-        },
-    ];
+    let pushed = r#"{"serverTotalMs":0}"#;
+    let verified = r#"{"sessionToken":"t2","email":"a@example.com"}"#;
+    let sign_in = || {
+        [
+            Step::Send(Command::SubmitSignInLink {
+                input: "raw-token".into(),
+            }),
+            Step::Answer(200, verified),
+        ]
+    };
+    let delete_listening = |id: &str| {
+        Step::Send(Command::DeleteListeningData {
+            new_device_id: id.into(),
+        })
+    };
     let traffic = [
-        refresh.clone(),
-        Command::ListeningSyncSucceeded { server_total_ms: 0 },
-        refresh,
-        Command::ListeningSyncFailed {
-            unauthorized: false,
-        },
-        Command::DeleteListeningData,
-        Command::ListeningDataDeleted {
-            new_device_id: "d2".into(),
-        },
-        Command::DeleteListeningData,
-        Command::AccountRequestFailed {
-            unauthorized: false,
-        },
-        Command::DeleteAccount,
-        Command::AccountDeleted {
-            new_device_id: "d3".into(),
-        },
+        refresh(),
+        Step::Answer(200, pushed),
+        refresh(),
+        Step::Answer(500, ""),
+        delete_listening("d2"),
+        Step::Answer(204, ""),
+        delete_listening("d3"),
+        Step::Answer(0, ""),
+        Step::Send(Command::DeleteAccount {
+            new_device_id: "d4".into(),
+        }),
+        Step::Answer(204, ""),
+        Step::Send(Command::RequestSignInLink {
+            email: "a@example.com".into(),
+            platform: None,
+        }),
+        Step::Answer(204, ""),
     ]
     .into_iter()
-    .chain(sign_in.clone())
-    .chain([Command::ListeningSyncFailed { unauthorized: true }])
-    .chain(sign_in)
+    // The sign-in's refresh push is the last request: a 401 settles it.
+    .chain(sign_in())
+    .chain([Step::Answer(401, "")])
+    .chain(sign_in())
     .chain([
-        Command::ListeningSyncSucceeded { server_total_ms: 0 },
-        Command::DeleteListeningData,
-        Command::AccountRequestFailed { unauthorized: true },
-    ]);
-    for command in traffic {
-        let snap = core.dispatch(command.clone()).snapshot;
-        assert_eq!(snap.timer.status_label, SLEEP_TIMER_ENDED, "{command:?}");
+        Step::Answer(200, pushed),
+        delete_listening("d5"),
+        Step::Answer(401, ""),
+    ])
+    .chain(sign_in())
+    .chain([Step::Send(Command::SignOut), Step::Answer(204, "")]);
+
+    let mut last_request = None;
+    for step in traffic {
+        let command = match step {
+            Step::Send(command) => command,
+            Step::Answer(status, body) => Command::ServerResponse {
+                id: last_request.expect("a request to answer"),
+                status,
+                body: body.into(),
+            },
+        };
+        let update = core.dispatch(command.clone());
+        for effect in &update.effects {
+            if let Effect::ServerRequest { id, .. } = effect {
+                last_request = Some(*id);
+            }
+        }
+        assert_eq!(
+            update.snapshot.timer.status_label, SLEEP_TIMER_ENDED,
+            "{command:?}"
+        );
     }
+    // The traffic really landed: the last sign-in, then the sign-out.
+    assert_eq!(core.snapshot().account.email, None);
 }
 
 #[test]
@@ -431,10 +464,14 @@ fn the_tick_that_ends_a_timer_and_crosses_the_threshold_does_both() {
     assert_eq!(update.snapshot.timer.kind, TimerSnapshotKind::JustCompleted);
     assert_eq!(update.snapshot.timer.status_label, SLEEP_TIMER_ENDED);
     assert!(
-        update.effects.contains(&Effect::PushListening {
-            device_id: "device".into(),
-            device_total_ms: LISTENING_SYNC_THRESHOLD_MS,
-            session_token: "t".into(),
+        update.effects.contains(&Effect::ServerRequest {
+            id: 1,
+            method: HttpMethod::Put,
+            path: "/listening".into(),
+            bearer_token: Some("t".into()),
+            body: Some(format!(
+                r#"{{"deviceId":"device","deviceTotalMs":{LISTENING_SYNC_THRESHOLD_MS}}}"#
+            )),
         }),
         "{:?}",
         update.effects

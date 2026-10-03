@@ -37,19 +37,13 @@ public static class CascadeJson
 [JsonDerivedType(typeof(SetListeningTrackingCommand), "setListeningTracking")]
 [JsonDerivedType(typeof(RestoreCommand), "restore")]
 [JsonDerivedType(typeof(BeginListeningSyncCommand), "beginListeningSync")]
-[JsonDerivedType(typeof(ListeningSyncSucceededCommand), "listeningSyncSucceeded")]
-[JsonDerivedType(typeof(ListeningSyncFailedCommand), "listeningSyncFailed")]
 [JsonDerivedType(typeof(ResetListeningDataCommand), "resetListeningData")]
 [JsonDerivedType(typeof(RequestSignInLinkCommand), "requestSignInLink")]
 [JsonDerivedType(typeof(SubmitSignInLinkCommand), "submitSignInLink")]
 [JsonDerivedType(typeof(SignOutCommand), "signOut")]
 [JsonDerivedType(typeof(DeleteListeningDataCommand), "deleteListeningData")]
 [JsonDerivedType(typeof(DeleteAccountCommand), "deleteAccount")]
-[JsonDerivedType(typeof(SignInLinkSentCommand), "signInLinkSent")]
-[JsonDerivedType(typeof(SignInVerifiedCommand), "signInVerified")]
-[JsonDerivedType(typeof(ListeningDataDeletedCommand), "listeningDataDeleted")]
-[JsonDerivedType(typeof(AccountDeletedCommand), "accountDeleted")]
-[JsonDerivedType(typeof(AccountRequestFailedCommand), "accountRequestFailed")]
+[JsonDerivedType(typeof(ServerResponseCommand), "serverResponse")]
 public abstract record CascadeCommand;
 
 public sealed record PlayCommand : CascadeCommand;
@@ -69,25 +63,24 @@ public sealed record SetListeningTrackingCommand(bool Enabled) : CascadeCommand;
 // AccountJson is the stored account blob, verbatim; "" for none.
 public sealed record RestoreCommand(string SettingsJson, string ListeningJson, string FallbackDeviceId, string AccountJson) : CascadeCommand;
 public sealed record BeginListeningSyncCommand(SyncReason Reason) : CascadeCommand;
-public sealed record ListeningSyncSucceededCommand(ulong ServerTotalMs) : CascadeCommand;
-public sealed record ListeningSyncFailedCommand(bool Unauthorized) : CascadeCommand;
 public sealed record ResetListeningDataCommand(string NewDeviceId) : CascadeCommand;
 
 // What the user does with the account. Every one but SignOut is ignored while
 // an account request is pending (account.busy).
-public sealed record RequestSignInLinkCommand(string Email) : CascadeCommand;
+// Platform names the platform whose app the emailed link hands off to; null
+// for none, and then left off the wire as the core leaves it off.
+public sealed record RequestSignInLinkCommand(
+    string Email,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] string? Platform) : CascadeCommand;
 public sealed record SubmitSignInLinkCommand(string Input) : CascadeCommand;
 public sealed record SignOutCommand : CascadeCommand;
-public sealed record DeleteListeningDataCommand : CascadeCommand;
-public sealed record DeleteAccountCommand : CascadeCommand;
+// NewDeviceId is a fresh id the core rotates to once the server confirms.
+public sealed record DeleteListeningDataCommand(string NewDeviceId) : CascadeCommand;
+public sealed record DeleteAccountCommand(string NewDeviceId) : CascadeCommand;
 
-// How an account request settled: one command per success, one shared failure
-// (unauthorized = HTTP 401).
-public sealed record SignInLinkSentCommand : CascadeCommand;
-public sealed record SignInVerifiedCommand(string SessionToken, string Email) : CascadeCommand;
-public sealed record ListeningDataDeletedCommand(string NewDeviceId) : CascadeCommand;
-public sealed record AccountDeletedCommand(string NewDeviceId) : CascadeCommand;
-public sealed record AccountRequestFailedCommand(bool Unauthorized) : CascadeCommand;
+// Settles a ServerRequestEffect: its id, the HTTP status (0 = not sent or no
+// response) and the response body verbatim ("" for none).
+public sealed record ServerResponseCommand(ulong Id, ushort Status, string Body) : CascadeCommand;
 
 /// <summary>
 /// Why the shell is asking to sync. The shell decides when it can talk; the
@@ -125,12 +118,7 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
 [JsonDerivedType(typeof(SetPlatformVolumeEffect), "setPlatformVolume")]
 [JsonDerivedType(typeof(PersistSettingsEffect), "persistSettings")]
 [JsonDerivedType(typeof(PersistListeningEffect), "persistListening")]
-[JsonDerivedType(typeof(PushListeningEffect), "pushListening")]
-[JsonDerivedType(typeof(SendSignInLinkEffect), "sendSignInLink")]
-[JsonDerivedType(typeof(VerifySignInTokenEffect), "verifySignInToken")]
-[JsonDerivedType(typeof(RevokeSessionEffect), "revokeSession")]
-[JsonDerivedType(typeof(DeleteServerListeningEffect), "deleteServerListening")]
-[JsonDerivedType(typeof(DeleteServerAccountEffect), "deleteServerAccount")]
+[JsonDerivedType(typeof(ServerRequestEffect), "serverRequest")]
 [JsonDerivedType(typeof(PersistAccountEffect), "persistAccount")]
 public abstract record CascadeEffect;
 
@@ -140,14 +128,10 @@ public sealed record PausePlaybackEffect : CascadeEffect;
 public sealed record SetPlatformVolumeEffect(double Gain) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
-public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs, string SessionToken) : CascadeEffect;
-// Account requests: carry each over HTTP and settle it with its success
-// command or AccountRequestFailed. RevokeSession is fire-and-forget.
-public sealed record SendSignInLinkEffect(string Email) : CascadeEffect;
-public sealed record VerifySignInTokenEffect(string Token) : CascadeEffect;
-public sealed record RevokeSessionEffect(string SessionToken) : CascadeEffect;
-public sealed record DeleteServerListeningEffect(string SessionToken) : CascadeEffect;
-public sealed record DeleteServerAccountEffect(string SessionToken) : CascadeEffect;
+// One request to the sync server, sent exactly as described: Method to the
+// base URL plus Path, with a Bearer token and a JSON Body when given. Every
+// one is settled with a ServerResponseCommand carrying the same Id.
+public sealed record ServerRequestEffect(ulong Id, string Method, string Path, string? BearerToken, string? Body) : CascadeEffect;
 // Store verbatim; "" means delete the stored account.
 public sealed record PersistAccountEffect(string Json) : CascadeEffect;
 
