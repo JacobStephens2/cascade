@@ -16,11 +16,9 @@ final class AppStore {
     private(set) var snapshot: Snapshot
     private(set) var lastError: String?
 
-    // Optional account + sync. The shell decides when it can talk (signed
-    // in, a lifecycle trigger) and owns the HTTP; the core decides whether
-    // there is anything to say, and what.
-    private(set) var account: SyncAccount?
-    private(set) var syncStatus: String?
+    // Optional account + sync. The core holds the account and decides what
+    // to send; the shell carries the requests it is handed over HTTP and
+    // decides only when it can talk (a lifecycle trigger).
     var syncAvailable: Bool { SyncConfig.available }
 
     private let accountStore = AccountStore()
@@ -48,7 +46,7 @@ final class AppStore {
     static func bootstrap() -> AppStore {
         let settings = SettingsStore()
         let store = AppStore(bridge: CoreBridge(), settings: settings)
-        // Boot is one step: a fresh core, then one `restore` carrying both
+        // Boot is one step: a fresh core, then one `restore` carrying the
         // persisted blobs (empty = none) and a fallback device id. The core
         // ignores a missing/incompatible blob and never lets a restore lower
         // the counter. The fallback id is the one this shell used to store
@@ -57,11 +55,11 @@ final class AppStore {
         store.dispatch(.restore(
             settingsJson: settings.readSafely() ?? "",
             listeningJson: settings.readListeningSafely() ?? "",
-            fallbackDeviceId: store.accountStore.legacyDeviceId() ?? UUID().uuidString))
-        store.account = store.accountStore.readAccount()
-        if store.account != nil {
-            Task { await store.sync(reason: .refresh) }
-        }
+            fallbackDeviceId: store.accountStore.legacyDeviceId() ?? UUID().uuidString,
+            accountJson: store.accountStore.readAccountJson()))
+        // Fetch the cross-device total straight away. The core sends nothing
+        // while signed out, and answers a fresh sign-in with its own refresh.
+        store.sync(reason: .refresh)
         return store
     }
 
@@ -91,17 +89,11 @@ final class AppStore {
         nowPlaying.update(snapshot: initial)
     }
 
-    /// Returns the effects of this dispatch, so a caller (sync) can read the
-    /// answer to its own command synchronously.
-    @discardableResult
-    func dispatch(_ command: Command) -> [Effect] {
+    func dispatch(_ command: Command) {
         do {
-            let update = try bridge.dispatch(command)
-            apply(update)
-            return update.effects
+            apply(try bridge.dispatch(command))
         } catch {
             lastError = "\(error)"
-            return []
         }
     }
 
@@ -125,10 +117,15 @@ final class AppStore {
                 settings.writeSafely(json)
             case .persistListening(let json):
                 settings.writeListeningSafely(json)
-            case .pushListening, .clearSession:
-                // Answers to sync commands; `sync(reason:)` reads them off its
-                // own dispatch.
+            case .persistAccount(let json):
+                accountStore.writeAccountJson(json)
+            case .clearSession:
+                // Only for a shell that keeps its own account; this one
+                // restores with `accountJson`, so the core holds it.
                 break
+            case .pushListening, .sendSignInLink, .verifySignInToken, .revokeSession,
+                 .deleteServerListening, .deleteServerAccount:
+                carry(effect)
             }
         }
 
@@ -145,121 +142,83 @@ final class AppStore {
 
     // MARK: - Sync
 
-    /// Ask the core whether there is anything to send and, if so, PUT exactly
-    /// what it says. The core owns the threshold, the payload, the device id,
-    /// the in-flight guard, and the 401 rule; this only carries the request.
-    func sync(reason: SyncReason) async {
-        guard let account else { return }
-        let effects = dispatch(.beginListeningSync(reason: reason))
-        var push: (deviceId: String, deviceTotalMs: UInt64)?
-        for case let .pushListening(deviceId, deviceTotalMs) in effects {
-            push = (deviceId, deviceTotalMs)
-        }
-        // No effect: nothing worth sending, or a sync is already in flight.
-        guard let push else { return }
-        // Every begun sync must be settled, or the core never starts another.
-        do {
-            let res = try await syncApi.putListening(
-                token: account.sessionToken,
-                deviceId: push.deviceId,
-                deviceTotalMs: Int64(clamping: push.deviceTotalMs))
-            dispatch(.listeningSyncSucceeded(serverTotalMs: UInt64(max(0, res.serverTotalMs))))
-        } catch {
-            // Offline / transient failures retry on the next trigger; a 401
-            // comes back as clearSession.
-            let unauthorized = (error as? SyncError)?.status == 401
-            let failure = dispatch(.listeningSyncFailed(unauthorized: unauthorized))
-            if failure.contains(where: { if case .clearSession = $0 { return true } else { return false } }),
-               self.account == account {
-                self.account = nil
-                accountStore.clearAccount()
-                syncStatus = "Signed out — sign in again to sync."
-            }
-        }
+    /// Offer the core a listening sync. It answers with a `pushListening` only
+    /// if there is something to send and it holds a session; `apply` carries it.
+    func sync(reason: SyncReason) {
+        guard syncAvailable else { return }
+        dispatch(.beginListeningSync(reason: reason))
     }
 
-    func signIn(email: String) async {
-        syncStatus = nil
-        do {
-            try await syncApi.requestLink(email: email)
-            syncStatus = "Check \(email) for a sign-in link."
-        } catch {
-            syncStatus = "Couldn't send the sign-in link."
-        }
-    }
-
-    /// Complete a magic-link sign-in from a pasted link (…/auth?token=XYZ) or a
-    /// raw token. (Universal Links / a URL scheme are the on-device follow-up.)
-    func completeSignIn(fromLinkOrToken input: String) async {
-        guard let token = Self.extractToken(input) else {
-            syncStatus = "Paste the full sign-in link."
-            return
-        }
-        syncStatus = "Signing in…"
-        do {
-            let res = try await syncApi.verify(token: token)
-            let acct = SyncAccount(sessionToken: res.sessionToken, email: res.email)
-            accountStore.writeAccount(acct)
-            account = acct
-            syncStatus = "Signed in as \(res.email)."
-            await sync(reason: .refresh)
-        } catch {
-            syncStatus = "That sign-in link was invalid or expired."
-        }
-    }
-
-    /// Entry point for `.onOpenURL` once Universal Links are configured.
+    /// Entry point for `.onOpenURL`: the core finds the token in the link.
     func handleOpenURL(_ url: URL) {
-        Task { await completeSignIn(fromLinkOrToken: url.absoluteString) }
+        dispatch(.submitSignInLink(input: url.absoluteString))
     }
 
-    func signOut() async {
-        let previous = account
-        account = nil
-        accountStore.clearAccount()
-        syncStatus = nil
-        if let previous {
-            try? await syncApi.logout(token: previous.sessionToken)
-        }
-    }
-
-    func deleteListeningData() async {
-        guard let account else { return }
-        do {
-            try await syncApi.deleteListening(token: account.sessionToken)
-            // One dispatch rotates the device id and zeroes the ledger in a
-            // single persisted write.
-            dispatch(.resetListeningData(newDeviceId: UUID().uuidString))
-            syncStatus = "Listening data deleted."
-        } catch {
-            syncStatus = "Couldn't delete listening data."
-        }
-    }
-
-    func deleteAccount() async {
-        guard let account else { return }
-        do {
-            try await syncApi.deleteAccount(token: account.sessionToken)
-            dispatch(.resetListeningData(newDeviceId: UUID().uuidString))
-            self.account = nil
-            accountStore.clearAccount()
-            syncStatus = "Account deleted."
-        } catch {
-            syncStatus = "Couldn't delete the account."
-        }
-    }
-
-    private static func extractToken(_ input: String) -> String? {
-        let s = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        if s.isEmpty { return nil }
-        if let range = s.range(of: "token=") {
-            let rest = s[range.upperBound...]
-            if let amp = rest.firstIndex(of: "&") {
-                return String(rest[..<amp])
+    /// Carry one request effect over HTTP and settle it with the core. Every
+    /// request but `revokeSession` must be settled, or the core won't start
+    /// another; the settle's own effects come back through `apply`.
+    private func carry(_ effect: Effect) {
+        guard syncAvailable else { return }
+        let api = syncApi
+        Task { @MainActor in
+            switch effect {
+            case .pushListening(let deviceId, let deviceTotalMs, let sessionToken):
+                await settle(
+                    {
+                        let res = try await api.putListening(
+                            token: sessionToken,
+                            deviceId: deviceId,
+                            deviceTotalMs: Int64(clamping: deviceTotalMs))
+                        return .listeningSyncSucceeded(serverTotalMs: UInt64(max(0, res.serverTotalMs)))
+                    },
+                    failed: { .listeningSyncFailed(unauthorized: $0) })
+            case .sendSignInLink(let email):
+                await settle(
+                    {
+                        try await api.requestLink(email: email)
+                        return .signInLinkSent
+                    },
+                    failed: { .accountRequestFailed(unauthorized: $0) })
+            case .verifySignInToken(let token):
+                await settle(
+                    {
+                        let res = try await api.verify(token: token)
+                        return .signInVerified(sessionToken: res.sessionToken, email: res.email)
+                    },
+                    failed: { .accountRequestFailed(unauthorized: $0) })
+            case .revokeSession(let sessionToken):
+                // Already gone server-side or offline — local sign-out stands.
+                try? await api.logout(token: sessionToken)
+            case .deleteServerListening(let sessionToken):
+                await settle(
+                    {
+                        try await api.deleteListening(token: sessionToken)
+                        return .listeningDataDeleted(newDeviceId: UUID().uuidString)
+                    },
+                    failed: { .accountRequestFailed(unauthorized: $0) })
+            case .deleteServerAccount(let sessionToken):
+                await settle(
+                    {
+                        try await api.deleteAccount(token: sessionToken)
+                        return .accountDeleted(newDeviceId: UUID().uuidString)
+                    },
+                    failed: { .accountRequestFailed(unauthorized: $0) })
+            default:
+                break
             }
-            return String(rest)
         }
-        return s
+    }
+
+    /// Run one request and dispatch the command that settles it; `failed` is
+    /// told whether the failure was an HTTP 401.
+    private func settle(_ request: () async throws -> Command, failed: (Bool) -> Command) async {
+        let outcome: Command
+        do {
+            outcome = try await request()
+        } catch {
+            outcome = failed((error as? SyncError)?.status == 401)
+        }
+        dispatch(outcome)
     }
 
     // MARK: - Tick loop
@@ -282,9 +241,7 @@ final class AppStore {
                 self.dispatch(.tick(elapsedMs: elapsedMs))
                 // Routine check: the core sends only once enough unsynced
                 // time has accrued (ticks are the only thing that accrues it).
-                if self.account != nil {
-                    await self.sync(reason: .threshold)
-                }
+                self.sync(reason: .threshold)
             }
         }
         // Schedule on the common run-loop modes so menu interaction doesn't
@@ -339,6 +296,7 @@ extension Snapshot {
             unsyncedMs: 0,
             totalLabel: "0m"
         ),
+        account: AccountSnapshot(email: nil, signedInLabel: nil, statusLabel: nil, busy: false),
         tickIntervalMs: 0
     )
 }
