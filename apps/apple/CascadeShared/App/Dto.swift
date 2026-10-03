@@ -177,8 +177,8 @@ enum Command: Codable {
 
 /// Why the shell is asking the core to sync (`SyncReason` in the core). The
 /// shell decides *when it can* talk; the core decides whether there is
-/// anything to say. There is no threshold reason: the core's tick checks the
-/// threshold itself.
+/// anything to say. The core still accepts `threshold` (ADR 0001), but this
+/// shell never sends it: the core's tick checks the threshold itself.
 enum SyncReason: String, Codable {
     /// Backgrounding / closing: send any unsynced time at all.
     case flush
