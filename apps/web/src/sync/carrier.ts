@@ -1,100 +1,64 @@
-import type { Command, Effect } from "../core/types";
+import type { Command, Effect, ServerRequest } from "../core/types";
 import type { DispatchOptions } from "../core/useCascade";
-import * as api from "./api";
+import { SYNC_API_BASE, syncAvailable } from "./config";
 
 /** Dispatches a settle; that dispatch carries the settle's own effects. */
-type Settle = (outcome: Command) => void;
+type Settle = (response: Command) => void;
+
+/** How long a request may take before it is given up and settled as status 0. */
+const REQUEST_TIMEOUT_MS = 30_000;
 
 /**
- * Run one request and turn its result into the command that settles it.
- * Without a sync server the request fails unsent, so it is still settled.
+ * Send one request exactly as the core described it and answer with the
+ * `serverResponse` that settles it: the HTTP status and body, or status 0
+ * when there is no sync server, the network failed or it timed out.
  */
-async function settleWith<T>(
-  call: () => Promise<T>,
-  succeeded: (res: T) => Command,
-  failed: (unauthorized: boolean) => Command,
+async function send(
+  request: ServerRequest,
+  keepalive: boolean,
 ): Promise<Command> {
-  if (!api.syncAvailable) return failed(false);
+  const response = (status: number, body = ""): Command => ({
+    type: "serverResponse",
+    id: request.id,
+    status,
+    body,
+  });
+  if (!syncAvailable) return response(0);
   try {
-    return succeeded(await call());
-  } catch (err) {
-    return failed(err instanceof api.HttpError && err.status === 401);
+    const res = await fetch(`${SYNC_API_BASE}${request.path}`, {
+      method: request.method,
+      headers: {
+        ...(request.body !== undefined
+          ? { "Content-Type": "application/json" }
+          : {}),
+        ...(request.bearerToken
+          ? { Authorization: `Bearer ${request.bearerToken}` }
+          : {}),
+      },
+      body: request.body,
+      keepalive,
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    return response(res.status, await res.text().catch(() => ""));
+  } catch {
+    return response(0);
   }
 }
 
 /**
  * The one request carrier. Every dispatch hands it its effects, whichever
  * command produced them (a tick's push, a sign-in's refresh, an account call);
- * it runs each request effect over HTTP and settles it through `settle`, which
- * is itself a dispatch, so a settle's answer comes back here too. Every request
- * but `revokeSession` must be settled, or the core won't start another.
+ * it sends each `serverRequest` over HTTP and settles it through `settle`,
+ * which is itself a dispatch, so a settle's answer comes back here too. Every
+ * request is settled, or the core won't start another.
  */
 export function carryRequests(
   effects: Effect[],
   settle: Settle,
   { keepalive = false }: DispatchOptions = {},
 ): void {
-  const accountFailed = (unauthorized: boolean): Command => ({
-    type: "accountRequestFailed",
-    unauthorized,
-  });
   for (const effect of effects) {
-    switch (effect.type) {
-      case "pushListening":
-        void settleWith(
-          () =>
-            api.putListening(
-              effect.sessionToken,
-              effect.deviceId,
-              effect.deviceTotalMs,
-              keepalive,
-            ),
-          (res) => ({
-            type: "listeningSyncSucceeded",
-            serverTotalMs: res.serverTotalMs,
-          }),
-          (unauthorized) => ({ type: "listeningSyncFailed", unauthorized }),
-        ).then(settle);
-        break;
-      case "sendSignInLink":
-        void settleWith(
-          () => api.requestLink(effect.email),
-          () => ({ type: "signInLinkSent" }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "verifySignInToken":
-        void settleWith(
-          () => api.verify(effect.token),
-          (res) => ({
-            type: "signInVerified",
-            sessionToken: res.sessionToken,
-            email: res.email,
-          }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "revokeSession":
-        // Already gone server-side or offline — local sign-out stands.
-        if (api.syncAvailable) api.logout(effect.sessionToken).catch(() => {});
-        break;
-      case "deleteServerListening":
-        void settleWith(
-          () => api.deleteListening(effect.sessionToken),
-          () => ({
-            type: "listeningDataDeleted",
-            newDeviceId: crypto.randomUUID(),
-          }),
-          accountFailed,
-        ).then(settle);
-        break;
-      case "deleteServerAccount":
-        void settleWith(
-          () => api.deleteAccount(effect.sessionToken),
-          () => ({ type: "accountDeleted", newDeviceId: crypto.randomUUID() }),
-          accountFailed,
-        ).then(settle);
-        break;
-    }
+    if (effect.type === "serverRequest")
+      void send(effect, keepalive).then(settle);
   }
 }
