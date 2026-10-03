@@ -112,15 +112,15 @@ final class AppStore {
 
         for effect in update.effects {
             switch effect {
-            case .startPlayback(let volumePercent):
-                audio.start(volumePercent: volumePercent)
+            case .startPlayback(let gain):
+                audio.start(gain: gain)
                 power.acquire()
                 Task { @MainActor in dispatch(.platformPlaybackStarted) }
             case .pausePlayback:
                 audio.pause()
                 power.release()
-            case .setPlatformVolume(let volumePercent):
-                audio.setVolume(volumePercent: volumePercent)
+            case .setPlatformVolume(let gain):
+                audio.setVolume(gain: gain)
             case .persistSettings(let json):
                 settings.writeSafely(json)
             case .persistListening(let json):
@@ -309,6 +309,7 @@ extension Snapshot {
         isPlaying: false,
         volumePercent: 60,
         isMuted: false,
+        outputGain: 0.36,
         primaryButtonLabel: "Play",
         timer: TimerSnapshot(kind: .off, remainingLabel: "", remainingMs: 0, totalMs: 0, progress: 0),
         errorMessage: nil,

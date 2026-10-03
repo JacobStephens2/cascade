@@ -23,12 +23,11 @@ import page.stephens.cascade.core.TimerKind
 /**
  * Translates the Rust core's [Effect]s into Media3 commands.
  *
- * The Rust core says "start playback at 42% volume" — this class is the
- * thing that maps that to `mediaController.volume = 0.42f; mediaController.play()`.
+ * The Rust core says "start playback at gain 0.25" — this class is the
+ * thing that maps that to `mediaController.volume = 0.25f; mediaController.play()`.
  *
- * Volume curve note: the web shell applies a perceptual square-law curve
- * to its slider. We do the same here so both platforms feel identical at
- * the same percentage value.
+ * The core has already applied mute and the volume curve, so the gain is
+ * written as given.
  */
 class PlaybackController(
     context: Context,
@@ -114,7 +113,7 @@ class PlaybackController(
     private fun applyCurrentState() {
         val snap = bridge.snapshot.value
         val c = controller ?: return
-        c.volume = perceptualVolume(snap.volumePercent)
+        c.volume = snap.outputGain
         if (snap.isPlaying && !c.isPlaying) c.play() else if (!snap.isPlaying && c.isPlaying) c.pause()
     }
 
@@ -123,20 +122,15 @@ class PlaybackController(
         for (effect in effects) {
             when (effect) {
                 is Effect.StartPlayback -> {
-                    c.volume = perceptualVolume(effect.volumePercent)
+                    c.volume = effect.gain
                     c.play()
                 }
                 Effect.PausePlayback -> c.pause()
-                is Effect.SetPlatformVolume -> c.volume = perceptualVolume(effect.volumePercent)
+                is Effect.SetPlatformVolume -> c.volume = effect.gain
                 is Effect.PersistSettings -> { /* handled by CascadeBridgeHolder */ }
                 is Effect.PersistListening -> { /* handled by CascadeBridgeHolder */ }
                 is Effect.PushListening, Effect.ClearSession -> { /* handled by SyncManager */ }
             }
         }
-    }
-
-    private fun perceptualVolume(percent: Int): Float {
-        val clamped = percent.coerceIn(0, 100) / 100f
-        return clamped * clamped
     }
 }

@@ -67,6 +67,10 @@ pub struct Snapshot {
     pub volume_percent: u8,
     /// Audio is silenced but the session/timer keeps running.
     pub is_muted: bool,
+    /// The gain the shell should be outputting right now, 0.0–1.0: 0.0
+    /// while muted, otherwise the curve applied to `volume_percent`. Shells
+    /// show `volume_percent`/`is_muted` and play `output_gain`.
+    pub output_gain: f32,
     pub primary_button_label: String,
     pub timer: TimerSnapshot,
     pub error_message: Option<String>,
@@ -137,6 +141,7 @@ impl Snapshot {
             is_playing: state.intent.is_playing(),
             volume_percent: state.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT),
             is_muted: state.muted,
+            output_gain: state.output_gain(),
             primary_button_label: if state.intent.is_playing() {
                 "Pause".to_string()
             } else {

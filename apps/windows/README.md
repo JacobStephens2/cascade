@@ -88,9 +88,9 @@ dotnet build Cascade/Cascade.csproj -c Debug /p:Platform=x64
 | Power | `PowerController.cs` — `SetThreadExecutionState(CONTINUOUS|SYSTEM_REQUIRED)` during active sessions. |
 | Tick loop | `DispatcherQueueTimer` at the snapshot's `tickIntervalMs`; stopped when it is 0. |
 
-The Rust core declares **intent** (`Effect.startPlayback { volumePercent }`);
-the Windows shell decides **how** (MediaPlayer, with a square-law volume
-curve matching the web / macOS shells).
+The Rust core declares **intent** (`Effect.startPlayback { gain }`, with mute
+and the square-law curve already applied); the Windows shell decides **how**
+(MediaPlayer, writing that gain to `Volume` as given).
 
 ## Day-to-day iteration
 

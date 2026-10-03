@@ -34,9 +34,10 @@ export type Command =
 export type SyncReason = "threshold" | "flush" | "refresh";
 
 export type Effect =
-  | { type: "startPlayback"; volumePercent: number }
+  /** `gain` is the final output level, 0–1, mute and curve already applied. */
+  | { type: "startPlayback"; gain: number }
   | { type: "pausePlayback" }
-  | { type: "setPlatformVolume"; volumePercent: number }
+  | { type: "setPlatformVolume"; gain: number }
   | { type: "persistSettings"; json: string }
   | { type: "persistListening"; json: string }
   | { type: "pushListening"; deviceId: string; deviceTotalMs: number }
@@ -71,6 +72,8 @@ export interface Snapshot {
   isPlaying: boolean;
   volumePercent: number;
   isMuted: boolean;
+  /** Gain to output right now, 0–1: 0 while muted, else the curve applied. */
+  outputGain: number;
   primaryButtonLabel: string;
   timer: TimerSnapshot;
   errorMessage: string | null;

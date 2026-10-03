@@ -189,7 +189,7 @@ mod tests {
         let bridge = CascadeBridge::new();
         let update_json = bridge.dispatch(r#"{"type":"play"}"#.to_string()).unwrap();
         assert!(update_json.contains(r#""type":"startPlayback""#));
-        assert!(update_json.contains(r#""volumePercent":"#));
+        assert!(update_json.contains(r#""gain":"#));
     }
 
     #[test]

@@ -159,7 +159,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
             switch (effect)
             {
                 case StartPlaybackEffect start:
-                    _audio.Start(start.VolumePercent);
+                    _audio.Start(start.Gain);
                     _power.Acquire();
                     // Tell the core the platform actually started; the dispatch is
                     // sync, so post via the dispatcher queue to avoid recursing in
@@ -171,7 +171,7 @@ public sealed partial class AppViewModel : ObservableObject, IDisposable
                     _power.Release();
                     break;
                 case SetPlatformVolumeEffect setVol:
-                    _audio.SetVolume(setVol.VolumePercent);
+                    _audio.SetVolume(setVol.Gain);
                     break;
                 case PersistSettingsEffect persist:
                     _settings.WriteSafely(persist.Json);

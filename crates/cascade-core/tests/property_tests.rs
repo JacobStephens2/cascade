@@ -10,6 +10,13 @@ use proptest::prelude::*;
 const MAX_VOLUME: u8 = 100;
 const MS_PER_MIN: u64 = 60_000;
 
+/// Whether `gain` is the square-law curve applied to `percent`. Restated
+/// independently, so compared within float rounding rather than exactly.
+fn on_curve(gain: f32, percent: u8) -> bool {
+    let p = percent as f32 / 100.0;
+    (gain - p * p).abs() < 1e-6
+}
+
 /// A strategy that generates any command the platforms can dispatch, with
 /// ranges that comfortably exceed real usage (volume past 100, timers past a
 /// day, ticks up to an hour) so clamping/saturation is exercised.
@@ -32,7 +39,8 @@ fn command_strategy() -> impl Strategy<Value = Command> {
 
 proptest! {
     /// Volume is always a valid percentage, and the emitted platform-volume
-    /// effect carries the same clamped value the snapshot reports.
+    /// effect carries the curve applied to the clamped value, matching the
+    /// snapshot's output gain.
     #[test]
     fn volume_always_clamped(percent in any::<u8>()) {
         let mut core = Core::new();
@@ -40,10 +48,11 @@ proptest! {
         let clamped = percent.min(MAX_VOLUME);
         prop_assert_eq!(update.snapshot.volume_percent, clamped);
         let emitted = update.effects.iter().find_map(|e| match e {
-            Effect::SetPlatformVolume { volume_percent } => Some(*volume_percent),
+            Effect::SetPlatformVolume { gain } => Some(*gain),
             _ => None,
         });
-        prop_assert_eq!(emitted, Some(clamped));
+        prop_assert!(emitted.is_some_and(|gain| on_curve(gain, clamped)), "emitted {:?}", emitted);
+        prop_assert!(on_curve(update.snapshot.output_gain, clamped));
     }
 
     /// Any custom duration sets total = minutes * 60_000 ms, for both flavors.
@@ -179,14 +188,14 @@ proptest! {
         prop_assert!(muted.snapshot.is_muted);
         prop_assert!(muted.snapshot.is_playing, "mute must not pause");
         prop_assert_eq!(muted.snapshot.timer.kind, timer_kind, "mute must not end the timer");
-        let zeroed = muted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 }));
+        let zeroed = muted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.0));
         prop_assert!(zeroed);
         // No pause effect was emitted.
         prop_assert!(!muted.effects.iter().any(|e| matches!(e, Effect::PausePlayback)));
 
         let unmuted = core.dispatch(Command::ToggleMute);
         prop_assert!(!unmuted.snapshot.is_muted);
-        let restored = unmuted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent } if *volume_percent == volume));
+        let restored = unmuted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { gain } if on_curve(*gain, volume)));
         prop_assert!(restored);
     }
 

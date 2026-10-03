@@ -105,7 +105,7 @@ export function useCascade(): UseCascadeResult {
       switch (effect.type) {
         case "startPlayback":
           try {
-            await audio.start(effect.volumePercent);
+            await audio.start(effect.gain);
             queueMicrotask(() =>
               dispatchInternal({ type: "platformPlaybackStarted" }),
             );
@@ -122,7 +122,7 @@ export function useCascade(): UseCascadeResult {
           await audio.pause();
           break;
         case "setPlatformVolume":
-          audio.setVolume(effect.volumePercent);
+          audio.setVolume(effect.gain);
           break;
         case "persistSettings":
           try {
