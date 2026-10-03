@@ -83,6 +83,29 @@ data class TimerSnapshot(
     val remainingMs: Long,
     val totalMs: Long,
     val progress: Float,
+    /** A timer is running (something to cancel); false when off or just completed. */
+    val isActive: Boolean,
+    /** One-line status, e.g. "Playing · 12:34 left". */
+    val statusLabel: String,
+)
+
+/** A ready-made timer length the core offers. */
+@Serializable
+data class TimerPreset(
+    val minutes: Int,
+    val label: String,
+    val shortLabel: String,
+)
+
+/** The timer choices the core offers: presets, limits and the custom pre-fill. */
+@Serializable
+data class TimerOptions(
+    val focusPresets: List<TimerPreset>,
+    val sleepPresets: List<TimerPreset>,
+    val minMinutes: Int,
+    val maxMinutes: Int,
+    val customFocusMinutes: Int,
+    val customSleepMinutes: Int,
 )
 
 @Serializable
@@ -105,6 +128,7 @@ data class Snapshot(
     val outputGain: Float,
     val primaryButtonLabel: String,
     val timer: TimerSnapshot,
+    val timerOptions: TimerOptions,
     val errorMessage: String? = null,
     val listening: ListeningSnapshot,
     /** How often to send [Command.Tick], in ms; 0 means stop. The core owns the cadence. */
