@@ -30,8 +30,8 @@ struct CascadeMacApp: App {
 }
 
 /// Top-level command menus: Cascade ▸ Toggle Playback (Space), and
-/// Session ▸ Start 30/60 min / 8 hr. Bound at the App scene so they work
-/// no matter which window has focus.
+/// Session ▸ Start <focus preset> (⇧⌘1, ⇧⌘2, …). Bound at the App scene so
+/// they work no matter which window has focus.
 struct CascadeCommands: Commands {
     let store: AppStore
 
@@ -41,12 +41,13 @@ struct CascadeCommands: Commands {
             Button("Toggle Playback") { store.dispatch(.togglePlayback) }
                 .keyboardShortcut(.space, modifiers: [])
             Divider()
-            Button("Start 30 min Focus") { store.dispatch(.startPomodoro(minutes: 30)) }
-                .keyboardShortcut("1", modifiers: [.command, .shift])
-            Button("Start 60 min Focus") { store.dispatch(.startPomodoro(minutes: 60)) }
-                .keyboardShortcut("2", modifiers: [.command, .shift])
-            Button("Start 8 hr Focus") { store.dispatch(.startPomodoro(minutes: 480)) }
-                .keyboardShortcut("3", modifiers: [.command, .shift])
+            let presets = Array(store.snapshot.timerOptions.focusPresets.enumerated())
+            ForEach(presets, id: \.element.minutes) { index, preset in
+                Button("Start \(preset.label) Focus") {
+                    store.dispatch(.startPomodoro(minutes: preset.minutes))
+                }
+                .keyboardShortcut(KeyEquivalent(Character("\(index + 1)")), modifiers: [.command, .shift])
+            }
             Divider()
             Button("Cancel Timer") { store.dispatch(.cancelTimer) }
                 .keyboardShortcut(".", modifiers: [.command])
