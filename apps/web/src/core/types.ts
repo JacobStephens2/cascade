@@ -34,7 +34,7 @@ export type Command =
 export type SyncReason = "threshold" | "flush" | "refresh";
 
 export type Effect =
-  /** `gain` is the final output level, 0–1, curve already applied. */
+  /** `gain` is the final output level, 0–1, mute and curve already applied. */
   | { type: "startPlayback"; gain: number }
   | { type: "pausePlayback" }
   | { type: "setPlatformVolume"; gain: number }

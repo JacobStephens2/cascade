@@ -23,12 +23,11 @@ import page.stephens.cascade.core.TimerKind
 /**
  * Translates the Rust core's [Effect]s into Media3 commands.
  *
- * The Rust core says "start playback at 42% volume" — this class is the
- * thing that maps that to `mediaController.volume = 0.42f; mediaController.play()`.
+ * The Rust core says "start playback at gain 0.25" — this class is the
+ * thing that maps that to `mediaController.volume = 0.25f; mediaController.play()`.
  *
- * Volume curve note: the web shell applies a perceptual square-law curve
- * to its slider. We do the same here so both platforms feel identical at
- * the same percentage value.
+ * The core has already applied mute and the volume curve, so the gain is
+ * written as given.
  */
 class PlaybackController(
     context: Context,

@@ -103,20 +103,15 @@ impl State {
         self.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT)
     }
 
-    /// The volume the platform should actually output right now: zero while
-    /// muted, otherwise the user's chosen level.
-    pub fn output_volume(&self) -> u8 {
-        if self.muted {
-            0
-        } else {
-            self.effective_volume()
-        }
-    }
-
-    /// The gain the platform should actually output right now, 0.0–1.0: the
-    /// output volume through the perceptual curve.
+    /// The gain the shell should actually output right now, 0.0–1.0: zero
+    /// while muted, otherwise the user's chosen level through the perceptual
+    /// curve.
     pub fn output_gain(&self) -> f32 {
-        percent_to_gain(self.output_volume())
+        if self.muted {
+            0.0
+        } else {
+            percent_to_gain(self.effective_volume())
+        }
     }
 }
 

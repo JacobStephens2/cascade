@@ -17,8 +17,8 @@ pub enum Effect {
     StartPlayback { gain: f32 },
     /// Stop / pause playback.
     PausePlayback,
-    /// Set the platform's output gain (0.0–1.0, mute and curve already
-    /// applied) without changing play/pause state.
+    /// Set the shell's output gain (0.0–1.0, mute and curve already applied)
+    /// without changing play/pause state.
     SetPlatformVolume { gain: f32 },
     /// Persist the supplied settings JSON. The platform decides where
     /// (localStorage, DataStore, file system, …), and hands it back via
