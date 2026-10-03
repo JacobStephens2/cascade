@@ -114,7 +114,7 @@ class PlaybackController(
     private fun applyCurrentState() {
         val snap = bridge.snapshot.value
         val c = controller ?: return
-        c.volume = perceptualVolume(snap.volumePercent)
+        c.volume = snap.outputGain
         if (snap.isPlaying && !c.isPlaying) c.play() else if (!snap.isPlaying && c.isPlaying) c.pause()
     }
 
@@ -123,20 +123,15 @@ class PlaybackController(
         for (effect in effects) {
             when (effect) {
                 is Effect.StartPlayback -> {
-                    c.volume = perceptualVolume(effect.volumePercent)
+                    c.volume = effect.gain
                     c.play()
                 }
                 Effect.PausePlayback -> c.pause()
-                is Effect.SetPlatformVolume -> c.volume = perceptualVolume(effect.volumePercent)
+                is Effect.SetPlatformVolume -> c.volume = effect.gain
                 is Effect.PersistSettings -> { /* handled by CascadeBridgeHolder */ }
                 is Effect.PersistListening -> { /* handled by CascadeBridgeHolder */ }
                 is Effect.PushListening, Effect.ClearSession -> { /* handled by SyncManager */ }
             }
         }
-    }
-
-    private fun perceptualVolume(percent: Int): Float {
-        val clamped = percent.coerceIn(0, 100) / 100f
-        return clamped * clamped
     }
 }

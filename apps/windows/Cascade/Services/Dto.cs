@@ -104,9 +104,10 @@ internal sealed class SyncReasonConverter : System.Text.Json.Serialization.JsonC
 [JsonDerivedType(typeof(ClearSessionEffect), "clearSession")]
 public abstract record CascadeEffect;
 
-public sealed record StartPlaybackEffect(int VolumePercent) : CascadeEffect;
+// Gain is the final output level, 0–1, mute and curve already applied.
+public sealed record StartPlaybackEffect(double Gain) : CascadeEffect;
 public sealed record PausePlaybackEffect : CascadeEffect;
-public sealed record SetPlatformVolumeEffect(int VolumePercent) : CascadeEffect;
+public sealed record SetPlatformVolumeEffect(double Gain) : CascadeEffect;
 public sealed record PersistSettingsEffect(string Json) : CascadeEffect;
 public sealed record PersistListeningEffect(string Json) : CascadeEffect;
 public sealed record PushListeningEffect(string DeviceId, ulong DeviceTotalMs) : CascadeEffect;
@@ -166,6 +167,8 @@ public sealed record CascadeSnapshot(
     bool IsPlaying,
     int VolumePercent,
     bool IsMuted,
+    // Gain to output right now, 0–1: 0 while muted, else the curve applied.
+    double OutputGain,
     string PrimaryButtonLabel,
     TimerSnapshot Timer,
     string? ErrorMessage,

@@ -1,6 +1,7 @@
 /**
  * Web Audio playback engine. The cascade-core never touches this — it just
- * tells us, via `Effect`s, when to start / pause / set volume. We own the
+ * tells us, via `Effect`s, when to start / pause / set volume, and hands us
+ * the final output gain (0–1, mute and curve already applied). We own the
  * AudioContext lifecycle, the loop, and the fade ramps.
  *
  * The looping strategy is `AudioBufferSourceNode.loop = true` with the
@@ -53,7 +54,7 @@ export class WebAudioEngine {
     }
   }
 
-  async start(volumePercent: number, fadeMs = 400): Promise<void> {
+  async start(gain: number, fadeMs = 400): Promise<void> {
     await this.ensureLoaded();
     if (!this.ctx || !this.buffer || !this.gain) return;
     if (this.ctx.state === "suspended") {
@@ -78,7 +79,7 @@ export class WebAudioEngine {
     source.start();
     this.source = source;
 
-    this.rampGain(this.percentToGain(volumePercent), fadeMs);
+    this.rampGain(gain, fadeMs);
   }
 
   async pause(fadeMs = 400): Promise<void> {
@@ -98,9 +99,9 @@ export class WebAudioEngine {
     }, fadeMs + 50);
   }
 
-  setVolume(volumePercent: number): void {
+  setVolume(gain: number): void {
     if (!this.gain) return;
-    this.rampGain(this.percentToGain(volumePercent), 80);
+    this.rampGain(gain, 80);
   }
 
   /** True when audio is currently routed to the destination. */
@@ -118,13 +119,5 @@ export class WebAudioEngine {
     param.cancelScheduledValues(now);
     param.setValueAtTime(startValue, now);
     param.linearRampToValueAtTime(safeTarget, now + fadeMs / 1000);
-  }
-
-  private percentToGain(percent: number): number {
-    // Perceptually log-ish curve — a slider at 50 should sound roughly half
-    // as loud, not "almost full volume". Square law is a decent cheap proxy.
-    const safe = Number.isFinite(percent) ? percent : 60;
-    const clamped = Math.max(0, Math.min(100, safe)) / 100;
-    return clamped * clamped;
   }
 }

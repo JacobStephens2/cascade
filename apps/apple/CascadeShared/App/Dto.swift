@@ -133,26 +133,27 @@ enum SyncReason: String, Codable {
 }
 
 enum Effect: Decodable {
-    case startPlayback(volumePercent: Int)
+    /// `gain` is the final output level, 0–1, mute and curve already applied.
+    case startPlayback(gain: Float)
     case pausePlayback
-    case setPlatformVolume(volumePercent: Int)
+    case setPlatformVolume(gain: Float)
     case persistSettings(json: String)
     case persistListening(json: String)
     case pushListening(deviceId: String, deviceTotalMs: UInt64)
     case clearSession
 
-    private enum CodingKeys: String, CodingKey { case type, volumePercent, json, deviceId, deviceTotalMs }
+    private enum CodingKeys: String, CodingKey { case type, gain, json, deviceId, deviceTotalMs }
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         let type = try c.decode(String.self, forKey: .type)
         switch type {
         case "startPlayback":
-            self = .startPlayback(volumePercent: try c.decode(Int.self, forKey: .volumePercent))
+            self = .startPlayback(gain: try c.decode(Float.self, forKey: .gain))
         case "pausePlayback":
             self = .pausePlayback
         case "setPlatformVolume":
-            self = .setPlatformVolume(volumePercent: try c.decode(Int.self, forKey: .volumePercent))
+            self = .setPlatformVolume(gain: try c.decode(Float.self, forKey: .gain))
         case "persistSettings":
             self = .persistSettings(json: try c.decode(String.self, forKey: .json))
         case "persistListening":
@@ -195,6 +196,8 @@ struct Snapshot: Decodable, Equatable {
     let isPlaying: Bool
     let volumePercent: Int
     let isMuted: Bool
+    /// Gain to output right now, 0–1: 0 while muted, else the curve applied.
+    let outputGain: Float
     let primaryButtonLabel: String
     let timer: TimerSnapshot
     let errorMessage: String?

@@ -8,7 +8,8 @@ import Foundation
 /// is exactly the buffer's frame count, no silent frames before/after.
 ///
 /// Volume goes through `mixerNode.outputVolume` with a short linear ramp so
-/// the slider doesn't click.
+/// the slider doesn't click. The core hands us the final gain (0–1, mute and
+/// curve already applied); we write it as given.
 @MainActor
 final class AudioEngine {
     private let engine = AVAudioEngine()
@@ -23,8 +24,8 @@ final class AudioEngine {
         engine.connect(player, to: mixer, format: nil)
     }
 
-    /// Start (or resume) the loop at the given volume. Idempotent.
-    func start(volumePercent: Int) {
+    /// Start (or resume) the loop at the given gain. Idempotent.
+    func start(gain: Float) {
         do {
             try loadAssetIfNeeded()
             configureSessionForPlayback()
@@ -38,7 +39,7 @@ final class AudioEngine {
                 }
                 player.play()
             }
-            setVolume(volumePercent: volumePercent, rampMs: 400)
+            setVolume(gain: gain, rampMs: 400)
         } catch {
             NSLog("[Cascade] AudioEngine.start failed: \(error)")
         }
@@ -46,15 +47,14 @@ final class AudioEngine {
 
     func pause() {
         // Quick fade so pause doesn't pop, then stop the node.
-        setVolume(volumePercent: 0, rampMs: 300)
+        setVolume(gain: 0, rampMs: 300)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
             guard let self else { return }
             self.player.pause()
         }
     }
 
-    func setVolume(volumePercent: Int, rampMs: Int = 80) {
-        let target = perceptualVolume(volumePercent)
+    func setVolume(gain target: Float, rampMs: Int = 80) {
         let steps = max(1, rampMs / 16)
         let startValue = mixer.outputVolume
         let delta = (target - startValue) / Float(steps)
@@ -110,12 +110,6 @@ final class AudioEngine {
             }
         }
         return nil
-    }
-
-    /// Match the web app's square-law curve so 50% feels like ~half volume.
-    private func perceptualVolume(_ percent: Int) -> Float {
-        let clamped = Float(min(max(percent, 0), 100)) / 100.0
-        return clamped * clamped
     }
 
     /// iOS requires us to opt into background-capable audio playback through

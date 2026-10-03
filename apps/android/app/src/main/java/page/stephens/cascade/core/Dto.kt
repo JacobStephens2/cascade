@@ -57,9 +57,10 @@ enum class SyncReason {
 @Serializable
 @JsonClassDiscriminator("type")
 sealed class Effect {
-    @Serializable @SerialName("startPlayback") data class StartPlayback(val volumePercent: Int) : Effect()
+    /** [gain] is the final output level, 0–1, mute and curve already applied. */
+    @Serializable @SerialName("startPlayback") data class StartPlayback(val gain: Float) : Effect()
     @Serializable @SerialName("pausePlayback") data object PausePlayback : Effect()
-    @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val volumePercent: Int) : Effect()
+    @Serializable @SerialName("setPlatformVolume") data class SetPlatformVolume(val gain: Float) : Effect()
     @Serializable @SerialName("persistSettings") data class PersistSettings(val json: String) : Effect()
     @Serializable @SerialName("persistListening") data class PersistListening(val json: String) : Effect()
     @Serializable @SerialName("pushListening") data class PushListening(val deviceId: String, val deviceTotalMs: Long) : Effect()
@@ -100,6 +101,8 @@ data class Snapshot(
     val isPlaying: Boolean,
     val volumePercent: Int,
     val isMuted: Boolean,
+    /** Gain to output right now, 0–1: 0 while muted, else the curve applied. */
+    val outputGain: Float,
     val primaryButtonLabel: String,
     val timer: TimerSnapshot,
     val errorMessage: String? = null,

@@ -112,6 +112,20 @@ impl State {
             self.effective_volume()
         }
     }
+
+    /// The gain the platform should actually output right now, 0.0–1.0: the
+    /// output volume through the perceptual curve.
+    pub fn output_gain(&self) -> f32 {
+        percent_to_gain(self.output_volume())
+    }
+}
+
+/// The perceptual (square-law) volume curve: gain = (percent / 100)². The
+/// square is taken on integers so the one rounding step gives the shortest
+/// float (60 % → 0.36, not 0.36000002).
+fn percent_to_gain(percent: u8) -> f32 {
+    let p = u32::from(percent);
+    (p * p) as f32 / 10_000.0
 }
 
 fn clamp_volume(v: u8) -> u8 {
@@ -157,13 +171,15 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.volume_percent = Some(v);
             // Adjusting the slider unmutes — the intuitive behavior.
             state.muted = false;
-            effects.push(Effect::SetPlatformVolume { volume_percent: v });
+            effects.push(Effect::SetPlatformVolume {
+                gain: state.output_gain(),
+            });
             push_persist(state, effects);
         }
         Command::ToggleMute => {
             state.muted = !state.muted;
             effects.push(Effect::SetPlatformVolume {
-                volume_percent: state.output_volume(),
+                gain: state.output_gain(),
             });
         }
         Command::StartSleepTimer { minutes } => {
@@ -307,7 +323,7 @@ fn start_playback(state: &mut State, effects: &mut Vec<Effect>) {
     // Never start muted — a fresh play is always audible.
     state.muted = false;
     effects.push(Effect::StartPlayback {
-        volume_percent: state.effective_volume(),
+        gain: state.output_gain(),
     });
     push_persist(state, effects);
 }
@@ -369,7 +385,7 @@ mod tests {
         assert!(s.active_timer.is_some(), "mute must not cancel the timer");
         assert!(muted
             .iter()
-            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 })));
+            .any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.0)));
 
         // Timer keeps counting while muted.
         dispatch(&mut s, Command::Tick { elapsed_ms: 60_000 });
@@ -380,7 +396,7 @@ mod tests {
         assert!(!s.muted);
         assert!(unmuted
             .iter()
-            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 80 })));
+            .any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.64)));
     }
 
     #[test]
@@ -412,9 +428,7 @@ mod tests {
         assert_eq!(s.volume_percent, Some(100));
         assert!(effects.iter().any(|e| matches!(
             e,
-            Effect::SetPlatformVolume {
-                volume_percent: 100
-            }
+            Effect::SetPlatformVolume { gain } if *gain == 1.0
         )));
         assert!(effects
             .iter()
