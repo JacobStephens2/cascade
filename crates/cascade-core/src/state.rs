@@ -6,13 +6,11 @@
 
 use serde::{Deserialize, Serialize};
 
-use crate::account::{
-    parse_sign_in_token, Account, AccountStatus, Pending, PendingRequest, Session,
-};
+use crate::account::{Account, AccountChange};
 use crate::command::Command;
 use crate::effect::Effect;
-use crate::listening::{ListeningLedger, PersistedListening, SyncReason};
-use crate::server::{parse_server_total, parse_verified, Request, StatusClass};
+use crate::listening::{ListeningLedger, PersistedListening, Settled, SyncReason};
+use crate::server::{RequestIds, StatusClass};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
 use crate::timer::{clamp_minutes, ActiveTimer, TimerKind, DEFAULT_TIMER_MINUTES};
 
@@ -66,10 +64,8 @@ pub struct State {
     /// The optional sign-in. Restored from its own blob via
     /// [`Command::Restore`]'s `account_json`.
     pub account: Account,
-    /// The id the next [`Effect::ServerRequest`] gets. Starts at 1 and only
-    /// grows; never persisted, since a restart forgets every request in
-    /// flight along with the shell process that was carrying it.
-    next_request_id: u64,
+    /// Where every [`Effect::ServerRequest`] gets its id.
+    request_ids: RequestIds,
     /// Whether [`Command::Restore`] has already run. Only the first restore
     /// takes effect, so a replayed stale blob can't undo a later reset.
     restored: bool,
@@ -89,7 +85,7 @@ impl Default for State {
             audio_confirmed_playing: false,
             listening: ListeningLedger::default(),
             account: Account::default(),
-            next_request_id: 1,
+            request_ids: RequestIds::default(),
             restored: false,
         }
     }
@@ -159,57 +155,58 @@ fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
     });
 }
 
-/// Hand the shell `request` under a fresh id, and return that id.
-fn send(state: &mut State, request: Request, effects: &mut Vec<Effect>) -> u64 {
-    let id = state.next_request_id;
-    state.next_request_id += 1;
-    effects.push(request.into_effect(id));
-    id
-}
-
-/// Start a listening sync if `begin` finds anything to send and the account
-/// allows it, answering with one push. `begin` is handed the id the push
-/// will carry, so the ledger can remember it.
-fn begin_listening_sync(
-    state: &mut State,
-    effects: &mut Vec<Effect>,
-    begin: impl FnOnce(&mut ListeningLedger, u64) -> Option<(String, u64)>,
-) {
-    let Some(session_token) = state.account.session_token() else {
-        return;
-    };
-    let id = state.next_request_id;
-    if let Some((device_id, device_total_ms)) = begin(&mut state.listening, id) {
-        let request = Request::push_listening(&device_id, device_total_ms, session_token);
-        let sent = send(state, request, effects);
-        debug_assert_eq!(sent, id, "the push must carry the id the ledger remembers");
+/// Carry an account transition through to listening and storage. The one
+/// place the order of those writes is decided: within one update the
+/// listening blob is written before the account blob, so a crash between the
+/// two never leaves a deleted account's slot with no session to answer for it
+/// (ADR 0001, decision 6).
+fn apply_account_change(state: &mut State, change: AccountChange, effects: &mut Vec<Effect>) {
+    match change {
+        AccountChange::SignedIn { replaced } => {
+            // Signing in over another account: nothing of its total may show.
+            if replaced {
+                state.listening.forget_server();
+                push_persist_listening(state, effects);
+            }
+            push_persist_account(state, effects);
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(SyncReason::Refresh, token, ids, effects)
+            });
+        }
+        AccountChange::SignedOut => {
+            state.listening.forget_server();
+            push_persist_listening(state, effects);
+            push_persist_account(state, effects);
+        }
+        AccountChange::ListeningDeleted { new_device_id } => {
+            state.listening.reset(new_device_id);
+            push_persist_listening(state, effects);
+        }
+        AccountChange::AccountDeleted { new_device_id } => {
+            // The reset forgets the server total and supersedes any in-flight
+            // sync too, so the slot and the sign-out share one listening write.
+            state.listening.reset(new_device_id);
+            push_persist_listening(state, effects);
+            push_persist_account(state, effects);
+        }
     }
 }
 
-/// Start the one account request, answering with `request`. The caller has
-/// already checked that none is pending.
-fn begin_account_request(
+/// Offer a listening sync if signed in: `begin` is handed the session token
+/// and the id source, and the ledger decides whether to push.
+fn begin_listening_sync(
     state: &mut State,
-    pending: PendingRequest,
-    status: Option<AccountStatus>,
-    request: Request,
     effects: &mut Vec<Effect>,
+    begin: impl FnOnce(&mut ListeningLedger, String, &mut RequestIds, &mut Vec<Effect>),
 ) {
-    let id = send(state, request, effects);
-    state.account.pending = Some(Pending {
-        id,
-        request: pending,
-    });
-    state.account.status = status;
-}
-
-/// Drop the session and everything learned through it: the stored blob, the
-/// cross-device total, and any sync still in flight for it.
-fn forget_session(state: &mut State, effects: &mut Vec<Effect>) {
-    state.account.session = None;
-    push_persist_account(state, effects);
-    state.listening.forget_server();
-    push_persist_listening(state, effects);
+    if let Some(session_token) = state.account.session_token() {
+        begin(
+            &mut state.listening,
+            session_token,
+            &mut state.request_ids,
+            effects,
+        );
+    }
 }
 
 /// Whether a tick should count as listening: tracking on, audio *confirmed*
@@ -385,10 +382,11 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             // Persist a newly adopted id right away, so the next launch sees
             // the same slot rather than another fallback.
             let mut persist_listening = state.listening.adopt_device_id(fallback_device_id);
-            state.account.session = Account::session_from_json(&account_json);
+            state.account.restore(&account_json);
             // A cross-device total with no account behind it is left over
             // from a sign-out before the core held the account.
-            if state.account.session.is_none() && state.listening.server_total_ms.is_some() {
+            if state.account.session_token().is_none() && state.listening.server_total_ms.is_some()
+            {
                 state.listening.forget_server();
                 persist_listening = true;
             }
@@ -397,175 +395,59 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             }
         }
         Command::BeginListeningSync { reason } => {
-            begin_listening_sync(state, effects, |l, id| l.begin_sync(reason, id))
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(reason, token, ids, effects)
+            })
         }
         Command::ResetListeningData { new_device_id } => {
             state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
         }
 
-        // Every account request waits for the pending one; only sign-out
-        // cuts in.
-        Command::RequestSignInLink { .. }
-        | Command::SubmitSignInLink { .. }
-        | Command::DeleteListeningData { .. }
-        | Command::DeleteAccount { .. }
-            if state.account.busy() => {}
-        Command::RequestSignInLink { email, platform } => {
-            let email = email.trim().to_string();
-            if email.is_empty() {
-                state.account.status = Some(AccountStatus::EnterEmail);
-                return;
-            }
-            let request = Request::sign_in_link(&email, platform.as_deref());
-            begin_account_request(
-                state,
-                PendingRequest::SignInLink { email },
-                None,
-                request,
-                effects,
-            );
+        Command::RequestSignInLink { email, platform } => state.account.request_sign_in_link(
+            &email,
+            platform.as_deref(),
+            &mut state.request_ids,
+            effects,
+        ),
+        Command::SubmitSignInLink { input } => {
+            state
+                .account
+                .submit_sign_in_link(&input, &mut state.request_ids, effects)
         }
-        Command::SubmitSignInLink { input } => match parse_sign_in_token(&input) {
-            Some(token) => begin_account_request(
-                state,
-                PendingRequest::Verify,
-                Some(AccountStatus::SigningIn),
-                Request::verify(&token),
-                effects,
-            ),
-            None => state.account.status = Some(AccountStatus::PasteFullLink),
-        },
         Command::DeleteListeningData { new_device_id } => {
-            if let Some(session_token) = state.account.session_token() {
-                begin_account_request(
-                    state,
-                    PendingRequest::DeleteListening { new_device_id },
-                    None,
-                    Request::delete_listening(session_token),
-                    effects,
-                );
-            }
+            state
+                .account
+                .delete_listening(new_device_id, &mut state.request_ids, effects)
         }
         Command::DeleteAccount { new_device_id } => {
-            if let Some(session_token) = state.account.session_token() {
-                begin_account_request(
-                    state,
-                    PendingRequest::DeleteAccount { new_device_id },
-                    None,
-                    Request::delete_account(session_token),
-                    effects,
-                );
-            }
+            state
+                .account
+                .delete_account(new_device_id, &mut state.request_ids, effects)
         }
         Command::SignOut => {
-            state.account.pending = None;
-            state.account.status = None;
-            if let Some(session_token) = state.account.session_token() {
-                // Remembered nowhere, so its response is ignored.
-                send(state, Request::revoke(session_token), effects);
-                forget_session(state, effects);
+            if let Some(change) = state.account.sign_out(&mut state.request_ids, effects) {
+                apply_account_change(state, change, effects);
             }
         }
         Command::ServerResponse { id, status, body } => {
             let class = StatusClass::of(status);
-            if let Some(request) = state.account.settle(id) {
-                account_response(state, request, class, &body, effects);
+            if state.account.awaits(id) {
+                if let Some(change) = state.account.settle(class, &body) {
+                    apply_account_change(state, change, effects);
+                }
             } else if state.listening.awaits(id) {
-                sync_response(state, class, &body, effects);
+                match state.listening.settle(class, &body) {
+                    Settled::Synced => push_persist_listening(state, effects),
+                    Settled::Unauthorized => {
+                        let change = state.account.expire();
+                        apply_account_change(state, change, effects);
+                    }
+                    Settled::Failed | Settled::Dropped => {}
+                }
             }
         }
     }
-}
-
-/// Settle the in-flight listening push. A superseded push only frees the
-/// slot: its success or 401 refers to a slot or session already replaced.
-fn sync_response(state: &mut State, class: StatusClass, body: &str, effects: &mut Vec<Effect>) {
-    let server_total_ms = match class {
-        StatusClass::Success => parse_server_total(body),
-        StatusClass::Unauthorized | StatusClass::Failed => None,
-    };
-    if let Some(server_total_ms) = server_total_ms {
-        if state.listening.sync_succeeded(server_total_ms) {
-            push_persist_listening(state, effects);
-        }
-    } else if state.listening.sync_failed() && class == StatusClass::Unauthorized {
-        session_expired(state, effects);
-    }
-}
-
-/// Settle the pending account `request`, already taken off the account.
-fn account_response(
-    state: &mut State,
-    request: PendingRequest,
-    class: StatusClass,
-    body: &str,
-    effects: &mut Vec<Effect>,
-) {
-    if class == StatusClass::Unauthorized && state.account.session.is_some() {
-        session_expired(state, effects);
-        return;
-    }
-    let succeeded = class == StatusClass::Success;
-    match request {
-        PendingRequest::SignInLink { email } if succeeded => {
-            state.account.status = Some(AccountStatus::LinkSent { email });
-        }
-        PendingRequest::Verify if succeeded => match parse_verified(body) {
-            Some(session) => signed_in(state, session, effects),
-            None => state.account.status = Some(AccountStatus::LinkInvalid),
-        },
-        PendingRequest::DeleteListening { new_device_id } if succeeded => {
-            state.account.status = Some(AccountStatus::ListeningDeleted);
-            state.listening.reset(new_device_id);
-            push_persist_listening(state, effects);
-        }
-        PendingRequest::DeleteAccount { new_device_id } if succeeded => {
-            state.account.status = Some(AccountStatus::AccountDeleted);
-            // The reset forgets the server total and supersedes any in-flight
-            // sync too, so the slot and the sign-out share one listening write.
-            state.listening.reset(new_device_id);
-            push_persist_listening(state, effects);
-            state.account.session = None;
-            push_persist_account(state, effects);
-        }
-        PendingRequest::SignInLink { .. } => {
-            state.account.status = Some(AccountStatus::LinkFailed);
-        }
-        PendingRequest::Verify => state.account.status = Some(AccountStatus::LinkInvalid),
-        PendingRequest::DeleteListening { .. } => {
-            state.account.status = Some(AccountStatus::ListeningDeleteFailed);
-        }
-        PendingRequest::DeleteAccount { .. } => {
-            state.account.status = Some(AccountStatus::AccountDeleteFailed);
-        }
-    }
-}
-
-/// The sign-in token was redeemed for a session: persist the account and
-/// start a refresh sync for the cross-device total.
-fn signed_in(state: &mut State, session: Session, effects: &mut Vec<Effect>) {
-    // Signing in over another account: nothing of its total may show.
-    if state.account.session.is_some() {
-        state.listening.forget_server();
-        push_persist_listening(state, effects);
-    }
-    state.account.status = Some(AccountStatus::SignedIn {
-        email: session.email.clone(),
-    });
-    state.account.session = Some(session);
-    push_persist_account(state, effects);
-    begin_listening_sync(state, effects, |l, id| {
-        l.begin_sync(SyncReason::Refresh, id)
-    });
-}
-
-/// The server rejected the session (a 401 on any request): sign out and tell
-/// the user to sign in again. Listening carries on locally.
-fn session_expired(state: &mut State, effects: &mut Vec<Effect>) {
-    state.account.pending = None;
-    state.account.status = Some(AccountStatus::SessionExpired);
-    forget_session(state, effects);
 }
 
 fn start_playback(state: &mut State, effects: &mut Vec<Effect>) {

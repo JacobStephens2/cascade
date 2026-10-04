@@ -109,7 +109,7 @@ impl Request {
     }
 
     /// The effect that asks the shell to carry this request as `id`.
-    pub fn into_effect(self, id: u64) -> Effect {
+    fn into_effect(self, id: u64) -> Effect {
         Effect::ServerRequest {
             id,
             method: self.method,
@@ -117,6 +117,31 @@ impl Request {
             bearer_token: self.bearer_token,
             body: self.body,
         }
+    }
+}
+
+/// The one source of request ids, held in [`crate::State`] and shared by every
+/// module that sends. Starts at 1, is never persisted (a restart forgets every
+/// request in flight along with the shell process that was carrying it), and
+/// never reuses an id.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct RequestIds {
+    next: u64,
+}
+
+impl Default for RequestIds {
+    fn default() -> Self {
+        Self { next: 1 }
+    }
+}
+
+impl RequestIds {
+    /// Hand the shell `request` under a fresh id, and return that id.
+    pub fn send(&mut self, request: Request, effects: &mut Vec<Effect>) -> u64 {
+        let id = self.next;
+        self.next += 1;
+        effects.push(request.into_effect(id));
+        id
     }
 }
 
