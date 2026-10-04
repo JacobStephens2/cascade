@@ -116,7 +116,8 @@ pub enum Settled {
     Failed,
     /// The server rejected the session.
     Unauthorized,
-    /// It was superseded, so its response was dropped.
+    /// It was superseded (or nothing was in flight), so its response was
+    /// dropped.
     Dropped,
 }
 

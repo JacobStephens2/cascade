@@ -326,17 +326,20 @@ impl Account {
         self.pending.is_some()
     }
 
-    /// Send the one account request, remembering what it is for.
+    /// Send the one account request, remembering its `purpose`.
     fn begin(
         &mut self,
-        request: PendingRequest,
+        purpose: PendingRequest,
         status: Option<AccountStatus>,
-        sent: Request,
+        request: Request,
         ids: &mut RequestIds,
         effects: &mut Vec<Effect>,
     ) {
-        let id = ids.send(sent, effects);
-        self.pending = Some(Pending { id, request });
+        let id = ids.send(request, effects);
+        self.pending = Some(Pending {
+            id,
+            request: purpose,
+        });
         self.status = status;
     }
 }

@@ -169,7 +169,9 @@ fn apply_account_change(state: &mut State, change: AccountChange, effects: &mut 
                 push_persist_listening(state, effects);
             }
             push_persist_account(state, effects);
-            begin_listening_sync(state, effects, SyncReason::Refresh);
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(SyncReason::Refresh, token, ids, effects)
+            });
         }
         AccountChange::SignedOut => {
             state.listening.forget_server();
@@ -190,12 +192,20 @@ fn apply_account_change(state: &mut State, change: AccountChange, effects: &mut 
     }
 }
 
-/// Offer a listening sync for `reason` if signed in.
-fn begin_listening_sync(state: &mut State, effects: &mut Vec<Effect>, reason: SyncReason) {
+/// Offer a listening sync if signed in: `begin` is handed the session token
+/// and the id source, and the ledger decides whether to push.
+fn begin_listening_sync(
+    state: &mut State,
+    effects: &mut Vec<Effect>,
+    begin: impl FnOnce(&mut ListeningLedger, String, &mut RequestIds, &mut Vec<Effect>),
+) {
     if let Some(session_token) = state.account.session_token() {
-        state
-            .listening
-            .begin_sync(reason, session_token, &mut state.request_ids, effects);
+        begin(
+            &mut state.listening,
+            session_token,
+            &mut state.request_ids,
+            effects,
+        );
     }
 }
 
@@ -319,13 +329,7 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             // it is also the one place the routine sync is offered.
             if was_accruing {
                 push_persist_listening(state, effects);
-                if let Some(session_token) = state.account.session_token() {
-                    state.listening.begin_threshold_sync(
-                        session_token,
-                        &mut state.request_ids,
-                        effects,
-                    );
-                }
+                begin_listening_sync(state, effects, ListeningLedger::begin_threshold_sync);
             }
         }
         Command::PlatformPlaybackStarted => {
@@ -390,7 +394,11 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 push_persist_listening(state, effects);
             }
         }
-        Command::BeginListeningSync { reason } => begin_listening_sync(state, effects, reason),
+        Command::BeginListeningSync { reason } => {
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(reason, token, ids, effects)
+            })
+        }
         Command::ResetListeningData { new_device_id } => {
             state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
