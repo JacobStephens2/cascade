@@ -114,19 +114,6 @@ pub struct AccountSnapshot {
     pub busy: bool,
 }
 
-impl AccountSnapshot {
-    fn from_state(state: &State) -> Self {
-        let account = &state.account;
-        let email = account.session.as_ref().map(|s| s.email.clone());
-        Self {
-            signed_in_label: email.as_ref().map(|e| format!("Syncing · {e}")),
-            email,
-            status_label: account.status.as_ref().map(|s| s.label()),
-            busy: account.busy(),
-        }
-    }
-}
-
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Snapshot {
@@ -238,7 +225,7 @@ impl Snapshot {
                 unsynced_ms: state.listening.unsynced_ms(),
                 total_label: format_listening_total(state.listening.displayed_total_ms()),
             },
-            account: AccountSnapshot::from_state(state),
+            account: state.account.snapshot(),
             tick_interval_ms: tick_interval_ms(state),
         }
     }

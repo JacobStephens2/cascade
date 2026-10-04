@@ -1008,6 +1008,47 @@ fn a_401_while_signed_out_is_an_ordinary_failure() {
     );
 }
 
+// ---- write order -----------------------------------------------------------
+//
+// Within one update the listening blob is written before the account blob, so
+// a crash between the two never leaves a deleted account's slot with no
+// session to answer for it (ADR 0001, decision 6).
+
+/// The persist effects in `effects`, in order, by blob.
+fn persist_order(effects: &[Effect]) -> Vec<&'static str> {
+    effects
+        .iter()
+        .filter_map(|e| match e {
+            Effect::PersistListening { .. } => Some("listening"),
+            Effect::PersistAccount { .. } => Some("account"),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn an_account_delete_writes_listening_before_the_account() {
+    let mut core = signed_in();
+    listen(&mut core, 2_000);
+    let id = start(&mut core, delete_account());
+    let effects = core.dispatch(bare_response(id, 204)).effects;
+    assert_eq!(persist_order(&effects), ["listening", "account"]);
+}
+
+#[test]
+fn a_401_writes_listening_before_the_account() {
+    let mut core = signed_in();
+    listen(&mut core, 2_000);
+    let id = request_id(&begin(&mut core, SyncReason::Refresh));
+    let effects = core.dispatch(bare_response(id, 401)).effects;
+    assert_eq!(persist_order(&effects), ["listening", "account"], "sync");
+
+    let mut core = signed_in();
+    let id = start(&mut core, delete_listening());
+    let effects = core.dispatch(bare_response(id, 401)).effects;
+    assert_eq!(persist_order(&effects), ["listening", "account"], "request");
+}
+
 // ---- wire shape ------------------------------------------------------------
 //
 // Every shell hand-writes these JSON shapes. Lock them.

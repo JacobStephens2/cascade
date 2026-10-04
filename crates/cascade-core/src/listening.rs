@@ -17,6 +17,9 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::effect::Effect;
+use crate::server::{parse_server_total, Request, RequestIds, StatusClass};
+
 /// Storage-schema version for the persisted listening blob. Separate from
 /// `SETTINGS_VERSION` because listening data lives in its own blob
 /// (`cascade.listening.v1`), distinct from user settings.
@@ -104,6 +107,19 @@ impl InFlight {
     }
 }
 
+/// How the PUT in flight settled.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Settled {
+    /// The server accepted it: the ledger moved forward and needs persisting.
+    Synced,
+    /// Not sent, no response, or any failure but a 401.
+    Failed,
+    /// The server rejected the session.
+    Unauthorized,
+    /// It was superseded, so its response was dropped.
+    Dropped,
+}
+
 impl Default for ListeningLedger {
     fn default() -> Self {
         Self {
@@ -159,79 +175,95 @@ impl ListeningLedger {
         self.device_total_ms = self.device_total_ms.saturating_add(delta);
     }
 
-    /// Decide whether to sync for a shell's `reason`, and if so what to send:
-    /// `(device_id, device_total_ms)`. Marks that total as in flight as
-    /// request `id`, so a second call returns `None` until
-    /// [`Self::sync_succeeded`] or [`Self::sync_failed`] settles it — the one
-    /// re-entrancy guard every shell shares.
-    pub fn begin_sync(&mut self, reason: SyncReason, id: u64) -> Option<(String, u64)> {
+    /// Sync for a shell's `reason` if there is anything to say: push this
+    /// slot's total under `session_token`, with a fresh id from `ids`, and
+    /// mark it in flight, so nothing more is pushed until [`Self::settle`]
+    /// settles it — the one re-entrancy guard every shell shares.
+    pub fn begin_sync(
+        &mut self,
+        reason: SyncReason,
+        session_token: String,
+        ids: &mut RequestIds,
+        effects: &mut Vec<Effect>,
+    ) {
         let worth_sending = match reason {
             SyncReason::Flush => self.unsynced_ms() > 0,
             SyncReason::Refresh => true,
         };
-        self.begin_sync_if(worth_sending, id)
+        self.begin_sync_if(worth_sending, session_token, ids, effects);
     }
 
     /// The core's own routine sync, checked on every tick that counts
-    /// listening: send only once at least [`LISTENING_SYNC_THRESHOLD_MS`] is
-    /// unsynced, counted past any failed PUT. Same result and in-flight guard
+    /// listening: push only once at least [`LISTENING_SYNC_THRESHOLD_MS`] is
+    /// unsynced, counted past any failed PUT. Same push and in-flight guard
     /// as [`Self::begin_sync`].
-    pub fn begin_threshold_sync(&mut self, id: u64) -> Option<(String, u64)> {
+    pub fn begin_threshold_sync(
+        &mut self,
+        session_token: String,
+        ids: &mut RequestIds,
+        effects: &mut Vec<Effect>,
+    ) {
         let worth_sending = self.unsent_ms() >= LISTENING_SYNC_THRESHOLD_MS;
-        self.begin_sync_if(worth_sending, id)
+        self.begin_sync_if(worth_sending, session_token, ids, effects);
     }
 
-    fn begin_sync_if(&mut self, worth_sending: bool, id: u64) -> Option<(String, u64)> {
-        if self.in_flight.is_some() {
-            return None;
+    fn begin_sync_if(
+        &mut self,
+        worth_sending: bool,
+        session_token: String,
+        ids: &mut RequestIds,
+        effects: &mut Vec<Effect>,
+    ) {
+        if self.in_flight.is_some() || !worth_sending {
+            return;
         }
-        let device_id = self.device_id.clone()?;
-        if !worth_sending {
-            return None;
-        }
+        let Some(device_id) = self.device_id.as_deref() else {
+            return;
+        };
+        let request = Request::push_listening(device_id, self.device_total_ms, session_token);
+        let id = ids.send(request, effects);
         self.in_flight = Some(InFlight::Sent {
             id,
             device_total_ms: self.device_total_ms,
         });
-        Some((device_id, self.device_total_ms))
     }
 
-    /// The in-flight PUT succeeded. The server has accepted exactly what was
-    /// sent — not whatever accrued while the request was out — and reports
-    /// `server_total_ms` as the cross-device aggregate. This only moves the
-    /// display baseline forward; it never touches `device_total_ms`, and is
-    /// monotonic so an out-of-order ack can't rewind the high-water mark.
-    /// Returns `false` (and changes nothing else) if no sync for the current
-    /// slot was in flight. The caller has already matched the response's id
-    /// to [`Self::in_flight`].
-    pub fn sync_succeeded(&mut self, server_total_ms: u64) -> bool {
+    /// Settle the PUT in flight with its response. The caller has already
+    /// matched the response's id with [`Self::awaits`].
+    ///
+    /// On success the server has accepted exactly what was sent — not
+    /// whatever accrued while the request was out — and reports the
+    /// cross-device aggregate. That only moves the display baseline forward;
+    /// it never touches `device_total_ms`, and is monotonic so an
+    /// out-of-order ack can't rewind the high-water mark. On failure nothing
+    /// was acknowledged: a flush or refresh may try again at once, and a
+    /// threshold sync once another threshold has accrued past what was sent.
+    /// A 2xx whose body does not parse is a failure. A superseded PUT only
+    /// frees the slot: its outcome refers to a slot or session already
+    /// replaced.
+    pub fn settle(&mut self, class: StatusClass, body: &str) -> Settled {
         let Some(InFlight::Sent {
             device_total_ms: sent,
             ..
         }) = self.in_flight.take()
         else {
-            return false;
+            return Settled::Dropped;
+        };
+        let server_total_ms = match class {
+            StatusClass::Success => parse_server_total(body),
+            StatusClass::Unauthorized | StatusClass::Failed => None,
+        };
+        let Some(server_total_ms) = server_total_ms else {
+            self.failed_through_ms = Some(sent);
+            return match class {
+                StatusClass::Unauthorized => Settled::Unauthorized,
+                StatusClass::Success | StatusClass::Failed => Settled::Failed,
+            };
         };
         self.synced_through_ms = self.synced_through_ms.max(sent);
         self.server_total_ms = Some(server_total_ms);
         self.failed_through_ms = None;
-        true
-    }
-
-    /// The in-flight PUT failed. Nothing was acknowledged; a flush or refresh
-    /// may try again at once, and a threshold sync once another threshold has
-    /// accrued past what was sent. Returns `false` if no sync for the current
-    /// slot was in flight, so a superseded request's failure means nothing.
-    pub fn sync_failed(&mut self) -> bool {
-        let Some(InFlight::Sent {
-            device_total_ms: sent,
-            ..
-        }) = self.in_flight.take()
-        else {
-            return false;
-        };
-        self.failed_through_ms = Some(sent);
-        true
+        Settled::Synced
     }
 
     /// Take `fallback` as this device's id if it doesn't have one yet.
@@ -351,12 +383,20 @@ pub fn format_listening_total(total_ms: u64) -> String {
 mod tests {
     use super::*;
 
+    /// Start a sync for `reason`, returning the effects it pushed.
+    fn begin(l: &mut ListeningLedger, reason: SyncReason, ids: &mut RequestIds) -> Vec<Effect> {
+        let mut effects = Vec::new();
+        l.begin_sync(reason, "token".into(), ids, &mut effects);
+        effects
+    }
+
     /// Send whatever is unsynced and have the server accept it.
     fn sync(l: &mut ListeningLedger, server_total_ms: u64) {
         l.device_id.get_or_insert_with(|| "device".into());
-        l.begin_sync(SyncReason::Refresh, 1)
-            .expect("nothing in flight");
-        assert!(l.sync_succeeded(server_total_ms));
+        let pushed = begin(l, SyncReason::Refresh, &mut RequestIds::default());
+        assert_eq!(pushed.len(), 1, "nothing in flight");
+        let body = format!(r#"{{"serverTotalMs":{server_total_ms}}}"#);
+        assert_eq!(l.settle(StatusClass::Success, &body), Settled::Synced);
     }
 
     #[test]
@@ -424,14 +464,40 @@ mod tests {
         l.accrue(4_000);
         sync(&mut l, 9_000);
         l.accrue(1_000);
-        l.begin_sync(SyncReason::Flush, 2)
-            .expect("nothing in flight");
+        let pushed = begin(&mut l, SyncReason::Flush, &mut RequestIds::default());
+        assert_eq!(pushed.len(), 1, "nothing in flight");
         l.forget_server();
         assert_eq!(l.server_total_ms, None);
-        assert_eq!(l.in_flight, Some(InFlight::Superseded { id: 2 }));
+        assert_eq!(l.in_flight, Some(InFlight::Superseded { id: 1 }));
         assert_eq!(l.device_total_ms, 5_000);
         assert_eq!(l.synced_through_ms, 4_000);
         assert_eq!(l.displayed_total_ms(), 5_000);
+    }
+
+    #[test]
+    fn settle_names_each_outcome() {
+        let mut ids = RequestIds::default();
+        let mut l = ListeningLedger {
+            device_id: Some("device".into()),
+            ..ListeningLedger::default()
+        };
+        l.accrue(1_000);
+        for (class, body, outcome) in [
+            (StatusClass::Failed, "", Settled::Failed),
+            (StatusClass::Success, "not json", Settled::Failed),
+            (StatusClass::Unauthorized, "", Settled::Unauthorized),
+        ] {
+            begin(&mut l, SyncReason::Refresh, &mut ids);
+            assert_eq!(l.settle(class, body), outcome, "{class:?} {body}");
+            assert_eq!(l.failed_through_ms, Some(1_000));
+            assert_eq!(l.in_flight, None);
+        }
+        begin(&mut l, SyncReason::Refresh, &mut ids);
+        l.forget_server();
+        let ok = r#"{"serverTotalMs":9000}"#;
+        assert_eq!(l.settle(StatusClass::Success, ok), Settled::Dropped);
+        assert_eq!(l.server_total_ms, None);
+        assert_eq!(l.in_flight, None);
     }
 
     #[test]
