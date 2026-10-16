@@ -17,6 +17,9 @@ final class AudioEngine {
 
     private var buffer: AVAudioPCMBuffer?
     private var assetLoaded = false
+    /// The stop that `pause()` runs once its fade-out finishes. `start()`
+    /// cancels it, so Play pressed mid-fade isn't silenced a moment later.
+    private var pendingStop: DispatchWorkItem?
 
     init() {
         engine.attach(player)
@@ -25,6 +28,8 @@ final class AudioEngine {
 
     /// Start (or resume) the loop at the given volume. Idempotent.
     func start(volumePercent: Int) {
+        pendingStop?.cancel()
+        pendingStop = nil
         do {
             try loadAssetIfNeeded()
             configureSessionForPlayback()
@@ -44,13 +49,25 @@ final class AudioEngine {
         }
     }
 
+    /// Quick fade so pause doesn't pop, then stop the whole engine, not just
+    /// the node. A route change (e.g. AirPods disconnecting back to the Mac's
+    /// speakers) can swap the output device under a running engine without an
+    /// `AVAudioEngineConfigurationChange`; the output unit keeps the old
+    /// device's max frames per slice and every render fails with
+    /// `kAudioUnitErr_TooManyFramesToProcess`, while `isRunning` stays true.
+    /// Stopping here makes the next `start()` re-initialize against whatever
+    /// device is current — the same reset a relaunch used to be needed for.
     func pause() {
-        // Quick fade so pause doesn't pop, then stop the node.
         setVolume(volumePercent: 0, rampMs: 300)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35) { [weak self] in
+        pendingStop?.cancel()
+        let stop = DispatchWorkItem { [weak self] in
             guard let self else { return }
             self.player.pause()
+            self.engine.stop()
+            self.pendingStop = nil
         }
+        pendingStop = stop
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.35, execute: stop)
     }
 
     func setVolume(volumePercent: Int, rampMs: Int = 80) {
