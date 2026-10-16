@@ -11,7 +11,7 @@ struct MenuBarRoot: View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Cascade")
                 .font(.headline)
-            Text(statusLine(snapshot: snapshot))
+            Text(snapshot.timer.statusLabel)
                 .font(.caption)
                 .foregroundStyle(.secondary)
 
@@ -53,9 +53,11 @@ struct MenuBarRoot: View {
                 .foregroundStyle(.secondary)
                 .tracking(2)
             HStack(spacing: 6) {
-                presetButton("30m") { store.dispatch(.startPomodoro(minutes: 30)) }
-                presetButton("60m") { store.dispatch(.startPomodoro(minutes: 60)) }
-                presetButton("8h") { store.dispatch(.startPomodoro(minutes: 480)) }
+                ForEach(snapshot.timerOptions.focusPresets, id: \.minutes) { preset in
+                    presetButton(preset.shortLabel) {
+                        store.dispatch(.startPomodoro(minutes: preset.minutes))
+                    }
+                }
             }
 
             Text("SLEEP TIMER")
@@ -63,12 +65,14 @@ struct MenuBarRoot: View {
                 .foregroundStyle(.secondary)
                 .tracking(2)
             HStack(spacing: 6) {
-                presetButton("15m") { store.dispatch(.startSleepTimer(minutes: 15)) }
-                presetButton("30m") { store.dispatch(.startSleepTimer(minutes: 30)) }
-                presetButton("1h") { store.dispatch(.startSleepTimer(minutes: 60)) }
+                ForEach(snapshot.timerOptions.sleepPresets, id: \.minutes) { preset in
+                    presetButton(preset.shortLabel) {
+                        store.dispatch(.startSleepTimer(minutes: preset.minutes))
+                    }
+                }
             }
 
-            if snapshot.timer.kind != .off {
+            if snapshot.timer.isActive {
                 Button("Cancel timer") { store.dispatch(.cancelTimer) }
                     .buttonStyle(.link)
             }
@@ -88,19 +92,6 @@ struct MenuBarRoot: View {
         }
         .padding(14)
         .frame(width: 280)
-    }
-
-    private func statusLine(snapshot: Snapshot) -> String {
-        switch snapshot.timer.kind {
-        case .off:
-            return snapshot.isPlaying ? "Playing · no timer" : "Paused"
-        case .sleep, .pomodoro:
-            return "\(snapshot.isPlaying ? "Playing" : "Paused") · \(snapshot.timer.remainingLabel) left"
-        case .stopwatch:
-            return "Stopwatch · \(snapshot.timer.remainingLabel)"
-        case .justCompleted:
-            return snapshot.timer.remainingLabel
-        }
     }
 
     @ViewBuilder

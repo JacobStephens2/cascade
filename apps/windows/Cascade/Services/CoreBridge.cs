@@ -23,9 +23,6 @@ public sealed class CoreBridge : IDisposable
     [DllImport(DllName, EntryPoint = "cascade_new", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr CascadeNew();
 
-    [DllImport(DllName, EntryPoint = "cascade_restore_or_new", CallingConvention = CallingConvention.Cdecl)]
-    private static extern IntPtr CascadeRestoreOrNew(IntPtr settingsJsonUtf8);
-
     [DllImport(DllName, EntryPoint = "cascade_snapshot", CallingConvention = CallingConvention.Cdecl)]
     private static extern IntPtr CascadeSnapshot(IntPtr handle);
 
@@ -43,24 +40,9 @@ public sealed class CoreBridge : IDisposable
     // a plain object monitor lock.
     private readonly object _lock = new();
 
-    public CoreBridge(string? persistedSettingsJson)
+    public CoreBridge()
     {
-        if (string.IsNullOrEmpty(persistedSettingsJson))
-        {
-            _handle = CascadeNew();
-        }
-        else
-        {
-            var utf8 = ToCStringUtf8(persistedSettingsJson);
-            try
-            {
-                _handle = CascadeRestoreOrNew(utf8);
-            }
-            finally
-            {
-                Marshal.FreeHGlobal(utf8);
-            }
-        }
+        _handle = CascadeNew();
         if (_handle == IntPtr.Zero)
         {
             throw new InvalidOperationException("cascade_new returned a null handle");

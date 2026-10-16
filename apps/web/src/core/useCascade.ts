@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import init, { CascadeCore } from "../wasm/cascade_wasm.js";
 import wasmUrl from "../wasm/cascade_wasm_bg.wasm?url";
 import { WebAudioEngine } from "../audio/WebAudioEngine";
+import { carryRequests } from "../sync/carrier";
 import type { Command, Effect, Snapshot, TimerKind } from "./types";
 
 const SETTINGS_STORAGE_KEY = "cascade.settings.v1";
@@ -14,11 +15,20 @@ const LISTENING_STORAGE_KEY = "cascade.listening.v1";
 // Where this shell kept its device id before the core owned it. Read once, as
 // the restore fallback, so an existing server slot carries over.
 const LEGACY_DEVICE_KEY = "cascade.device.v1";
+// The account blob, owned by the Rust core. Before the core held the account
+// this shell stored `{ sessionToken, email }` here; the core reads that shape
+// too, so the stored string is passed through unchanged.
+const ACCOUNT_STORAGE_KEY = "cascade.account.v1";
 const WATERFALL_URL = "/sounds/waterfall.ogg";
-// Fine cadence while a timer is counting; coarse cadence when we're only
-// accruing listening time during plain playback, to keep the loop cheap.
-const TICK_INTERVAL_MS = 250;
-const LISTENING_TICK_INTERVAL_MS = 1000;
+
+/** A stored string, or `""` if there is none or storage is unavailable. */
+function readStorage(key: string): string {
+  try {
+    return localStorage.getItem(key) ?? "";
+  } catch {
+    return "";
+  }
+}
 
 interface SessionState {
   isPlaying: boolean;
@@ -32,27 +42,29 @@ interface UseCascadeResult {
   ready: boolean;
   snapshot: Snapshot | null;
   loadError: string | null;
-  /** Dispatches and returns the effects of that one command, so a caller can
-   * act on an answer (e.g. `pushListening`) it asked for. */
-  dispatch: (command: Command) => Effect[];
+  /** Dispatches one command. Its request effects are carried like any
+   * dispatch's; `keepalive` lets them outlive a closing page. */
+  dispatch: (command: Command, options?: DispatchOptions) => void;
+}
+
+export interface DispatchOptions {
+  keepalive?: boolean;
 }
 
 /**
  * Owns the cascade-core WASM instance, the audio engine, the tick loop, and
  * the localStorage-backed settings persistence. The whole app reads from
- * `snapshot` and pushes commands through `dispatch`.
+ * `snapshot` and pushes commands through `dispatch`. Every dispatch, ticks
+ * included, hands its request effects to the one carrier, which settles them
+ * through this same dispatch.
  */
 export function useCascade(): UseCascadeResult {
   const coreRef = useRef<CascadeCore | null>(null);
   const audioRef = useRef<WebAudioEngine | null>(null);
   // Session captured from localStorage at boot (before any dispatch can
   // overwrite it), replayed once the core is ready.
-  const pendingRestoreRef = useRef<SessionState | null>(null);
-  const restoredRef = useRef(false);
-  // Listening blob captured at boot, replayed once into the core via
-  // `restoreListening` after it's ready.
-  const pendingListeningRef = useRef<string | null>(null);
-  const listeningRestoredRef = useRef(false);
+  const pendingSessionRef = useRef<SessionState | null>(null);
+  const sessionReplayedRef = useRef(false);
   const [snapshot, setSnapshot] = useState<Snapshot | null>(null);
   const [ready, setReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -67,37 +79,27 @@ export function useCascade(): UseCascadeResult {
         // Capture the live session now, before the persist effect can rewrite it.
         try {
           const sessionJson = localStorage.getItem(SESSION_STORAGE_KEY);
-          pendingRestoreRef.current = sessionJson
+          pendingSessionRef.current = sessionJson
             ? (JSON.parse(sessionJson) as SessionState)
             : null;
         } catch {
-          pendingRestoreRef.current = null;
+          pendingSessionRef.current = null;
         }
 
-        // Capture the listening ledger blob; it's restored once the core is up.
-        try {
-          pendingListeningRef.current = localStorage.getItem(
-            LISTENING_STORAGE_KEY,
-          );
-        } catch {
-          pendingListeningRef.current = null;
-        }
-
-        const savedJson = localStorage.getItem(SETTINGS_STORAGE_KEY);
-        let core: CascadeCore;
-        if (savedJson) {
-          try {
-            core = CascadeCore.restore(savedJson);
-          } catch (err) {
-            console.warn("Could not restore settings, starting fresh.", err);
-            core = new CascadeCore();
-          }
-        } else {
-          core = new CascadeCore();
-        }
-        coreRef.current = core;
+        // Boot is one step: a fresh core, then one `restore` carrying the
+        // persisted blobs (empty = none) and a fallback device id. The core
+        // ignores a missing/incompatible blob and only adopts the fallback id
+        // if the listening blob has none.
+        coreRef.current = new CascadeCore();
         audioRef.current = new WebAudioEngine(WATERFALL_URL);
-        setSnapshot(JSON.parse(core.snapshot()) as Snapshot);
+        dispatchInternal({
+          type: "restore",
+          settingsJson: readStorage(SETTINGS_STORAGE_KEY),
+          listeningJson: readStorage(LISTENING_STORAGE_KEY),
+          fallbackDeviceId:
+            readStorage(LEGACY_DEVICE_KEY) || crypto.randomUUID(),
+          accountJson: readStorage(ACCOUNT_STORAGE_KEY),
+        });
         setReady(true);
       } catch (err) {
         setLoadError(err instanceof Error ? err.message : String(err));
@@ -115,7 +117,7 @@ export function useCascade(): UseCascadeResult {
       switch (effect.type) {
         case "startPlayback":
           try {
-            await audio.start(effect.volumePercent);
+            await audio.start(effect.gain);
             queueMicrotask(() =>
               dispatchInternal({ type: "platformPlaybackStarted" }),
             );
@@ -132,7 +134,7 @@ export function useCascade(): UseCascadeResult {
           await audio.pause();
           break;
         case "setPlatformVolume":
-          audio.setVolume(effect.volumePercent);
+          audio.setVolume(effect.gain);
           break;
         case "persistSettings":
           try {
@@ -148,6 +150,14 @@ export function useCascade(): UseCascadeResult {
             console.warn("Could not persist listening data", err);
           }
           break;
+        case "persistAccount":
+          try {
+            if (effect.json) localStorage.setItem(ACCOUNT_STORAGE_KEY, effect.json);
+            else localStorage.removeItem(ACCOUNT_STORAGE_KEY);
+          } catch (err) {
+            console.warn("Could not persist the account", err);
+          }
+          break;
       }
     }
   }, []);
@@ -155,9 +165,9 @@ export function useCascade(): UseCascadeResult {
   // `dispatch` from inside async effects needs a stable reference; the
   // exported `dispatch` (below) just delegates.
   const dispatchInternal = useCallback(
-    (command: Command): Effect[] => {
+    (command: Command, options?: DispatchOptions): void => {
       const core = coreRef.current;
-      if (!core) return [];
+      if (!core) return;
       const updateJson = core.dispatch(JSON.stringify(command));
       const update = JSON.parse(updateJson) as {
         snapshot: Snapshot;
@@ -165,31 +175,22 @@ export function useCascade(): UseCascadeResult {
       };
       setSnapshot(update.snapshot);
       void runEffects(update.effects);
-      return update.effects;
+      carryRequests(update.effects, (outcome) => dispatchInternal(outcome), options);
     },
     [runEffects],
   );
 
   const dispatch = useCallback(
-    (command: Command) => dispatchInternal(command),
+    (command: Command, options?: DispatchOptions) =>
+      dispatchInternal(command, options),
     [dispatchInternal],
   );
 
-  // Tick loop. Runs while a timer is counting (fine cadence, so the readout is
-  // smooth) and also while audio is simply playing (coarse cadence, just to
-  // accrue listening time). When neither is true there's nothing to advance, so
-  // the loop stays parked.
-  const isPlaying = snapshot?.isPlaying ?? false;
-  const isTimerActive =
-    snapshot?.timer.kind === "sleep" ||
-    snapshot?.timer.kind === "pomodoro" ||
-    snapshot?.timer.kind === "stopwatch";
+  // Tick loop. The core decides the cadence (`tickIntervalMs`, 0 = parked);
+  // the shell only owns the clock. Restarts only when the interval changes.
+  const interval = snapshot?.tickIntervalMs ?? 0;
   useEffect(() => {
-    if (!ready) return;
-    if (!isTimerActive && !isPlaying) return;
-    const interval = isTimerActive
-      ? TICK_INTERVAL_MS
-      : LISTENING_TICK_INTERVAL_MS;
+    if (!ready || interval <= 0) return;
 
     let last = performance.now();
     let frame: number;
@@ -204,29 +205,7 @@ export function useCascade(): UseCascadeResult {
     };
     frame = window.setTimeout(tick, interval);
     return () => window.clearTimeout(frame);
-  }, [ready, isTimerActive, isPlaying, dispatchInternal]);
-
-  // Restore the listening ledger once, after the core is ready — always, even
-  // with no blob, because this is also where the core gets its device id. The
-  // core ignores a missing/incompatible blob, never lets a restore lower the
-  // live counter, and only adopts the fallback id if the blob has none.
-  useEffect(() => {
-    if (!ready || listeningRestoredRef.current) return;
-    listeningRestoredRef.current = true;
-    const json = pendingListeningRef.current ?? "";
-    pendingListeningRef.current = null;
-    let fallbackDeviceId: string | null = null;
-    try {
-      fallbackDeviceId = localStorage.getItem(LEGACY_DEVICE_KEY);
-    } catch {
-      // Storage unavailable — a fresh id is fine.
-    }
-    dispatchInternal({
-      type: "restoreListening",
-      json,
-      fallbackDeviceId: fallbackDeviceId ?? crypto.randomUUID(),
-    });
-  }, [ready, dispatchInternal]);
+  }, [ready, interval, dispatchInternal]);
 
   // Media Session: lets macOS route the keyboard's play/pause media key (and
   // Control Center / Now Playing) to the app. The OS decides whether to send
@@ -263,10 +242,10 @@ export function useCascade(): UseCascadeResult {
   // Restore the session (running timer/stopwatch + play state) once, after the
   // core is ready. Runs exactly once; the saved blob was captured at boot.
   useEffect(() => {
-    if (!ready || restoredRef.current) return;
-    restoredRef.current = true;
-    const r = pendingRestoreRef.current;
-    pendingRestoreRef.current = null;
+    if (!ready || sessionReplayedRef.current) return;
+    sessionReplayedRef.current = true;
+    const r = pendingSessionRef.current;
+    pendingSessionRef.current = null;
     if (!r) return;
 
     // Catch the stopwatch/countdown up for the time the page was gone.

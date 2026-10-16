@@ -9,23 +9,31 @@
 //! call returns an [`Update`] containing a fresh [`Snapshot`] (for rendering)
 //! and a list of [`Effect`]s (for the platform to execute).
 
+pub mod account;
 pub mod command;
 pub mod effect;
 pub mod listening;
+pub mod server;
 pub mod settings;
 pub mod snapshot;
 pub mod state;
 pub mod timer;
 
+pub use account::{PersistedAccount, ACCOUNT_VERSION};
 pub use command::Command;
 pub use effect::Effect;
 pub use listening::{
     InFlight, ListeningLedger, PersistedListening, SyncReason, LISTENING_SYNC_THRESHOLD_MS,
     LISTENING_VERSION, MAX_TICK_ACCRUAL_MS,
 };
+pub use server::HttpMethod;
 pub use settings::{PersistedSettings, SETTINGS_VERSION};
-pub use snapshot::{ListeningSnapshot, Snapshot, TimerSnapshot, TimerSnapshotKind};
+pub use snapshot::{
+    AccountSnapshot, ListeningSnapshot, Snapshot, TimerOptions, TimerSnapshot, TimerSnapshotKind,
+    PLAYBACK_TICK_INTERVAL_MS, TIMER_TICK_INTERVAL_MS,
+};
 pub use state::{PlaybackIntent, State, TimerMode};
+pub use timer::{TimerPreset, MAX_TIMER_MINUTES, MIN_TIMER_MINUTES};
 
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
@@ -41,16 +49,13 @@ pub struct Update {
 
 #[derive(Debug, Error)]
 pub enum CoreError {
-    #[error("settings JSON could not be parsed: {0}")]
-    BadSettings(String),
-    #[error("unsupported settings version {found} (expected {expected})")]
-    UnsupportedSettingsVersion { found: u32, expected: u32 },
     #[error("invalid command: {0}")]
     InvalidCommand(String),
 }
 
-/// The core. Construct with [`Core::new`] or [`Core::restore`], then drive it
-/// with [`Core::dispatch`].
+/// The core. Construct with [`Core::new`], restore persisted data by
+/// dispatching [`Command::Restore`] once, then drive it with
+/// [`Core::dispatch`].
 #[derive(Debug, Clone)]
 pub struct Core {
     state: State,
@@ -62,24 +67,6 @@ impl Core {
         Self {
             state: State::default(),
         }
-    }
-
-    /// Restore a session from previously persisted settings JSON.
-    ///
-    /// If the JSON is missing or fails to parse, the caller is expected to
-    /// fall back to [`Core::new`] — the core does not try to guess.
-    pub fn restore(settings_json: &str) -> Result<Self, CoreError> {
-        let persisted: PersistedSettings = serde_json::from_str(settings_json)
-            .map_err(|e| CoreError::BadSettings(e.to_string()))?;
-        if persisted.version != SETTINGS_VERSION {
-            return Err(CoreError::UnsupportedSettingsVersion {
-                found: persisted.version,
-                expected: SETTINGS_VERSION,
-            });
-        }
-        Ok(Self {
-            state: State::from_settings(persisted),
-        })
     }
 
     /// Render the current state as a [`Snapshot`] without dispatching a
@@ -136,15 +123,5 @@ mod tests {
             .effects
             .iter()
             .any(|e| matches!(e, Effect::PersistSettings { .. })));
-    }
-
-    #[test]
-    fn restore_round_trips_settings() {
-        let mut core = Core::new();
-        core.dispatch(Command::SetVolume { percent: 42 });
-        let persisted = core.state().to_settings();
-        let json = serde_json::to_string(&persisted).unwrap();
-        let restored = Core::restore(&json).unwrap();
-        assert_eq!(restored.snapshot().volume_percent, 42);
     }
 }

@@ -12,9 +12,11 @@ pub const SETTINGS_VERSION: u32 = 1;
 pub struct PersistedSettings {
     pub version: u32,
     pub volume_percent: u8,
-    /// Default sleep-timer length in minutes, or `None` if the user has not
-    /// chosen one. The platform may pre-fill the picker with this value.
+    /// Last-started sleep-timer length in minutes, or `None` if the user has
+    /// not chosen one. The snapshot's `timerOptions.customSleepMinutes`
+    /// pre-fills the custom field from it.
     pub default_sleep_minutes: Option<u32>,
-    /// Default pomodoro length in minutes (e.g. 30, 60, 480).
+    /// Last-started pomodoro length in minutes; pre-fills
+    /// `timerOptions.customFocusMinutes`.
     pub default_pomodoro_minutes: Option<u32>,
 }

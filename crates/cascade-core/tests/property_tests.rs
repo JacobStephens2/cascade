@@ -10,6 +10,13 @@ use proptest::prelude::*;
 const MAX_VOLUME: u8 = 100;
 const MS_PER_MIN: u64 = 60_000;
 
+/// Whether `gain` is the square-law curve applied to `percent`. Restated
+/// independently, so compared within float rounding rather than exactly.
+fn on_curve(gain: f32, percent: u8) -> bool {
+    let p = percent as f32 / 100.0;
+    (gain - p * p).abs() < 1e-6
+}
+
 /// A strategy that generates any command the platforms can dispatch, with
 /// ranges that comfortably exceed real usage (volume past 100, timers past a
 /// day, ticks up to an hour) so clamping/saturation is exercised.
@@ -32,7 +39,8 @@ fn command_strategy() -> impl Strategy<Value = Command> {
 
 proptest! {
     /// Volume is always a valid percentage, and the emitted platform-volume
-    /// effect carries the same clamped value the snapshot reports.
+    /// effect carries the curve applied to the clamped value, matching the
+    /// snapshot's output gain.
     #[test]
     fn volume_always_clamped(percent in any::<u8>()) {
         let mut core = Core::new();
@@ -40,10 +48,11 @@ proptest! {
         let clamped = percent.min(MAX_VOLUME);
         prop_assert_eq!(update.snapshot.volume_percent, clamped);
         let emitted = update.effects.iter().find_map(|e| match e {
-            Effect::SetPlatformVolume { volume_percent } => Some(*volume_percent),
+            Effect::SetPlatformVolume { gain } => Some(*gain),
             _ => None,
         });
-        prop_assert_eq!(emitted, Some(clamped));
+        prop_assert!(emitted.is_some_and(|gain| on_curve(gain, clamped)), "emitted {:?}", emitted);
+        prop_assert!(on_curve(update.snapshot.output_gain, clamped));
     }
 
     /// Any custom duration sets total = minutes * 60_000 ms, for both flavors.
@@ -115,7 +124,13 @@ proptest! {
 
         let persisted = core.state().to_settings();
         let json = serde_json::to_string(&persisted).expect("serialize");
-        let restored = Core::restore(&json).expect("restore");
+        let mut restored = Core::new();
+        restored.dispatch(Command::Restore {
+            settings_json: json,
+            listening_json: String::new(),
+            fallback_device_id: "d".into(),
+            account_json: String::new(),
+        });
 
         prop_assert_eq!(restored.snapshot().volume_percent, persisted.volume_percent);
         prop_assert_eq!(restored.state().default_sleep_minutes, persisted.default_sleep_minutes);
@@ -174,15 +189,32 @@ proptest! {
         prop_assert!(muted.snapshot.is_muted);
         prop_assert!(muted.snapshot.is_playing, "mute must not pause");
         prop_assert_eq!(muted.snapshot.timer.kind, timer_kind, "mute must not end the timer");
-        let zeroed = muted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 }));
+        let zeroed = muted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.0));
         prop_assert!(zeroed);
         // No pause effect was emitted.
         prop_assert!(!muted.effects.iter().any(|e| matches!(e, Effect::PausePlayback)));
 
         let unmuted = core.dispatch(Command::ToggleMute);
         prop_assert!(!unmuted.snapshot.is_muted);
-        let restored = unmuted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent } if *volume_percent == volume));
+        let restored = unmuted.effects.iter().any(|e| matches!(e, Effect::SetPlatformVolume { gain } if on_curve(*gain, volume)));
         prop_assert!(restored);
+    }
+
+    /// The core asks for ticks exactly when something needs time to pass: an
+    /// active timer (finely) or intended playback (coarsely, for accrual).
+    #[test]
+    fn ticks_requested_exactly_when_timer_active_or_playing(
+        cmds in prop::collection::vec(command_strategy(), 0..60),
+    ) {
+        let mut core = Core::new();
+        for cmd in cmds {
+            let s = core.dispatch(cmd).snapshot;
+            let timer_active = matches!(
+                s.timer.kind,
+                TimerSnapshotKind::Sleep | TimerSnapshotKind::Pomodoro | TimerSnapshotKind::Stopwatch
+            );
+            prop_assert_eq!(s.tick_interval_ms > 0, timer_active || s.is_playing);
+        }
     }
 
     /// Pausing — after any history — never starts playback and always lands paused.
@@ -200,53 +232,84 @@ proptest! {
     }
 }
 
+/// One step a shell (or the network) could produce: a command, or a response
+/// to a recent request — the latest, or one `back` requests before it, so
+/// stale and superseded ids are answered too.
+#[derive(Debug, Clone)]
+enum SyncStep {
+    Dispatch(Command),
+    Answer {
+        back: u64,
+        status: u16,
+        server_total_ms: i64,
+    },
+}
+
 /// Listening accrual interleaved with every step of the sync protocol, in any
 /// order a shell (or the network) could produce.
-fn sync_command_strategy() -> impl Strategy<Value = Command> {
+fn sync_step_strategy() -> impl Strategy<Value = SyncStep> {
     prop_oneof![
-        (0u64..=10_000).prop_map(|elapsed_ms| Command::Tick { elapsed_ms }),
-        Just(Command::BeginListeningSync {
-            reason: SyncReason::Threshold
-        }),
-        Just(Command::BeginListeningSync {
+        (0u64..=10_000).prop_map(|elapsed_ms| SyncStep::Dispatch(Command::Tick { elapsed_ms })),
+        Just(SyncStep::Dispatch(Command::BeginListeningSync {
             reason: SyncReason::Flush
-        }),
-        Just(Command::BeginListeningSync {
+        })),
+        Just(SyncStep::Dispatch(Command::BeginListeningSync {
             reason: SyncReason::Refresh
-        }),
-        any::<u64>()
-            .prop_map(|server_total_ms| Command::ListeningSyncSucceeded { server_total_ms }),
-        any::<bool>().prop_map(|unauthorized| Command::ListeningSyncFailed { unauthorized }),
-        Just(Command::ResetListeningData {
+        })),
+        (
+            0u64..3,
+            prop::sample::select(vec![0u16, 200, 204, 401, 500]),
+            any::<i64>(),
+        )
+            .prop_map(|(back, status, server_total_ms)| SyncStep::Answer {
+                back,
+                status,
+                server_total_ms,
+            }),
+        Just(SyncStep::Dispatch(Command::ResetListeningData {
             new_device_id: "rotated".into()
-        }),
+        })),
     ]
 }
 
 proptest! {
-    /// Whatever the order of ticks, syncs, acks, failures and resets, the
-    /// synced high-water mark never runs past what the device has actually
-    /// counted — so the server is never told a slot was delivered that wasn't
-    /// — and every push carries the live device id and total.
+    /// Whatever the order of ticks, syncs, responses, failures and resets,
+    /// the synced high-water mark never runs past what the device has
+    /// actually counted — so the server is never told a slot was delivered
+    /// that wasn't — and every push carries the live device id and total.
     #[test]
     fn synced_mark_never_exceeds_device_total(
-        cmds in prop::collection::vec(sync_command_strategy(), 1..80),
+        steps in prop::collection::vec(sync_step_strategy(), 1..80),
     ) {
         let mut core = Core::new();
-        core.dispatch(Command::RestoreListening {
-            json: String::new(),
+        core.dispatch(Command::Restore {
+            settings_json: String::new(),
+            listening_json: String::new(),
             fallback_device_id: "original".into(),
+            // Signed in, so the syncs this property exercises go out.
+            account_json: r#"{"sessionToken":"t","email":"a@b.c"}"#.into(),
         });
         core.dispatch(Command::Play);
         core.dispatch(Command::PlatformPlaybackStarted);
-        for cmd in cmds {
-            let update = core.dispatch(cmd);
+        let mut last_request: u64 = 0;
+        for step in steps {
+            let command = match step {
+                SyncStep::Dispatch(command) => command,
+                SyncStep::Answer { back, status, server_total_ms } => Command::ServerResponse {
+                    id: last_request.saturating_sub(back),
+                    status,
+                    body: format!(r#"{{"serverTotalMs":{server_total_ms}}}"#),
+                },
+            };
+            let update = core.dispatch(command);
             let l = &core.state().listening;
             prop_assert!(l.synced_through_ms <= l.device_total_ms);
             for e in &update.effects {
-                if let Effect::PushListening { device_id, device_total_ms } = e {
-                    prop_assert_eq!(Some(device_id), l.device_id.as_ref());
-                    prop_assert_eq!(*device_total_ms, l.device_total_ms);
+                if let Effect::ServerRequest { id, body: Some(body), .. } = e {
+                    last_request = *id;
+                    let body: serde_json::Value = serde_json::from_str(body).unwrap();
+                    prop_assert_eq!(body["deviceId"].as_str(), l.device_id.as_deref());
+                    prop_assert_eq!(body["deviceTotalMs"].as_u64(), Some(l.device_total_ms));
                 }
             }
         }

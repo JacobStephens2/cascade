@@ -66,8 +66,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.em
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import page.stephens.cascade.core.AccountSnapshot
 import page.stephens.cascade.core.TimerKind
-import page.stephens.cascade.sync.SyncUiState
+import page.stephens.cascade.core.TimerOptions
+import page.stephens.cascade.sync.syncAvailable
 
 private val PillShape = RoundedCornerShape(percent = 50)
 private val CardShape = RoundedCornerShape(14.dp)
@@ -75,7 +77,6 @@ private val CardShape = RoundedCornerShape(14.dp)
 @Composable
 fun CascadeScreen(viewModel: CascadeViewModel) {
     val snapshot by viewModel.snapshot.collectAsStateWithLifecycle()
-    val syncState by viewModel.syncState.collectAsStateWithLifecycle()
 
     Surface(modifier = Modifier.fillMaxSize(), color = CascadeColors.BgDeep) {
         Box(modifier = Modifier.fillMaxSize()) {
@@ -121,17 +122,19 @@ fun CascadeScreen(viewModel: CascadeViewModel) {
                     Spacer(Modifier.height(28.dp))
                     TimerControls(
                         activeKind = snapshot.timer.kind,
+                        isActive = snapshot.timer.isActive,
+                        options = snapshot.timerOptions,
                         onStartPomodoro = viewModel::startPomodoro,
                         onStartSleep = viewModel::startSleepTimer,
                         onStartStopwatch = viewModel::startStopwatch,
                         onCancel = viewModel::cancelTimer,
                     )
-                    if (syncState.available) {
+                    if (syncAvailable) {
                         Spacer(Modifier.height(28.dp))
                         AccountControls(
-                            state = syncState,
-                            onSignIn = viewModel::signIn,
-                            onCompleteSignIn = viewModel::completeSignInFromLink,
+                            account = snapshot.account,
+                            onRequestSignInLink = viewModel::requestSignInLink,
+                            onSubmitSignInLink = viewModel::submitSignInLink,
                             onSignOut = viewModel::signOut,
                             onDeleteData = viewModel::deleteListeningData,
                             onDeleteAccount = viewModel::deleteAccount,
@@ -443,6 +446,8 @@ private fun ListeningStats(
 @Composable
 private fun TimerControls(
     activeKind: TimerKind,
+    isActive: Boolean,
+    options: TimerOptions,
     onStartPomodoro: (Int) -> Unit,
     onStartSleep: (Int) -> Unit,
     onStartStopwatch: () -> Unit,
@@ -452,14 +457,11 @@ private fun TimerControls(
         SectionLabel("Focus session")
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(30, 60, 480).forEach { minutes ->
-                val label = if (minutes < 60) "${minutes}m"
-                            else if (minutes == 60) "1h"
-                            else "${minutes / 60}h"
+            options.focusPresets.forEach { preset ->
                 PillChip(
-                    text = label,
+                    text = preset.shortLabel,
                     selected = activeKind == TimerKind.POMODORO,
-                    onClick = { onStartPomodoro(minutes) },
+                    onClick = { onStartPomodoro(preset.minutes) },
                 )
             }
         }
@@ -467,11 +469,11 @@ private fun TimerControls(
         SectionLabel("Sleep timer")
         Spacer(Modifier.height(8.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            listOf(15, 30, 60).forEach { minutes ->
+            options.sleepPresets.forEach { preset ->
                 PillChip(
-                    text = "${minutes}m",
+                    text = preset.shortLabel,
                     selected = activeKind == TimerKind.SLEEP,
-                    onClick = { onStartSleep(minutes) },
+                    onClick = { onStartSleep(preset.minutes) },
                 )
             }
         }
@@ -486,9 +488,13 @@ private fun TimerControls(
         )
 
         Spacer(Modifier.height(18.dp))
-        CustomDurationSection(onStartPomodoro = onStartPomodoro, onStartSleep = onStartSleep)
+        CustomDurationSection(
+            options = options,
+            onStartPomodoro = onStartPomodoro,
+            onStartSleep = onStartSleep,
+        )
 
-        if (activeKind != TimerKind.OFF) {
+        if (isActive) {
             Spacer(Modifier.height(14.dp))
             PillChip(text = "Cancel timer", selected = false, onClick = onCancel)
         }
@@ -497,12 +503,17 @@ private fun TimerControls(
 
 @Composable
 private fun CustomDurationSection(
+    options: TimerOptions,
     onStartPomodoro: (Int) -> Unit,
     onStartSleep: (Int) -> Unit,
 ) {
-    var minutesText by remember { mutableStateOf("45") }
     // false = Focus session, true = Sleep timer.
     var sleepMode by remember { mutableStateOf(false) }
+    // null until the user types, so the field shows the core's pre-fill for
+    // the chosen mode.
+    var typedText by remember { mutableStateOf<String?>(null) }
+    val minutesText = typedText
+        ?: (if (sleepMode) options.customSleepMinutes else options.customFocusMinutes).toString()
 
     SectionLabel("Custom")
     Spacer(Modifier.height(8.dp))
@@ -510,8 +521,8 @@ private fun CustomDurationSection(
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        PillChip(text = "Focus", selected = !sleepMode, onClick = { sleepMode = false })
-        PillChip(text = "Sleep", selected = sleepMode, onClick = { sleepMode = true })
+        PillChip(text = "Focus", selected = !sleepMode, onClick = { sleepMode = false; typedText = null })
+        PillChip(text = "Sleep", selected = sleepMode, onClick = { sleepMode = true; typedText = null })
     }
     Spacer(Modifier.height(8.dp))
     Row(
@@ -520,7 +531,9 @@ private fun CustomDurationSection(
     ) {
         OutlinedTextField(
             value = minutesText,
-            onValueChange = { new -> minutesText = new.filter { it.isDigit() }.take(4) },
+            onValueChange = { new ->
+                typedText = new.filter { it.isDigit() }.take(options.maxMinutes.toString().length)
+            },
             label = { Text("Minutes") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -529,8 +542,10 @@ private fun CustomDurationSection(
         Button(
             shape = PillShape,
             onClick = {
+                // Only a positive whole number crosses; the core clamps the rest.
                 val m = minutesText.toIntOrNull() ?: return@Button
-                if (m in 1..1440) {
+                if (m > 0) {
+                    typedText = null
                     if (sleepMode) onStartSleep(m) else onStartPomodoro(m)
                 }
             },
@@ -540,11 +555,12 @@ private fun CustomDurationSection(
     }
 }
 
+/** The core holds the account; this renders its snapshot and sends its commands. */
 @Composable
 private fun AccountControls(
-    state: SyncUiState,
-    onSignIn: (String) -> Unit,
-    onCompleteSignIn: (String) -> Unit,
+    account: AccountSnapshot,
+    onRequestSignInLink: (String) -> Unit,
+    onSubmitSignInLink: (String) -> Unit,
     onSignOut: () -> Unit,
     onDeleteData: () -> Unit,
     onDeleteAccount: () -> Unit,
@@ -556,9 +572,9 @@ private fun AccountControls(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        val account = state.account
-        if (account != null) {
-            SectionLabel("Syncing · ${account.email}")
+        val signedInLabel = account.signedInLabel
+        if (signedInLabel != null) {
+            SectionLabel(signedInLabel)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = onSignOut) { Text("Sign out") }
                 TextButton(onClick = { showManage = !showManage }) { Text("Manage data") }
@@ -566,11 +582,11 @@ private fun AccountControls(
             if (showManage) {
                 TextButton(
                     onClick = onDeleteData,
-                    enabled = !state.busy,
+                    enabled = !account.busy,
                 ) { Text("Delete listening data", color = CascadeColors.Danger) }
                 TextButton(
                     onClick = onDeleteAccount,
-                    enabled = !state.busy,
+                    enabled = !account.busy,
                 ) { Text("Delete account", color = CascadeColors.Danger) }
             }
         } else {
@@ -599,8 +615,8 @@ private fun AccountControls(
                 )
                 Button(
                     shape = PillShape,
-                    onClick = { if (email.isNotBlank()) onSignIn(email.trim()) },
-                    enabled = !state.busy && email.isNotBlank(),
+                    onClick = { onRequestSignInLink(email) },
+                    enabled = !account.busy,
                 ) { Text("Email link") }
             }
             Spacer(Modifier.height(8.dp))
@@ -620,12 +636,12 @@ private fun AccountControls(
                 )
                 Button(
                     shape = PillShape,
-                    onClick = { if (link.isNotBlank()) onCompleteSignIn(link.trim()) },
-                    enabled = !state.busy && link.isNotBlank(),
+                    onClick = { onSubmitSignInLink(link) },
+                    enabled = !account.busy,
                 ) { Text("Sign in") }
             }
         }
-        state.status?.let {
+        account.statusLabel?.let {
             Spacer(Modifier.height(8.dp))
             Text(
                 it,

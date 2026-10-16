@@ -1,29 +1,23 @@
 import Foundation
 
-/// Maps a full `Snapshot` to the watch-friendly wire format. Pre-formats the
-/// status line so the watch never has to localize or do date math.
+/// Maps a full `Snapshot` to the watch-friendly wire format. The core already
+/// formats the status line, so the watch never has to localize or do date math.
 enum WatchSnapshotMapper {
     static func map(_ snapshot: Snapshot) -> PhoneSnapshotForWatch {
-        let statusLine: String
-        switch snapshot.timer.kind {
-        case .off:
-            statusLine = snapshot.isMuted ? "Muted · no timer"
-                : (snapshot.isPlaying ? "Playing · no timer" : "Paused")
-        case .sleep, .pomodoro:
-            let verb = snapshot.isMuted ? "Muted" : (snapshot.isPlaying ? "Playing" : "Paused")
-            statusLine = "\(verb) · \(snapshot.timer.remainingLabel) left"
-        case .stopwatch:
-            statusLine = "Stopwatch · \(snapshot.timer.remainingLabel)"
-        case .justCompleted:
-            statusLine = snapshot.timer.remainingLabel
-        }
         return PhoneSnapshotForWatch(
             isPlaying: snapshot.isPlaying,
             volumePercent: snapshot.volumePercent,
             isMuted: snapshot.isMuted,
-            statusLine: statusLine,
+            statusLine: snapshot.timer.statusLabel,
             timerProgress: max(0, min(1, snapshot.timer.progress)),
-            timerRemainingLabel: snapshot.timer.remainingLabel
+            timerRemainingLabel: snapshot.timer.remainingLabel,
+            isTimerActive: snapshot.timer.isActive,
+            focusPresets: snapshot.timerOptions.focusPresets.map {
+                WatchTimerPreset(minutes: $0.minutes, label: $0.label)
+            },
+            minMinutes: snapshot.timerOptions.minMinutes,
+            maxMinutes: snapshot.timerOptions.maxMinutes,
+            customFocusMinutes: snapshot.timerOptions.customFocusMinutes
         )
     }
 }

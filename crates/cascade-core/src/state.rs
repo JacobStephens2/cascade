@@ -6,11 +6,13 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::account::{Account, AccountChange};
 use crate::command::Command;
 use crate::effect::Effect;
-use crate::listening::{ListeningLedger, PersistedListening};
+use crate::listening::{ListeningLedger, PersistedListening, Settled, SyncReason};
+use crate::server::{RequestIds, StatusClass};
 use crate::settings::{PersistedSettings, SETTINGS_VERSION};
-use crate::timer::{ActiveTimer, TimerKind};
+use crate::timer::{clamp_minutes, ActiveTimer, TimerKind, DEFAULT_TIMER_MINUTES};
 
 pub const DEFAULT_VOLUME_PERCENT: u8 = 60;
 pub const MIN_VOLUME_PERCENT: u8 = 0;
@@ -43,8 +45,9 @@ pub struct State {
     /// and always cleared when playback starts or stops.
     pub muted: bool,
     pub active_timer: Option<ActiveTimer>,
-    /// Set on the tick that an active timer hit zero, cleared on the next
-    /// dispatch. Surfaces in snapshots as
+    /// Set on the tick that an active timer hit zero, and cleared only by a
+    /// command that changes playback intent or the timer (see
+    /// [`clears_timer_completion`]). Surfaces in snapshots as
     /// [`crate::TimerSnapshotKind::JustCompleted`].
     pub timer_just_completed: Option<TimerKind>,
     pub default_sleep_minutes: Option<u32>,
@@ -56,8 +59,16 @@ pub struct State {
     /// (intent says Playing, audio never started) accrues nothing.
     pub audio_confirmed_playing: bool,
     /// Listening-time ledger. Restored from its own blob via
-    /// [`Command::RestoreListening`], not from settings.
+    /// [`Command::Restore`], separately from settings.
     pub listening: ListeningLedger,
+    /// The optional sign-in. Restored from its own blob via
+    /// [`Command::Restore`]'s `account_json`.
+    pub account: Account,
+    /// Where every [`Effect::ServerRequest`] gets its id.
+    request_ids: RequestIds,
+    /// Whether [`Command::Restore`] has already run. Only the first restore
+    /// takes effect, so a replayed stale blob can't undo a later reset.
+    restored: bool,
 }
 
 impl Default for State {
@@ -68,29 +79,25 @@ impl Default for State {
             muted: false,
             active_timer: None,
             timer_just_completed: None,
-            default_sleep_minutes: Some(30),
-            default_pomodoro_minutes: Some(30),
+            default_sleep_minutes: Some(DEFAULT_TIMER_MINUTES),
+            default_pomodoro_minutes: Some(DEFAULT_TIMER_MINUTES),
             last_error: None,
             audio_confirmed_playing: false,
             listening: ListeningLedger::default(),
+            account: Account::default(),
+            request_ids: RequestIds::default(),
+            restored: false,
         }
     }
 }
 
 impl State {
-    pub fn from_settings(s: PersistedSettings) -> Self {
-        Self {
-            intent: PlaybackIntent::Paused,
-            volume_percent: Some(clamp_volume(s.volume_percent)),
-            muted: false,
-            active_timer: None,
-            timer_just_completed: None,
-            default_sleep_minutes: s.default_sleep_minutes,
-            default_pomodoro_minutes: s.default_pomodoro_minutes,
-            last_error: None,
-            audio_confirmed_playing: false,
-            listening: ListeningLedger::default(),
-        }
+    /// Take the persisted fields from `s`. Playback intent, timers and mute
+    /// are live-session state and stay as they are.
+    pub fn apply_settings(&mut self, s: &PersistedSettings) {
+        self.volume_percent = Some(clamp_volume(s.volume_percent));
+        self.default_sleep_minutes = s.default_sleep_minutes;
+        self.default_pomodoro_minutes = s.default_pomodoro_minutes;
     }
 
     pub fn to_settings(&self) -> PersistedSettings {
@@ -106,15 +113,24 @@ impl State {
         self.volume_percent.unwrap_or(DEFAULT_VOLUME_PERCENT)
     }
 
-    /// The volume the platform should actually output right now: zero while
-    /// muted, otherwise the user's chosen level.
-    pub fn output_volume(&self) -> u8 {
+    /// The gain the shell should actually output right now, 0.0–1.0: zero
+    /// while muted, otherwise the user's chosen level through the perceptual
+    /// curve.
+    pub fn output_gain(&self) -> f32 {
         if self.muted {
-            0
+            0.0
         } else {
-            self.effective_volume()
+            percent_to_gain(self.effective_volume())
         }
     }
+}
+
+/// The perceptual (square-law) volume curve: gain = (percent / 100)². The
+/// square is taken on integers so the one rounding step gives the shortest
+/// float (60 % → 0.36, not 0.36000002).
+fn percent_to_gain(percent: u8) -> f32 {
+    let p = u32::from(percent);
+    (p * p) as f32 / 10_000.0
 }
 
 fn clamp_volume(v: u8) -> u8 {
@@ -133,17 +149,110 @@ fn push_persist_listening(state: &State, effects: &mut Vec<Effect>) {
     }
 }
 
+fn push_persist_account(state: &State, effects: &mut Vec<Effect>) {
+    effects.push(Effect::PersistAccount {
+        json: state.account.to_json(),
+    });
+}
+
+/// Carry an account transition through to listening and storage. The one
+/// place the order of those writes is decided: within one update the
+/// listening blob is written before the account blob, so a crash between the
+/// two never leaves a deleted account's slot with no session to answer for it
+/// (ADR 0001, decision 6).
+fn apply_account_change(state: &mut State, change: AccountChange, effects: &mut Vec<Effect>) {
+    match change {
+        AccountChange::SignedIn { replaced } => {
+            // Signing in over another account: nothing of its total may show.
+            if replaced {
+                state.listening.forget_server();
+                push_persist_listening(state, effects);
+            }
+            push_persist_account(state, effects);
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(SyncReason::Refresh, token, ids, effects)
+            });
+        }
+        AccountChange::SignedOut => {
+            state.listening.forget_server();
+            push_persist_listening(state, effects);
+            push_persist_account(state, effects);
+        }
+        AccountChange::ListeningDeleted { new_device_id } => {
+            state.listening.reset(new_device_id);
+            push_persist_listening(state, effects);
+        }
+        AccountChange::AccountDeleted { new_device_id } => {
+            // The reset forgets the server total and supersedes any in-flight
+            // sync too, so the slot and the sign-out share one listening write.
+            state.listening.reset(new_device_id);
+            push_persist_listening(state, effects);
+            push_persist_account(state, effects);
+        }
+    }
+}
+
+/// Offer a listening sync if signed in: `begin` is handed the session token
+/// and the id source, and the ledger decides whether to push.
+fn begin_listening_sync(
+    state: &mut State,
+    effects: &mut Vec<Effect>,
+    begin: impl FnOnce(&mut ListeningLedger, String, &mut RequestIds, &mut Vec<Effect>),
+) {
+    if let Some(session_token) = state.account.session_token() {
+        begin(
+            &mut state.listening,
+            session_token,
+            &mut state.request_ids,
+            effects,
+        );
+    }
+}
+
 /// Whether a tick should count as listening: tracking on, audio *confirmed*
 /// playing (not merely intended), and not muted.
 fn is_accruing(state: &State) -> bool {
     state.listening.tracking_enabled && state.audio_confirmed_playing && !state.muted
 }
 
+/// Whether `command` replaces a finished timer's message. Only the user's
+/// playback and timer commands do: background traffic (ticks, sync and account
+/// settles, platform reports) and small adjustments (volume, mute) leave it on
+/// screen, since after expiry nothing else would ever show it.
+/// Exhaustive on purpose, so a new command has to choose.
+fn clears_timer_completion(command: &Command) -> bool {
+    match command {
+        Command::Play
+        | Command::Pause
+        | Command::TogglePlayback
+        | Command::StartSleepTimer { .. }
+        | Command::StartPomodoro { .. }
+        | Command::StartStopwatch
+        | Command::CancelTimer => true,
+        Command::SetVolume { .. }
+        | Command::ToggleMute
+        | Command::Tick { .. }
+        | Command::PlatformPlaybackStarted
+        | Command::PlatformPlaybackPaused
+        | Command::PlatformPlaybackError { .. }
+        | Command::SetListeningTracking { .. }
+        | Command::Restore { .. }
+        | Command::BeginListeningSync { .. }
+        | Command::ResetListeningData { .. }
+        | Command::RequestSignInLink { .. }
+        | Command::SubmitSignInLink { .. }
+        | Command::SignOut
+        | Command::DeleteListeningData { .. }
+        | Command::DeleteAccount { .. }
+        | Command::ServerResponse { .. } => false,
+    }
+}
+
 /// The reducer. Mutates `state` and appends to `effects`.
 pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
-    // Every dispatch starts by clearing the one-shot `just completed` flag so
-    // the JustCompleted state is visible for exactly one snapshot.
-    state.timer_just_completed = None;
+    if clears_timer_completion(&command) {
+        state.timer_just_completed = None;
+    }
 
     match command {
         Command::Play => start_playback(state, effects),
@@ -160,36 +269,32 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.volume_percent = Some(v);
             // Adjusting the slider unmutes — the intuitive behavior.
             state.muted = false;
-            effects.push(Effect::SetPlatformVolume { volume_percent: v });
+            effects.push(Effect::SetPlatformVolume {
+                gain: state.output_gain(),
+            });
             push_persist(state, effects);
         }
         Command::ToggleMute => {
             state.muted = !state.muted;
             effects.push(Effect::SetPlatformVolume {
-                volume_percent: state.output_volume(),
+                gain: state.output_gain(),
             });
         }
         Command::StartSleepTimer { minutes } => {
-            if minutes == 0 {
-                state.active_timer = None;
-            } else {
-                state.active_timer = Some(ActiveTimer::start(TimerKind::Sleep, minutes));
-                state.default_sleep_minutes = Some(minutes);
-                push_persist(state, effects);
-            }
+            let minutes = clamp_minutes(minutes);
+            state.active_timer = Some(ActiveTimer::start(TimerKind::Sleep, minutes));
+            state.default_sleep_minutes = Some(minutes);
+            push_persist(state, effects);
         }
         Command::StartPomodoro { minutes } => {
-            if minutes == 0 {
-                state.active_timer = None;
-            } else {
-                state.active_timer = Some(ActiveTimer::start(TimerKind::Pomodoro, minutes));
-                state.default_pomodoro_minutes = Some(minutes);
-                // Pomodoro implies "start playing now if not already".
-                if !state.intent.is_playing() {
-                    start_playback(state, effects);
-                }
-                push_persist(state, effects);
+            let minutes = clamp_minutes(minutes);
+            state.active_timer = Some(ActiveTimer::start(TimerKind::Pomodoro, minutes));
+            state.default_pomodoro_minutes = Some(minutes);
+            // Pomodoro implies "start playing now if not already".
+            if !state.intent.is_playing() {
+                start_playback(state, effects);
             }
+            push_persist(state, effects);
         }
         Command::StartStopwatch => {
             // Count-up timer; replaces any countdown, leaves playback alone.
@@ -219,9 +324,12 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
                 }
             }
             // Persist the new total on the tick we actually counted something,
-            // so a process kill loses at most one tick of listening.
+            // so a process kill loses at most one tick of listening. Only a
+            // counted tick can bring the unsynced total to the threshold, so
+            // it is also the one place the routine sync is offered.
             if was_accruing {
                 push_persist_listening(state, effects);
+                begin_listening_sync(state, effects, ListeningLedger::begin_threshold_sync);
             }
         }
         Command::PlatformPlaybackStarted => {
@@ -247,14 +355,25 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             state.listening.tracking_enabled = enabled;
             push_persist_listening(state, effects);
         }
-        Command::RestoreListening {
-            json,
+        Command::Restore {
+            settings_json,
+            listening_json,
             fallback_device_id,
+            account_json,
         } => {
-            // The shell hands back the opaque blob it stored. A missing or
-            // unparseable/unknown-version blob is ignored — restore must never
-            // lower a live counter, and the defaults are already correct.
-            if let Ok(restored) = serde_json::from_str::<PersistedListening>(&json) {
+            if state.restored {
+                return;
+            }
+            state.restored = true;
+            // The shell hands back the opaque blobs it stored. A missing or
+            // unparseable/unknown-version blob is ignored — the defaults are
+            // already correct, and restore must never lower a live counter.
+            if let Ok(settings) = serde_json::from_str::<PersistedSettings>(&settings_json) {
+                if settings.version == SETTINGS_VERSION {
+                    state.apply_settings(&settings);
+                }
+            }
+            if let Ok(restored) = serde_json::from_str::<PersistedListening>(&listening_json) {
                 if restored.version == crate::listening::LISTENING_VERSION {
                     let ledger = ListeningLedger::from_persisted(&restored);
                     state.listening.restore_from(&ledger);
@@ -262,32 +381,71 @@ pub fn reduce(state: &mut State, command: Command, effects: &mut Vec<Effect>) {
             }
             // Persist a newly adopted id right away, so the next launch sees
             // the same slot rather than another fallback.
-            if state.listening.adopt_device_id(fallback_device_id) {
+            let mut persist_listening = state.listening.adopt_device_id(fallback_device_id);
+            state.account.restore(&account_json);
+            // A cross-device total with no account behind it is left over
+            // from a sign-out before the core held the account.
+            if state.account.session_token().is_none() && state.listening.server_total_ms.is_some()
+            {
+                state.listening.forget_server();
+                persist_listening = true;
+            }
+            if persist_listening {
                 push_persist_listening(state, effects);
             }
         }
         Command::BeginListeningSync { reason } => {
-            if let Some((device_id, device_total_ms)) = state.listening.begin_sync(reason) {
-                effects.push(Effect::PushListening {
-                    device_id,
-                    device_total_ms,
-                });
-            }
-        }
-        Command::ListeningSyncSucceeded { server_total_ms } => {
-            if state.listening.sync_succeeded(server_total_ms) {
-                push_persist_listening(state, effects);
-            }
-        }
-        Command::ListeningSyncFailed { unauthorized } => {
-            state.listening.sync_failed();
-            if unauthorized {
-                effects.push(Effect::ClearSession);
-            }
+            begin_listening_sync(state, effects, |l, token, ids, effects| {
+                l.begin_sync(reason, token, ids, effects)
+            })
         }
         Command::ResetListeningData { new_device_id } => {
             state.listening.reset(new_device_id);
             push_persist_listening(state, effects);
+        }
+
+        Command::RequestSignInLink { email, platform } => state.account.request_sign_in_link(
+            &email,
+            platform.as_deref(),
+            &mut state.request_ids,
+            effects,
+        ),
+        Command::SubmitSignInLink { input } => {
+            state
+                .account
+                .submit_sign_in_link(&input, &mut state.request_ids, effects)
+        }
+        Command::DeleteListeningData { new_device_id } => {
+            state
+                .account
+                .delete_listening(new_device_id, &mut state.request_ids, effects)
+        }
+        Command::DeleteAccount { new_device_id } => {
+            state
+                .account
+                .delete_account(new_device_id, &mut state.request_ids, effects)
+        }
+        Command::SignOut => {
+            if let Some(change) = state.account.sign_out(&mut state.request_ids, effects) {
+                apply_account_change(state, change, effects);
+            }
+        }
+        Command::ServerResponse { id, status, body } => {
+            let class = StatusClass::of(status);
+            if state.account.awaits(id) {
+                if let Some(change) = state.account.settle(class, &body) {
+                    apply_account_change(state, change, effects);
+                }
+            } else if state.listening.awaits(id) {
+                match state.listening.settle(class, &body) {
+                    Settled::Synced => push_persist_listening(state, effects),
+                    Settled::Unauthorized => {
+                        let change = state.account.expire();
+                        apply_account_change(state, change, effects);
+                    }
+                    Settled::Failed | Settled::Dropped => {}
+                }
+            }
         }
     }
 }
@@ -300,7 +458,7 @@ fn start_playback(state: &mut State, effects: &mut Vec<Effect>) {
     // Never start muted — a fresh play is always audible.
     state.muted = false;
     effects.push(Effect::StartPlayback {
-        volume_percent: state.effective_volume(),
+        gain: state.output_gain(),
     });
     push_persist(state, effects);
 }
@@ -362,7 +520,7 @@ mod tests {
         assert!(s.active_timer.is_some(), "mute must not cancel the timer");
         assert!(muted
             .iter()
-            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 0 })));
+            .any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.0)));
 
         // Timer keeps counting while muted.
         dispatch(&mut s, Command::Tick { elapsed_ms: 60_000 });
@@ -373,7 +531,7 @@ mod tests {
         assert!(!s.muted);
         assert!(unmuted
             .iter()
-            .any(|e| matches!(e, Effect::SetPlatformVolume { volume_percent: 80 })));
+            .any(|e| matches!(e, Effect::SetPlatformVolume { gain } if *gain == 0.64)));
     }
 
     #[test]
@@ -405,9 +563,7 @@ mod tests {
         assert_eq!(s.volume_percent, Some(100));
         assert!(effects.iter().any(|e| matches!(
             e,
-            Effect::SetPlatformVolume {
-                volume_percent: 100
-            }
+            Effect::SetPlatformVolume { gain } if *gain == 1.0
         )));
         assert!(effects
             .iter()
@@ -467,13 +623,16 @@ mod tests {
     }
 
     #[test]
-    fn just_completed_clears_on_next_dispatch() {
+    fn just_completed_stays_until_the_user_acts() {
         let mut s = State::default();
         dispatch(&mut s, Command::StartPomodoro { minutes: 1 });
         dispatch(&mut s, Command::Tick { elapsed_ms: 60_001 });
         assert_eq!(s.timer_just_completed, Some(TimerKind::Pomodoro));
-        // Any subsequent dispatch (even another Tick) clears the flag.
+        // Ticks and platform reports leave it; pressing play clears it.
         dispatch(&mut s, Command::Tick { elapsed_ms: 1_000 });
+        dispatch(&mut s, Command::PlatformPlaybackPaused);
+        assert_eq!(s.timer_just_completed, Some(TimerKind::Pomodoro));
+        dispatch(&mut s, Command::Play);
         assert!(s.timer_just_completed.is_none());
     }
 
@@ -599,9 +758,11 @@ mod tests {
         .unwrap();
         dispatch(
             &mut s,
-            Command::RestoreListening {
-                json: blob,
+            Command::Restore {
+                settings_json: String::new(),
+                listening_json: blob,
                 fallback_device_id: "fallback".into(),
+                account_json: r#"{"sessionToken":"t","email":"a@b.c"}"#.into(),
             },
         );
         assert_eq!(s.listening.device_total_ms, 7_200_000);

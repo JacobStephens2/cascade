@@ -524,19 +524,6 @@ public convenience init() {
     }
 
     
-    /**
-     * Restore from previously persisted settings JSON. Returns a fresh-default
-     * bridge if the JSON cannot be parsed — the caller is expected to log /
-     * surface the error and move on, not get stuck in a startup loop.
-     */
-public static func restoreOrNew(settingsJson: String) -> CascadeBridge  {
-    return try!  FfiConverterTypeCascadeBridge_lift(try! rustCall() {
-    uniffi_cascade_uniffi_fn_constructor_cascadebridge_restore_or_new(
-        FfiConverterString.lower(settingsJson),$0
-    )
-})
-}
-    
 
     
     /**
@@ -725,9 +712,6 @@ private let initializationResult: InitializationResult = {
         return InitializationResult.apiChecksumMismatch
     }
     if (uniffi_cascade_uniffi_checksum_constructor_cascadebridge_new() != 23673) {
-        return InitializationResult.apiChecksumMismatch
-    }
-    if (uniffi_cascade_uniffi_checksum_constructor_cascadebridge_restore_or_new() != 63132) {
         return InitializationResult.apiChecksumMismatch
     }
 

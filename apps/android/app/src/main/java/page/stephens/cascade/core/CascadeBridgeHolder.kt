@@ -4,12 +4,14 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.channels.ReceiveChannel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import page.stephens.cascade.settings.SettingsStore
+import page.stephens.cascade.sync.AccountStore
 import uniffi.cascade_uniffi.CascadeBridge
 import java.util.UUID
 
@@ -20,13 +22,13 @@ import java.util.UUID
  * The bridge itself is thread-safe (Rust `Mutex` inside), so we can dispatch
  * from any coroutine context.
  *
- * [legacyDeviceId] reads the device id older builds stored in the shell. It is
- * offered to the core once, at restore, so an existing server slot carries over;
- * the core owns the id from then on.
+ * [accountStore] holds the core's account blob, and the device id older builds
+ * stored in the shell. That id is offered to the core once, at restore, so an
+ * existing server slot carries over; the core owns the id from then on.
  */
 class CascadeBridgeHolder(
     private val settingsStore: SettingsStore,
-    private val legacyDeviceId: suspend () -> String?,
+    private val accountStore: AccountStore,
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -39,62 +41,82 @@ class CascadeBridgeHolder(
     }
     private val dispatchLock = Any()
 
-    private val bridge: CascadeBridge = run {
-        // Block once during app startup to load persisted settings. The reads
-        // are local DataStore IO and complete in single-digit ms; doing this
-        // async would just mean the first render shows defaults.
-        val json = runBlocking { settingsStore.read() }
-        if (json.isNullOrEmpty()) CascadeBridge() else CascadeBridge.restoreOrNew(json)
+    /** Server requests from every dispatch, in the order the core produced
+     *  them, for the one request carrier (SyncManager). A channel rather than a
+     *  StateFlow, so none is overwritten or dropped: each is received, and so
+     *  settled, exactly once — whether a tick, a playback report, a UI command
+     *  or a settle produced it. */
+    private val _requests = Channel<Effect.ServerRequest>(Channel.UNLIMITED)
+    val requests: ReceiveChannel<Effect.ServerRequest> = _requests
+
+    private val bridge = CascadeBridge()
+
+    /** Boot is one step: restore the persisted blobs (empty = none) and the
+     *  fallback device id in a single dispatch. Blocks once during app startup;
+     *  the reads are local DataStore IO and complete in single-digit ms, and
+     *  doing this async would just mean the first render shows defaults. */
+    private val boot: Update = run {
+        val restore = runBlocking {
+            Command.Restore(
+                settingsJson = settingsStore.read().orEmpty(),
+                listeningJson = settingsStore.readListening().orEmpty(),
+                fallbackDeviceId = accountStore.legacyDeviceId() ?: UUID.randomUUID().toString(),
+                accountJson = accountStore.read(),
+            )
+        }
+        send(restore)
     }
 
-    private val _snapshot = MutableStateFlow(cascadeJson.decodeFromString<Snapshot>(bridge.snapshot()))
+    private val _snapshot = MutableStateFlow(boot.snapshot)
     val snapshot: StateFlow<Snapshot> = _snapshot.asStateFlow()
 
     /** Playback effects from the most recent dispatch that had any —
      *  PlaybackController collects this. */
-    private val _effects = MutableStateFlow<List<Effect>>(emptyList())
+    private val _effects = MutableStateFlow(forHandlers(boot.effects))
     val effects: StateFlow<List<Effect>> = _effects.asStateFlow()
 
-    init {
-        // Restore the listening ledger once at startup — always, even with no
-        // blob, because the core owns the device id and needs a fallback to
-        // adopt when the blob has none. The core ignores a missing/incompatible
-        // blob and never lets a restore lower the counter. (Declared after
-        // [_effects]: the restore can emit PersistListening.)
-        val listeningJson = runBlocking { settingsStore.readListening() }.orEmpty()
-        val fallbackDeviceId = runBlocking { legacyDeviceId() } ?: UUID.randomUUID().toString()
-        dispatch(Command.RestoreListening(listeningJson, fallbackDeviceId))
+    /** Synchronous dispatch. Updates the snapshot, hands playback effects to
+     *  the handlers via [effects] and request effects to the carrier via
+     *  [requests]. */
+    fun dispatch(command: Command) {
+        // Locked so writes and requests are queued in the same order the core
+        // produced them, even when dispatches race in from different threads.
+        synchronized(dispatchLock) {
+            val update = send(command)
+            _snapshot.value = update.snapshot
+            val handled = forHandlers(update.effects)
+            if (handled.isNotEmpty()) _effects.value = handled
+        }
     }
 
-    /** Synchronous dispatch. Updates the snapshot and returns this update's
-     *  effects, so a caller can act on the ones it asked for (e.g. the sync
-     *  loop reading PushListening). Effect handlers also receive them via
-     *  [effects]. */
-    fun dispatch(command: Command): List<Effect> = synchronized(dispatchLock) {
-        // Locked so writes are queued in the same order the core produced them,
-        // even when dispatches race in from different threads.
+    /** Run [command] through the core and queue its persist and request effects. */
+    private fun send(command: Command): Update {
         val commandJson = cascadeJson.encodeToString(Command.serializer(), command)
-        val updateJson = bridge.dispatch(commandJson)
-        val update = cascadeJson.decodeFromString<Update>(updateJson)
-        _snapshot.value = update.snapshot
-        // Persist any settings effect immediately — DataStore handles its
-        // own coalescing, so flooding it on every slider tick is fine.
+        val update = cascadeJson.decodeFromString<Update>(bridge.dispatch(commandJson))
+        // Persist immediately — DataStore handles its own coalescing, so
+        // flooding it on every slider tick is fine.
         for (effect in update.effects) {
             when (effect) {
                 is Effect.PersistSettings -> writes.trySend { settingsStore.write(effect.json) }
                 is Effect.PersistListening -> writes.trySend { settingsStore.writeListening(effect.json) }
+                is Effect.PersistAccount -> writes.trySend { accountStore.write(effect.json) }
+                is Effect.ServerRequest -> _requests.trySend(effect)
                 else -> {}
             }
         }
-        // Publish only what the effect handlers act on. [effects] is a StateFlow
-        // and keeps just the latest value, so the sync loop's per-snapshot
-        // BeginListeningSync must not replace a StartPlayback before it's
-        // applied. Sync effects reach their caller via the return value.
-        val forHandlers = update.effects.filter {
-            it !is Effect.PersistSettings && it !is Effect.PersistListening &&
-                it !is Effect.PushListening && it != Effect.ClearSession
+        return update
+    }
+
+    /** Only what the effect handlers act on. [effects] is a StateFlow and keeps
+     *  just the latest value, so a dispatch with only persist or request
+     *  effects (a tick's push, a sync settle) must not replace a StartPlayback
+     *  before it's applied. Persist effects are written and request effects
+     *  queued in [send]. */
+    private fun forHandlers(effects: List<Effect>): List<Effect> = effects.filter {
+        when (it) {
+            is Effect.PersistSettings, is Effect.PersistListening, is Effect.PersistAccount -> false
+            is Effect.ServerRequest -> false
+            else -> true
         }
-        if (forHandlers.isNotEmpty()) _effects.value = forHandlers
-        update.effects
     }
 }

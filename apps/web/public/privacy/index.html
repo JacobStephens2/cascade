@@ -8,7 +8,7 @@
     <title>Cascade — Privacy Policy</title>
     <meta
       name="description"
-      content="Cascade's privacy policy: no analytics, no ads, no tracking. Cascade stores nothing on its servers unless you choose to create an account to sync your listening time."
+      content="Cascade's privacy policy: no ads or analytics. Optional accounts sync listening totals across devices."
     />
     <style>
       :root {
@@ -115,9 +115,6 @@
       footer a { color: var(--ink-dim); text-decoration: none; }
       footer a:hover { color: var(--ink); }
     </style>
-    <!-- Umami (self-hosted) -->
-    <script defer src="https://analytics.stephens.page/script.js" data-website-id="7aba9409-28f9-41ad-bc23-c706fc115f41" data-domains="cascade.stephens.page"></script>
-    <script defer src="https://analytics.stephens.page/recorder.js" data-website-id="7aba9409-28f9-41ad-bc23-c706fc115f41"></script>
   </head>
   <body>
     <div class="wrap">
@@ -127,20 +124,19 @@
       </header>
 
       <h1>Privacy Policy</h1>
-      <p class="updated">Last updated: June 5, 2026</p>
+      <p class="updated">Last updated: September 30, 2026</p>
 
       <p class="tldr">
-        <strong>Short version:</strong> Cascade has no analytics, no trackers,
-        and no ads, and <strong>nothing you do is stored on our servers unless
-        you choose to create an account</strong>. If you do create one, the only
-        thing it ever holds is a single number: how much time you've spent
-        listening. There is no record of <em>when</em> you listened.
+        <strong>Short version:</strong> Cascade has no ads or analytics. Playback
+        works without an account, and your listening total stays on your device.
+        If you create an account, Cascade stores your email address and a running
+        listening total for each device so your total can sync across devices.
       </p>
 
       <h2>Without an account</h2>
       <p>
-        You can use every part of Cascade without an account, and most people
-        will. In that mode Cascade collects nothing and contacts no server about
+        You can play the waterfall, use timers, and keep a local listening total
+        without an account. In that mode Cascade collects nothing and contacts no server about
         you. There is no analytics and no advertising. Your preferences and your
         listening time live only on your own device.
       </p>
@@ -162,38 +158,35 @@
         times you listened, how long any individual session was, or anything
         about what you were doing. By default that number stays on your device
         like the rest of your settings, and you can turn the whole feature off in
-        the app's settings at any time.
+        the app at any time.
       </p>
 
       <h2>Cascade accounts (optional)</h2>
       <p>
         If you want your listening total to follow you across devices &mdash;
         your phone, your laptop, the desktop app &mdash; you can create a Cascade
-        account. This is the only situation in which Cascade stores anything on a
-        server. You sign in with your email address: we send you a one-time sign-in
-        link, and there is no password to store. The server then holds:
+        account. You sign in with your email address: we send you a one-time
+        sign-in link, and there is no password to store. The server then holds:
       </p>
       <ul>
-        <li>your email address, used only to sign you in; and</li>
-        <li>
-          your cumulative listening time &mdash; the same single number described
-          above, totalled across your devices.
-        </li>
+        <li>your email address, used to sign you in;</li>
+        <li>a random identifier and cumulative listening total for each device;</li>
+        <li>one-time sign-in and session token hashes; and</li>
+        <li>account, session, and last-sync timestamps used to operate the service.</li>
       </ul>
       <p>
-        That is the entire contents of an account. Because the server stores only
-        an aggregate total and never timestamps or per-session entries, it is not
-        possible to reconstruct when or how you used the app from it. We do not
-        sell or share this data, and there is no analytics or advertising
-        attached to it.
+        Cascade does not store individual playback sessions or a listening
+        history. The service can see your running totals and the last time each
+        device synced, but cannot reconstruct a session-by-session history. We
+        do not sell or share this account data or use it for advertising.
       </p>
 
       <h2>Deleting your data</h2>
       <p>
-        You can sign out at any time, which stops syncing and leaves nothing
-        behind on the device. From your account you can also delete your listening
+        You can sign out at any time, which stops syncing. Your local settings and
+        listening total remain on your device. From your account you can also delete your listening
         data or delete the account entirely; deleting the account removes your
-        email address and your stored total from the server. You remain free to
+        email address, device totals, and active sessions from the server. You remain free to
         keep using Cascade without an account afterward.
       </p>
 
@@ -203,8 +196,8 @@
         the waterfall audio recording &mdash; from
         <code>cascade.stephens.page</code>. The native Windows, Android, and Apple
         builds play their bundled audio and integrate with your operating
-        system's media controls. None of these builds send any usage, telemetry,
-        or advertising data. The <em>only</em> network calls Cascade makes about
+        system's media controls. None of these builds send telemetry or
+        advertising data. The <em>only</em> network calls Cascade makes about
         you are the ones you trigger by creating and using an account: requesting
         a sign-in link and syncing your listening total. If you never create an
         account, none of those calls happen.

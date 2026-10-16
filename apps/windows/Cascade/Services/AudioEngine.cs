@@ -16,6 +16,9 @@ namespace Cascade.Services;
 ///
 /// SystemMediaTransportControls is wired through the same MediaPlayer
 /// instance — see <see cref="SmtcController"/>.
+///
+/// The core hands us the final gain (0–1, mute and curve already applied);
+/// we write it to <c>MediaPlayer.Volume</c> as given.
 /// </summary>
 public sealed class AudioEngine : IDisposable
 {
@@ -49,25 +52,16 @@ public sealed class AudioEngine : IDisposable
     private static void OnMediaFailed(MediaPlayer sender, MediaPlayerFailedEventArgs args) =>
         Debug.WriteLine($"[Cascade] MediaFailed: {args.Error} - {args.ErrorMessage}");
 
-    public void Start(int volumePercent)
+    public void Start(double gain)
     {
         EnsureLoaded();
-        _player.Volume = PerceptualVolume(volumePercent);
+        _player.Volume = gain;
         _player.Play();
     }
 
     public void Pause() => _player.Pause();
 
-    public void SetVolume(int volumePercent) =>
-        _player.Volume = PerceptualVolume(volumePercent);
-
-    /// <summary>Square-law curve so 50% feels like ~half loudness. Matches the
-    /// web shell.</summary>
-    private static double PerceptualVolume(int percent)
-    {
-        var clamped = Math.Clamp(percent, 0, 100) / 100.0;
-        return clamped * clamped;
-    }
+    public void SetVolume(double gain) => _player.Volume = gain;
 
     public void Dispose()
     {

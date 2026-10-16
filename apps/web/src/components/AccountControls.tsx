@@ -1,11 +1,19 @@
 import { useState } from "react";
+import type { AccountSnapshot } from "../core/types";
 import type { SyncState } from "../sync/useSync";
 
 /**
  * Optional account controls for syncing listening time across devices. Renders
  * nothing when no sync backend is configured — the app still tracks locally.
+ * The core holds the account; this renders its snapshot and sends its commands.
  */
-export function AccountControls({ sync }: { sync: SyncState }) {
+export function AccountControls({
+  account,
+  sync,
+}: {
+  account: AccountSnapshot;
+  sync: SyncState;
+}) {
   const [email, setEmail] = useState("");
   const [showManage, setShowManage] = useState(false);
 
@@ -13,14 +21,14 @@ export function AccountControls({ sync }: { sync: SyncState }) {
 
   return (
     <div className="account">
-      {sync.account ? (
+      {account.signedInLabel ? (
         <div className="account__signed-in">
-          <span className="account__email">Syncing · {sync.account.email}</span>
+          <span className="account__email">{account.signedInLabel}</span>
           <div className="account__row">
             <button
               type="button"
               className="account__link"
-              onClick={() => void sync.signOut()}
+              onClick={sync.signOut}
             >
               Sign out
             </button>
@@ -37,10 +45,10 @@ export function AccountControls({ sync }: { sync: SyncState }) {
               <button
                 type="button"
                 className="account__danger"
-                disabled={sync.busy}
+                disabled={account.busy}
                 onClick={() => {
                   if (confirm("Delete your synced listening data? This can't be undone."))
-                    void sync.deleteData();
+                    sync.deleteListeningData();
                 }}
               >
                 Delete listening data
@@ -48,10 +56,10 @@ export function AccountControls({ sync }: { sync: SyncState }) {
               <button
                 type="button"
                 className="account__danger"
-                disabled={sync.busy}
+                disabled={account.busy}
                 onClick={() => {
                   if (confirm("Delete your account and all synced data? This can't be undone."))
-                    void sync.deleteAccount();
+                    sync.deleteAccount();
                 }}
               >
                 Delete account
@@ -64,7 +72,7 @@ export function AccountControls({ sync }: { sync: SyncState }) {
           className="account__signin"
           onSubmit={(e) => {
             e.preventDefault();
-            if (email.trim()) void sync.signIn(email.trim());
+            sync.requestSignInLink(email);
           }}
         >
           <label className="account__caption" htmlFor="account-email">
@@ -84,18 +92,25 @@ export function AccountControls({ sync }: { sync: SyncState }) {
             <button
               type="submit"
               className="account__submit"
-              disabled={sync.busy || !email.trim()}
+              disabled={account.busy}
             >
               Email me a link
             </button>
           </div>
         </form>
       )}
-      {sync.status && <p className="account__status">{sync.status}</p>}
+      {account.statusLabel && (
+        <p className="account__status">{account.statusLabel}</p>
+      )}
       {sync.desktopHandoff && (
-        <a className="account__link" href={sync.desktopHandoff}>
-          Open the Cascade app to finish signing in
-        </a>
+        <>
+          <p className="account__status">
+            Opening the Cascade app to finish signing in…
+          </p>
+          <a className="account__link" href={sync.desktopHandoff}>
+            Open the Cascade app to finish signing in
+          </a>
+        </>
       )}
     </div>
   );

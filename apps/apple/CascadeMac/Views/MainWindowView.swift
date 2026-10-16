@@ -181,26 +181,29 @@ private enum CustomMode: String, CaseIterable, Identifiable {
 
 private struct TimerControls: View {
     @Environment(AppStore.self) private var store
-    @State private var customMinutesText: String = "45"
+    /// `nil` until the user types, so the field shows the core's pre-fill
+    /// for the chosen mode.
+    @State private var typedMinutes: String?
     @State private var showCustom = false
     @State private var customMode: CustomMode = .focus
+
+    private var options: TimerOptions { store.snapshot.timerOptions }
+
+    private var customMinutesText: String {
+        typedMinutes
+            ?? String(customMode == .focus ? options.customFocusMinutes : options.customSleepMinutes)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             section(
                 title: "Focus session",
-                presets: [30, 60, 480],
-                labelFor: { mins in
-                    if mins < 60 { return "\(mins) min" }
-                    if mins == 60 { return "1 hr" }
-                    return "\(mins / 60) hr"
-                },
+                presets: options.focusPresets,
                 action: { store.dispatch(.startPomodoro(minutes: $0)) }
             )
             section(
                 title: "Sleep timer",
-                presets: [15, 30, 60],
-                labelFor: { "\($0) min" },
+                presets: options.sleepPresets,
                 action: { store.dispatch(.startSleepTimer(minutes: $0)) }
             )
             VStack(alignment: .leading, spacing: 6) {
@@ -221,12 +224,19 @@ private struct TimerControls: View {
                     .pickerStyle(.segmented)
                     .labelsHidden()
                     .frame(maxWidth: 200)
+                    .onChange(of: customMode) { typedMinutes = nil }
                     HStack {
-                        TextField("Minutes", text: $customMinutesText)
+                        TextField(
+                            "Minutes",
+                            text: Binding(get: { customMinutesText }, set: { typedMinutes = $0 })
+                        )
                             .frame(maxWidth: 80)
                             .textFieldStyle(.roundedBorder)
                         Button(customMode == .focus ? "Start focus" : "Start sleep") {
-                            if let m = Int(customMinutesText), m > 0, m <= 1440 {
+                            // Only a positive whole number crosses; the core
+                            // clamps it into the limits.
+                            if let m = Int(customMinutesText), m > 0 {
+                                typedMinutes = nil
                                 switch customMode {
                                 case .focus: store.dispatch(.startPomodoro(minutes: m))
                                 case .sleep: store.dispatch(.startSleepTimer(minutes: m))
@@ -241,7 +251,7 @@ private struct TimerControls: View {
             HStack {
                 Button(showCustom ? "Hide custom" : "Custom…") { showCustom.toggle() }
                     .buttonStyle(.link)
-                if store.snapshot.timer.kind != .off {
+                if store.snapshot.timer.isActive {
                     Spacer()
                     Button("Cancel timer") { store.dispatch(.cancelTimer) }
                         .buttonStyle(.link)
@@ -253,8 +263,7 @@ private struct TimerControls: View {
     @ViewBuilder
     private func section(
         title: String,
-        presets: [Int],
-        labelFor: @escaping (Int) -> String,
+        presets: [TimerPreset],
         action: @escaping (Int) -> Void
     ) -> some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -263,8 +272,8 @@ private struct TimerControls: View {
                 .foregroundStyle(.secondary)
                 .tracking(2)
             HStack(spacing: 8) {
-                ForEach(presets, id: \.self) { mins in
-                    Button(labelFor(mins)) { action(mins) }
+                ForEach(presets, id: \.minutes) { preset in
+                    Button(preset.label) { action(preset.minutes) }
                         .buttonStyle(.bordered)
                         .controlSize(.regular)
                 }

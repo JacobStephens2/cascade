@@ -28,20 +28,10 @@ impl CascadeCore {
         Self { inner: Core::new() }
     }
 
-    /// Restore from previously persisted settings JSON. Throws if the JSON is
-    /// unparseable or comes from an incompatible settings version.
-    #[wasm_bindgen]
-    pub fn restore(settings_json: &str) -> Result<CascadeCore, JsError> {
-        Core::restore(settings_json)
-            .map(|inner| CascadeCore { inner })
-            .map_err(|e| JsError::new(&e.to_string()))
-    }
-
     /// Render the current snapshot as JSON.
     #[wasm_bindgen]
     pub fn snapshot(&self) -> Result<String, JsValue> {
-        serde_json::to_string(&self.inner.snapshot())
-            .map_err(|e| JsValue::from_str(&e.to_string()))
+        serde_json::to_string(&self.inner.snapshot()).map_err(|e| JsValue::from_str(&e.to_string()))
     }
 
     /// Dispatch a [`Command`] (JSON in, JSON-encoded `Update` out).
