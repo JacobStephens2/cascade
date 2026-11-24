@@ -4,6 +4,16 @@ import wasm from "vite-plugin-wasm";
 import topLevelAwait from "vite-plugin-top-level-await";
 import { VitePWA } from "vite-plugin-pwa";
 
+// Pathnames Workbox matches against `pathname + search`. These static pages
+// must not be answered with the player shell. /auth is the sign-in page:
+// the shell would redeem its single-use token instead of showing it.
+export const navigateFallbackDenylist = [
+  /^\/apps/,
+  /^\/downloads/,
+  /^\/privacy/,
+  /^\/auth/,
+];
+
 export default defineConfig({
   plugins: [
     react(),
@@ -47,7 +57,7 @@ export default defineConfig({
         // Static pages, not SPA routes. Keep the navigation fallback from
         // serving the app shell for them so repeat (service-worker) visitors
         // get the real pages, not the player.
-        navigateFallbackDenylist: [/^\/apps/, /^\/downloads/, /^\/privacy/],
+        navigateFallbackDenylist,
       },
     }),
   ],
