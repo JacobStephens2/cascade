@@ -59,10 +59,12 @@ jobs:
 
       - name: Rsync dist to the server
         run: |
+          # The deploy key is forced to `rrsync -wo /var/www/cascade.stephens.page/apps/web/dist`,
+          # so the destination is relative to that folder.
           rsync -az --delete \
             -e "ssh -i $HOME/.ssh/id_ed25519 -o IdentitiesOnly=yes" \
             apps/web/dist/ \
-            "jacob@${{ secrets.DEPLOY_HOST }}:/var/www/cascade.stephens.page/apps/web/dist/"
+            "jacob@${{ secrets.DEPLOY_HOST }}:./"
 
       - name: Smoke-check the live site
         run: |
