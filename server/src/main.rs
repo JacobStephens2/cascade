@@ -159,6 +159,23 @@ async fn metrics(State(state): State<AppState>) -> String {
     state.metrics_handle.render()
 }
 
+/// Map a request method to a bounded Prometheus label value.
+/// Anything outside the fixed set is recorded as `other` so a custom
+/// method token on a matched path (Axum's 405 fallback runs inside
+/// `track_metrics`) cannot create a new series per token.
+fn method_label(method: &Method) -> &'static str {
+    match *method {
+        Method::GET => "GET",
+        Method::HEAD => "HEAD",
+        Method::POST => "POST",
+        Method::PUT => "PUT",
+        Method::PATCH => "PATCH",
+        Method::DELETE => "DELETE",
+        Method::OPTIONS => "OPTIONS",
+        _ => "other",
+    }
+}
+
 /// Count every API request and record its latency, labelled by the matched
 /// route template (not the raw path) so label cardinality stays bounded.
 async fn track_metrics(req: Request, next: Next) -> Response {
@@ -173,7 +190,7 @@ async fn track_metrics(req: Request, next: Next) -> Response {
     let response = next.run(req).await;
 
     let labels = [
-        ("method", method.to_string()),
+        ("method", method_label(&method).to_owned()),
         ("path", path),
         ("status", response.status().as_u16().to_string()),
     ];
@@ -488,5 +505,93 @@ mod tests {
     #[test]
     fn tokens_are_unique() {
         assert_ne!(generate_token(), generate_token());
+    }
+
+    #[test]
+    fn method_label_bounds_cardinality() {
+        for (method, expected) in [
+            (Method::GET, "GET"),
+            (Method::HEAD, "HEAD"),
+            (Method::POST, "POST"),
+            (Method::PUT, "PUT"),
+            (Method::PATCH, "PATCH"),
+            (Method::DELETE, "DELETE"),
+            (Method::OPTIONS, "OPTIONS"),
+        ] {
+            assert_eq!(method_label(&method), expected);
+        }
+        assert_eq!(method_label(&Method::TRACE), "other");
+        assert_eq!(method_label(&Method::CONNECT), "other");
+        assert_eq!(
+            method_label(&Method::from_bytes(b"BREW").expect("custom method")),
+            "other"
+        );
+    }
+
+    #[tokio::test]
+    async fn unknown_method_on_matched_path_is_counted_as_other() {
+        use std::io::{Read as _, Write as _};
+        use std::sync::OnceLock;
+
+        static HANDLE: OnceLock<PrometheusHandle> = OnceLock::new();
+        let handle = HANDLE.get_or_init(|| {
+            PrometheusBuilder::new()
+                .install_recorder()
+                .expect("install test metrics recorder")
+        });
+
+        let app = Router::new()
+            .route("/health", get(health))
+            .route_layer(middleware::from_fn(track_metrics));
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0")
+            .await
+            .expect("bind test listener");
+        let addr = listener.local_addr().expect("test listener addr");
+        let server = tokio::spawn(async move {
+            let _ = axum::serve(listener, app).await;
+        });
+
+        // The blocking client must not run on the async runtime thread that
+        // also drives the test server.
+        let response = tokio::task::spawn_blocking(move || {
+            let mut stream = std::net::TcpStream::connect(addr).expect("connect to test server");
+            stream
+                .set_read_timeout(Some(std::time::Duration::from_secs(5)))
+                .expect("set read timeout");
+            stream
+                .write_all(
+                    format!("BREW /health HTTP/1.1\r\nHost: {addr}\r\nConnection: close\r\n\r\n")
+                        .as_bytes(),
+                )
+                .expect("write request");
+            let mut response = String::new();
+            stream.read_to_string(&mut response).expect("read response");
+            response
+        })
+        .await
+        .expect("client task");
+        server.abort();
+
+        assert!(
+            response.contains("405"),
+            "expected 405 for unknown method, got: {response}"
+        );
+        let rendered = handle.render();
+        assert!(
+            rendered.contains("cascade_sync_http_requests_total"),
+            "expected request counter in exposition, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("method=\"other\""),
+            "expected method=\"other\" in exposition, got: {rendered}"
+        );
+        assert!(
+            rendered.contains("path=\"/health\""),
+            "expected path=\"/health\" in exposition, got: {rendered}"
+        );
+        assert!(
+            !rendered.contains("BREW"),
+            "custom method token must not appear as a label value, got: {rendered}"
+        );
     }
 }
