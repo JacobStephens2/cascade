@@ -49,9 +49,9 @@ export function useSync(
     [dispatch],
   );
 
-  // Finish a magic-link sign-in if the URL carries a token (in its
-  // fragment; see parseSignInLink), then remove the fragment from the
-  // address bar. Waits for the core, which holds the account.
+  // Finish a magic-link sign-in if the URL carries a token (see
+  // parseSignInLink), then clean the token out of the address bar. Waits
+  // for the core, which holds the account.
   const linkHandledRef = useRef(false);
   useEffect(() => {
     if (!syncAvailable || !coreReady || linkHandledRef.current) return;

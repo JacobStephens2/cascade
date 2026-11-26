@@ -13,11 +13,11 @@ const { navigateFallbackDenylist } = await import("./vite.config.ts");
  * Whether the service worker's navigation fallback would answer this URL
  * with the player shell. Workbox tests the denylist against pathname + search.
  */
-function playerShellHandles(pathnameAndQuery: string): boolean {
+function playerShellHandles(pathWithQueryAndFragment: string): boolean {
   const route = new NavigationRoute(() => new Response("shell"), {
     denylist: navigateFallbackDenylist,
   });
-  const url = new URL(pathnameAndQuery, "https://cascade.stephens.page");
+  const url = new URL(pathWithQueryAndFragment, "https://cascade.stephens.page");
   return (
     route.match({
       url,

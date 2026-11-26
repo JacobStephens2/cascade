@@ -51,6 +51,19 @@ test("a percent-encoded fragment token is decoded", () => {
   );
 });
 
+test("cleaning removes only the sign-in params from the player URL", () => {
+  assert.deepEqual(
+    parseSignInLink(
+      "https://cascade.stephens.page/?foo=1&token=old#token=abc123&bar=2",
+    ),
+    {
+      token: "abc123",
+      windowsHandoff: false,
+      cleanedHref: "https://cascade.stephens.page/?foo=1#bar=2",
+    },
+  );
+});
+
 test("no token, no sign-in link", () => {
   assert.equal(parseSignInLink("https://cascade.stephens.page/auth"), null);
   assert.equal(parseSignInLink("https://cascade.stephens.page/auth#token="), null);

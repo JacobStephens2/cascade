@@ -3,7 +3,12 @@ export interface SignInLink {
   /** The link was minted for the Windows app (`app=windows`): hand the
    * token off via `cascade://` instead of redeeming it here. */
   windowsHandoff: boolean;
-  /** `href` with the token and app hint removed, for `history.replaceState`. */
+  /**
+   * `href` with the token and app hint removed, for `history.replaceState`.
+   * Unrelated params survive: this runs on the player URL, which may carry
+   * state of its own. (The standalone /auth page owns its whole URL, so it
+   * cleans to the bare pathname instead.)
+   */
   cleanedHref: string;
 }
 
