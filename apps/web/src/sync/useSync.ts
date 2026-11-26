@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { Command, Snapshot, SyncReason } from "../core/types";
 import type { DispatchOptions } from "../core/useCascade";
 import { syncAvailable } from "./config";
+import { parseSignInLink } from "./signInLink";
 
 type Dispatch = (command: Command, options?: DispatchOptions) => void;
 
@@ -26,7 +27,8 @@ export function useSync(
   dispatch: Dispatch,
 ): SyncState {
   // A cascade:// deep link when this page is handing a sign-in off to the
-  // Windows desktop app (links minted with &app=windows); null otherwise.
+  // Windows desktop app (links whose fragment carries &app=windows); null
+  // otherwise.
   const [desktopHandoff, setDesktopHandoff] = useState<string | null>(null);
   const coreReady = snapshot !== null;
 
@@ -47,29 +49,26 @@ export function useSync(
     [dispatch],
   );
 
-  // Finish a magic-link sign-in if the URL carries a token, then clean the
-  // URL. Waits for the core, which holds the account.
+  // Finish a magic-link sign-in if the URL carries a token (see
+  // parseSignInLink), then clean the token out of the address bar. Waits
+  // for the core, which holds the account.
   const linkHandledRef = useRef(false);
   useEffect(() => {
     if (!syncAvailable || !coreReady || linkHandledRef.current) return;
     linkHandledRef.current = true;
-    const url = new URL(window.location.href);
-    const token = url.searchParams.get("token");
-    if (!token) return;
+    const link = window.location.href;
+    const signIn = parseSignInLink(link);
+    if (!signIn) return;
 
     // Links minted for the Windows app carry &app=windows: hand the token off
     // to the desktop app via the cascade:// protocol instead of verifying here,
     // since the single-use token can only be redeemed once. We surface the deep
     // link for the user to confirm (and attempt it automatically) rather than
     // burning it on the web.
-    const isWindowsHandoff = url.searchParams.get("app") === "windows";
-    const link = url.toString();
-    url.searchParams.delete("token");
-    url.searchParams.delete("app");
-    window.history.replaceState({}, "", url.toString());
+    window.history.replaceState({}, "", signIn.cleanedHref);
 
-    if (isWindowsHandoff) {
-      const deepLink = `cascade://auth?token=${encodeURIComponent(token)}`;
+    if (signIn.windowsHandoff) {
+      const deepLink = `cascade://auth?token=${encodeURIComponent(signIn.token)}`;
       setDesktopHandoff(deepLink);
       // Best-effort auto-launch; the visible link is the reliable fallback if
       // the browser blocks programmatic protocol navigation.

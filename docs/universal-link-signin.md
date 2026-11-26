@@ -1,7 +1,9 @@
 # Universal Link sign-in (open the magic link in the app)
 
 The account magic-link email contains
-`https://cascade.stephens.page/auth?token=…`. By default that URL opens the
+`https://cascade.stephens.page/auth#token=…` (the token rides in the URL
+fragment, so it never reaches the web server's access log; the AASA below
+therefore matches a `token=` fragment on the `/auth` path). By default that URL opens the
 **website**. With Universal Links configured it instead opens the **Cascade
 app** directly, which dispatches the core's `SubmitSignInLink`, so the user
 never copies a token by hand.

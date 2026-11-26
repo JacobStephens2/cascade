@@ -6,8 +6,8 @@
         "components": [
           {
             "/": "/auth",
-            "?": { "token": "?*" },
-            "comment": "Magic-link sign-in: open Cascade instead of the website."
+            "#": "token=?*",
+            "comment": "Magic-link sign-in: open Cascade instead of the website. The token rides first in the URL fragment, so claim only fragments carrying one (tokenless /auth stays on the web, as it did when the token rode in the query)."
           }
         ]
       }

@@ -261,9 +261,10 @@ async fn aggregate_total_ms(pool: &PgPool, user_id: Uuid) -> AppResult<i64> {
 #[serde(rename_all = "camelCase")]
 struct AuthRequest {
     email: String,
-    /// Optional client hint. When "windows", the emailed link carries
-    /// `&app=windows` so the web `/auth` page hands the token off to the
-    /// desktop app via `cascade://` instead of consuming it in the browser.
+    /// Optional client hint. When "windows", the emailed link's fragment
+    /// carries `&app=windows` so the web `/auth` page hands the token off
+    /// to the desktop app via `cascade://` instead of consuming it in the
+    /// browser.
     #[serde(default)]
     platform: Option<String>,
 }
@@ -309,6 +310,21 @@ async fn health() -> Json<Ok> {
     ok()
 }
 
+/// The emailed sign-in link. The token rides in the URL fragment, which
+/// the browser never sends to the web server, so it stays out of access
+/// logs; the web `/auth` page and the apps read it back from there. A
+/// "windows" platform hint tags the link (`&app=windows`, still in the
+/// fragment) so the web `/auth` page offers a desktop handoff
+/// (cascade://) rather than signing in on the web and burning the
+/// single-use token. Any other/absent value keeps the plain web link.
+fn build_sign_in_link(frontend_origin: &str, token: &str, platform: Option<&str>) -> String {
+    let app_suffix = match platform {
+        Some("windows") => "&app=windows",
+        _ => "",
+    };
+    format!("{frontend_origin}/auth#token={token}{app_suffix}")
+}
+
 /// Start sign-in: mint a one-time link and email it. Always 200, even for an
 /// unknown or malformed address, so the endpoint never reveals who has an
 /// account.
@@ -327,17 +343,7 @@ async fn auth_request(
         .bind(expires_at)
         .execute(&state.pool)
         .await?;
-    // A "windows" hint tags the link so the web /auth page offers a desktop
-    // handoff (cascade://) rather than signing in on the web and burning the
-    // single-use token. Any other/absent value keeps the plain web link.
-    let app_suffix = match body.platform.as_deref() {
-        Some("windows") => "&app=windows",
-        _ => "",
-    };
-    let link = format!(
-        "{}/auth?token={}{}",
-        state.frontend_origin, token, app_suffix
-    );
+    let link = build_sign_in_link(&state.frontend_origin, &token, body.platform.as_deref());
     if let Err(e) = state.mailer.send_login_link(&email, &link, &token).await {
         // Don't fail the request — log and still return 200. A retry just mints
         // another link.
@@ -492,6 +498,31 @@ mod tests {
         assert_eq!(normalize_email("no-at-sign"), None);
         assert_eq!(normalize_email("a@b"), None); // no dot in domain
         assert_eq!(normalize_email("@bar.com"), None);
+    }
+
+    #[test]
+    fn sign_in_link_carries_the_token_only_in_the_fragment() {
+        assert_eq!(
+            build_sign_in_link("https://cascade.example", "abc123", None),
+            "https://cascade.example/auth#token=abc123"
+        );
+        assert_eq!(
+            build_sign_in_link("https://cascade.example", "abc123", Some("macos")),
+            "https://cascade.example/auth#token=abc123"
+        );
+        let windows = build_sign_in_link("https://cascade.example", "abc123", Some("windows"));
+        assert_eq!(
+            windows,
+            "https://cascade.example/auth#token=abc123&app=windows"
+        );
+        for link in [
+            build_sign_in_link("https://cascade.example", "abc123", None),
+            windows,
+        ] {
+            assert!(!link.contains('?'), "no query string to log: {link}");
+            let (before_fragment, _) = link.split_once('#').expect("fragment");
+            assert!(!before_fragment.contains("abc123"), "{link}");
+        }
     }
 
     #[test]

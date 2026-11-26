@@ -398,6 +398,18 @@ fn the_token_is_found_in_whatever_was_pasted() {
             Some("abc123"),
         ),
         ("https://cascade.example/?token=a%2Fb%3D", Some("a/b=")),
+        ("https://cascade.example/auth#token=abc123", Some("abc123")),
+        (
+            "https://cascade.example/auth#token=abc123&app=windows",
+            Some("abc123"),
+        ),
+        (
+            "https://cascade.example/auth#app=windows&token=abc123",
+            Some("abc123"),
+        ),
+        ("https://cascade.example/auth#token=a%2Fb%3D", Some("a/b=")),
+        ("https://cascade.example/auth#xtoken=abc123", None),
+        ("https://cascade.example/auth#token=", None),
         ("https://cascade.example/?TOKEN=abc123", None),
         ("https://cascade.example/?token=", None),
         ("", None),
