@@ -27,6 +27,9 @@ function playerShellHandles(pathnameAndQuery: string): boolean {
 }
 
 test("a sign-in link is not answered with the player shell", () => {
+  assert.equal(playerShellHandles("/auth#token=one-time"), false);
+  assert.equal(playerShellHandles("/auth/#token=one-time"), false);
+  assert.equal(playerShellHandles("/auth#token=one-time&app=windows"), false);
   assert.equal(playerShellHandles("/auth?token=one-time"), false);
   assert.equal(playerShellHandles("/auth/?token=one-time"), false);
   assert.equal(playerShellHandles("/auth"), false);

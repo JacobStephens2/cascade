@@ -53,7 +53,7 @@ class MainActivity : ComponentActivity() {
         handleAuthDeepLink(intent)
     }
 
-    /** Finish a magic-link sign-in if we were opened via .../auth?token=...
+    /** Finish a magic-link sign-in if we were opened via .../auth#token=...
      *  The core reads the token out of the link. */
     private fun handleAuthDeepLink(intent: Intent?) {
         val link = intent?.data?.toString() ?: return

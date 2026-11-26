@@ -367,27 +367,29 @@ pub struct PersistedAccount {
     pub email: String,
 }
 
-/// Find the sign-in token in what the user pasted: a link carrying a query
-/// parameter named exactly `token`, or the bare token itself.
+/// Find the sign-in token in what the user pasted: a link carrying a
+/// parameter named exactly `token` in its fragment (the emailed link) or
+/// its query (a `cascade://` handoff, or an older emailed link), or the
+/// bare token itself.
 fn parse_sign_in_token(input: &str) -> Option<String> {
     let input = input.trim();
-    if let Some(value) = token_query_value(input) {
+    if let Some(value) = token_param_value(input) {
         let token = percent_decode(value);
         return (!token.is_empty()).then_some(token);
     }
     let is_raw_token = !input.is_empty()
         && !input
             .chars()
-            .any(|c| c.is_whitespace() || matches!(c, '/' | '?' | '&' | '='));
+            .any(|c| c.is_whitespace() || matches!(c, '/' | '?' | '&' | '=' | '#'));
     is_raw_token.then(|| input.to_string())
 }
 
-/// The raw value of the first `token=` that follows a `?` or `&`, up to the
-/// next `&` or `#`.
-fn token_query_value(input: &str) -> Option<&str> {
+/// The raw value of the first `token=` that follows a `?`, `#` or `&`, up
+/// to the next `&` or `#`.
+fn token_param_value(input: &str) -> Option<&str> {
     const KEY: &str = "token=";
     input.match_indices(KEY).find_map(|(at, _)| {
-        let preceded = input[..at].ends_with(['?', '&']);
+        let preceded = input[..at].ends_with(['?', '&', '#']);
         preceded.then(|| {
             let rest = &input[at + KEY.len()..];
             rest.split(['&', '#']).next().unwrap_or_default()

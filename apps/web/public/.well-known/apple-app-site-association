@@ -6,8 +6,7 @@
         "components": [
           {
             "/": "/auth",
-            "?": { "token": "?*" },
-            "comment": "Magic-link sign-in: open Cascade instead of the website."
+            "comment": "Magic-link sign-in: open Cascade instead of the website. The token rides in the URL fragment, so match on the path alone."
           }
         ]
       }

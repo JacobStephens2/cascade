@@ -60,7 +60,7 @@ targets:
         # (magic-link sign-in + G-Counter sync to cascade-sync-server).
         com.apple.security.network.client: true
         # Universal Links: lets the magic-link email (https://cascade.stephens.page
-        # /auth?token=…) open the app straight into completeSignIn() instead of a
+        # /auth#token=…) open the app straight into completeSignIn() instead of a
         # browser. Requires the matching AASA file hosted at
         # https://cascade.stephens.page/.well-known/apple-app-site-association and
         # a provisioning profile with the Associated Domains capability (paid
