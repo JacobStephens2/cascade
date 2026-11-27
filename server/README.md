@@ -15,8 +15,10 @@ Four tables (`migrations/0001_init.sql`):
 
 - `users` — id + email (the only PII; no password).
 - `login_tokens` — single-use, short-lived magic-link tokens (stored hashed).
+  Issuing a new token prunes expired ones.
 - `sessions` — opaque server-side session tokens (stored hashed). Opaque, not
-  JWT, so logout / delete-account revokes instantly with one `DELETE`.
+  JWT, so logout revokes a session immediately and account deletion revokes all
+  sessions for that account.
 - `device_counters` — the **G-Counter**: one `total_ms` per `(user, device)`.
   Merge is `GREATEST(existing, incoming)` on write; a user's lifetime total is
   `SUM(total_ms)` on read. Concurrent listening on two devices adds, never
@@ -35,7 +37,7 @@ All bodies are JSON; camelCase fields.
 | PUT    | `/listening`     | Bearer | `{deviceId, deviceTotalMs}`     | `{serverTotalMs, syncedThroughMs}` |
 | GET    | `/listening`     | Bearer | —                               | `{serverTotalMs}` |
 | DELETE | `/listening`     | Bearer | —                               | `{ok}` (clears counters; client rotates `deviceId`) |
-| DELETE | `/account`       | Bearer | —                               | `{ok}` (cascades to sessions + counters) |
+| DELETE | `/account`       | Bearer | —                               | `{ok}` (deletes magic links, sessions, and counters) |
 
 Auth is `Authorization: Bearer <sessionToken>`.
 
@@ -49,6 +51,19 @@ cargo run                   # migrations run automatically on boot
 
 With `SMTP_HOST` empty the magic link is written to the log instead of emailed,
 so you can complete the flow without a mail server.
+
+## Test
+
+Run `cargo test` from `server/` for tests that don't need PostgreSQL. To
+include the magic-link tests, point `DATABASE_URL` at a dedicated PostgreSQL
+test instance with a role that can create databases:
+
+```bash
+DATABASE_URL=postgres://localhost/postgres cargo test -- --include-ignored
+```
+
+SQLx creates and migrates a separate database for each magic-link test. These
+tests use the log-only mailer.
 
 ## Deploy (to do — coordinated with the feature release)
 

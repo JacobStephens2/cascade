@@ -67,7 +67,7 @@ The table and its routing are tested through `Core::dispatch` in `crates/cascade
 
 ### 6. Opaque tokens + magic-link, and `device_id` rotation on delete
 
-Auth is email magic-link (no passwords) with **opaque server-side session tokens** (not JWT), so logout / delete-account revoke instantly with one `DELETE`. Tokens are stored only as SHA-256 hashes. "Delete my data" rotates the client's `device_id`, closing the one loophole inherent to grow-only counters: a forgotten offline device can't later resurrect a deleted total by pushing a stale higher counter — it lands in a fresh slot.
+Auth is email magic-link (no passwords) with **opaque server-side session tokens** (not JWT), so logout revokes the current session immediately. Account deletion removes the account's magic links and cascades to all its sessions in one transaction. Tokens are stored only as SHA-256 hashes. "Delete my data" rotates the client's `device_id`, closing the one loophole inherent to grow-only counters: a forgotten offline device can't later resurrect a deleted total by pushing a stale higher counter — it lands in a fresh slot.
 
 *Amended 2026-09-27 (issue #18).* The core owns `device_id`, inside the persisted listening blob. `ResetListeningData { newDeviceId }` zeroes the slot and rotates the id in the same state change, so both reach disk in one `PersistListening` write: a crash can no longer leave a fresh id holding the old total (which the next sync would write into a new server slot — exactly the resurrection this decision exists to prevent). The server cannot enforce this — deletes are by `user_id` only — so the client-side atomicity is the whole guarantee. Within one update, the listening blob is written before the account blob, so a crash between the two writes never leaves a deleted account's slot with no session to answer for it. The core has no randomness, so shells supply ids: a fresh UUID on reset, and `restore`'s `fallbackDeviceId` that the core adopts only when the listening blob has none (shells pass the id they used to store themselves; the core takes it only on the first launch after upgrading, so existing server slots carry over).
 
@@ -88,7 +88,7 @@ Auth is email magic-link (no passwords) with **opaque server-side session tokens
 
 - **Last-write-wins / "latest total" sync** — rejected: destroys concurrent device time (the whole point is that concurrent listening must add).
 - **Server-side session events with timestamps** — rejected: richer analytics, but reintroduces the timeline we specifically refuse to store.
-- **JWT sessions** — rejected: revocation requires either short expiries or a denylist; opaque tokens make logout/delete a single `DELETE` on a single VPS.
+- **JWT sessions** — rejected: revocation requires either short expiries or a denylist. Deleting an opaque session from Postgres revokes it immediately.
 - **OAuth / passwords** — rejected: disproportionate for an opt-in counter; magic-link is the smallest cross-platform path with the least PII.
 - **Sync orchestration in the core** — rejected: the core can't know reachability/lifecycle/auth; that knowledge belongs in each shell. (Sync *policy* — threshold, payload, 401 rule, device-id lifecycle — was later moved into the core; see the decision 5 amendment.)
 - **The account in the shell** — first chosen as "auth state" in decision 5, and reversed in its 2026-10-03 amendment: the session is data the core can hold, and four shell copies of the account flow drifted. Reachability, lifecycle, transport and storage stay in the shell.
