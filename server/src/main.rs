@@ -27,7 +27,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::PgPool;
+use sqlx::{PgConnection, PgPool};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
@@ -89,15 +89,26 @@ async fn main() -> anyhow::Result<()> {
         .install_recorder()
         .map_err(|e| anyhow::anyhow!("failed to install metrics recorder: {e}"))?;
 
-    let cors = build_cors(&frontend_origin);
     let state = AppState {
         pool,
         mailer,
         frontend_origin,
         metrics_handle,
     };
+    let app = build_app(state);
 
-    let app = Router::new()
+    let addr: SocketAddr = bind_addr.parse()?;
+    tracing::info!(%addr, "cascade-sync-server listening");
+    let listener = tokio::net::TcpListener::bind(addr).await?;
+    axum::serve(listener, app)
+        .with_graceful_shutdown(shutdown_signal())
+        .await?;
+    Ok(())
+}
+
+fn build_app(state: AppState) -> Router {
+    let cors = build_cors(&state.frontend_origin);
+    Router::new()
         .route("/health", get(health))
         .route("/auth/request", post(auth_request))
         .route("/auth/verify", post(auth_verify))
@@ -115,15 +126,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/metrics", get(metrics))
         .layer(cors)
         .layer(TraceLayer::new_for_http())
-        .with_state(state);
-
-    let addr: SocketAddr = bind_addr.parse()?;
-    tracing::info!(%addr, "cascade-sync-server listening");
-    let listener = tokio::net::TcpListener::bind(addr).await?;
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await?;
-    Ok(())
+        .with_state(state)
 }
 
 fn env(key: &str) -> anyhow::Result<String> {
@@ -225,6 +228,15 @@ fn normalize_email(raw: &str) -> Option<String> {
     } else {
         None
     }
+}
+
+/// Serialize link issuance and account deletion for the same email address.
+async fn lock_login_email(conn: &mut PgConnection, email: &str) -> AppResult<()> {
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(email)
+        .execute(conn)
+        .await?;
+    Ok(())
 }
 
 /// Resolve the bearer session token to a user id, or `Unauthorized`.
@@ -344,14 +356,17 @@ async fn auth_request(
     .execute(&state.pool)
     .await?;
 
+    let mut tx = state.pool.begin().await?;
+    lock_login_email(&mut tx, &email).await?;
     let token = generate_token();
     let expires_at = Utc::now() + Duration::minutes(LOGIN_TOKEN_TTL_MINUTES);
     sqlx::query("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES ($1, $2, $3)")
         .bind(hash_token(&token))
         .bind(&email)
         .bind(expires_at)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     let link = build_sign_in_link(&state.frontend_origin, &token, body.platform.as_deref());
     if let Err(e) = state.mailer.send_login_link(&email, &link, &token).await {
         // Don't fail the request — log and still return 200. A retry just mints
@@ -493,7 +508,17 @@ async fn listening_delete(
 async fn account_delete(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Ok>> {
     let user_id = authenticate(&state.pool, &headers).await?;
     let mut tx = state.pool.begin().await?;
-    // Take the token locks before the user lock, in the same order as auth_verify.
+    let email: Option<String> = sqlx::query_scalar("SELECT email FROM users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(&mut *tx)
+        .await?;
+    let Some(email) = email else {
+        return Ok(ok());
+    };
+    lock_login_email(&mut tx, &email).await?;
+
+    // Recheck the original user id after waiting for the email lock. Take the
+    // token locks before the user lock, in the same order as auth_verify.
     sqlx::query("DELETE FROM login_tokens WHERE email = (SELECT email FROM users WHERE id = $1)")
         .bind(user_id)
         .execute(&mut *tx)
@@ -509,17 +534,27 @@ async fn account_delete(State(state): State<AppState>, headers: HeaderMap) -> Ap
 #[cfg(test)]
 mod tests {
     use super::*;
-    use axum::http::{header::AUTHORIZATION, StatusCode};
-    use axum::response::IntoResponse;
+    use axum::body::{to_bytes, Body};
+    use axum::http::{header, StatusCode};
     use chrono::DateTime;
+    use serde_json::{json, Value};
+    use tower::ServiceExt;
 
-    fn test_state(pool: PgPool) -> AppState {
-        AppState {
-            pool,
+    fn test_app(pool: &PgPool) -> Router {
+        build_app(AppState {
+            pool: pool.clone(),
             mailer: Mailer::LogOnly,
             frontend_origin: "https://cascade.example".into(),
             metrics_handle: PrometheusBuilder::new().build_recorder().handle(),
-        }
+        })
+    }
+
+    async fn post_json(app: &Router, path: &str, body: Value) -> Response {
+        let request = Request::post(path)
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(body.to_string()))
+            .expect("build JSON request");
+        app.clone().oneshot(request).await.expect("send request")
     }
 
     async fn insert_login_token(
@@ -540,89 +575,173 @@ mod tests {
     #[sqlx::test]
     #[ignore = "requires PostgreSQL (see server/README.md)"]
     async fn account_deletion_invalidates_unused_sign_in_link(pool: PgPool) {
-        let state = test_state(pool);
+        let app = test_app(&pool);
         let email = "account@example.com";
         let expires_at = Utc::now() + Duration::minutes(15);
-        insert_login_token(&state.pool, "first-link", email, expires_at).await;
-        let Json(account) = auth_verify(
-            State(state.clone()),
-            Json(VerifyRequest {
-                token: "first-link".into(),
-            }),
-        )
-        .await
-        .expect("sign in before deleting the account");
-        insert_login_token(&state.pool, "unused-link", email, expires_at).await;
-
-        let mut headers = HeaderMap::new();
-        headers.insert(
-            AUTHORIZATION,
-            format!("Bearer {}", account.session_token)
-                .parse()
-                .expect("session token fits in an authorization header"),
-        );
-        let Json(deleted) = account_delete(State(state.clone()), headers)
+        insert_login_token(&pool, "first-link", email, expires_at).await;
+        let signed_in = post_json(&app, "/auth/verify", json!({"token": "first-link"})).await;
+        assert_eq!(signed_in.status(), StatusCode::OK);
+        let body = to_bytes(signed_in.into_body(), 1024)
             .await
-            .expect("delete the account");
-        assert!(deleted.ok);
+            .expect("read sign-in response");
+        let account: Value = serde_json::from_slice(&body).expect("decode sign-in response");
+        let session_token = account["sessionToken"].as_str().expect("session token");
+        insert_login_token(&pool, "unused-link", email, expires_at).await;
 
-        let verification = auth_verify(
-            State(state.clone()),
-            Json(VerifyRequest {
-                token: "unused-link".into(),
-            }),
-        )
-        .await;
-        let status = match verification {
-            Ok(_) => StatusCode::OK,
-            Err(error) => error.into_response().status(),
-        };
+        let delete_request = Request::delete("/account")
+            .header(header::AUTHORIZATION, format!("Bearer {session_token}"))
+            .body(Body::empty())
+            .expect("build delete request");
+        let deleted = app
+            .clone()
+            .oneshot(delete_request)
+            .await
+            .expect("delete account");
+        assert_eq!(deleted.status(), StatusCode::OK);
+
+        let verification = post_json(&app, "/auth/verify", json!({"token": "unused-link"})).await;
         let account_exists: bool =
             sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)")
                 .bind(email)
-                .fetch_one(&state.pool)
+                .fetch_one(&pool)
                 .await
                 .expect("check for a recreated account");
-        assert_eq!((status, account_exists), (StatusCode::BAD_REQUEST, false));
+        assert_eq!(
+            (verification.status(), account_exists),
+            (StatusCode::BAD_REQUEST, false)
+        );
     }
 
     #[sqlx::test]
     #[ignore = "requires PostgreSQL (see server/README.md)"]
     async fn issuing_sign_in_link_prunes_expired_tokens(pool: PgPool) {
-        let state = test_state(pool);
+        let app = test_app(&pool);
         let now = Utc::now();
         insert_login_token(
-            &state.pool,
+            &pool,
             "expired-link",
             "expired@example.com",
             now - Duration::minutes(1),
         )
         .await;
         insert_login_token(
-            &state.pool,
+            &pool,
             "active-link",
             "active@example.com",
             now + Duration::minutes(15),
         )
         .await;
 
-        let Json(requested) = auth_request(
-            State(state.clone()),
-            Json(AuthRequest {
-                email: "new@example.com".into(),
-                platform: None,
-            }),
-        )
-        .await
-        .expect("issue a new magic link");
-        assert!(requested.ok);
+        let requested = post_json(&app, "/auth/request", json!({"email": "new@example.com"})).await;
+        assert_eq!(requested.status(), StatusCode::OK);
 
         let remaining_emails: Vec<String> =
             sqlx::query_scalar("SELECT email FROM login_tokens ORDER BY email")
-                .fetch_all(&state.pool)
+                .fetch_all(&pool)
                 .await
                 .expect("read remaining magic-link tokens");
         assert_eq!(remaining_emails, ["active@example.com", "new@example.com"]);
+    }
+
+    async fn wait_for_database_lock(pool: &PgPool, pid: i32, is_blocking: bool) {
+        let query = if is_blocking {
+            "SELECT EXISTS (SELECT 1 FROM pg_stat_activity \
+             WHERE datname = current_database() AND $1 = ANY(pg_blocking_pids(pid)))"
+        } else {
+            "SELECT cardinality(pg_blocking_pids($1)) > 0"
+        };
+        tokio::time::timeout(StdDuration::from_secs(5), async {
+            loop {
+                let waiting: bool = sqlx::query_scalar(query)
+                    .bind(pid)
+                    .fetch_one(pool)
+                    .await
+                    .expect("read lock status");
+                if waiting {
+                    break;
+                }
+                tokio::time::sleep(StdDuration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("wait for database lock");
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires PostgreSQL (see server/README.md)"]
+    async fn account_deletion_cleans_up_links_issued_before_it_finishes(pool: PgPool) {
+        let email = "account@example.test";
+        let user_id = Uuid::new_v4();
+        sqlx::query(
+            "WITH account AS (INSERT INTO users (id, email) VALUES ($1, $2) RETURNING id) \
+             INSERT INTO sessions (token_hash, user_id, expires_at) \
+             SELECT $3, id, now() + interval '1 hour' FROM account",
+        )
+        .bind(user_id)
+        .bind(email)
+        .bind(hash_token("fixture-session"))
+        .execute(&pool)
+        .await
+        .expect("seed account and session");
+
+        let mut blocker = pool.begin().await.expect("start fixture transaction");
+        let blocker_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&mut *blocker)
+            .await
+            .expect("read fixture connection PID");
+        sqlx::query("SELECT id FROM users WHERE id = $1 FOR UPDATE")
+            .bind(user_id)
+            .execute(&mut *blocker)
+            .await
+            .expect("pause deletion at the account row");
+
+        let issuer = PgPoolOptions::new()
+            .max_connections(1)
+            .connect_with(pool.connect_options().as_ref().clone())
+            .await
+            .expect("open dedicated issuer connection");
+        let issuer_pid: i32 = sqlx::query_scalar("SELECT pg_backend_pid()")
+            .fetch_one(&issuer)
+            .await
+            .expect("read issuer connection PID");
+
+        let request = Request::delete("/account")
+            .header(header::AUTHORIZATION, "Bearer fixture-session")
+            .body(Body::empty())
+            .expect("build delete request");
+        let mut deletion = std::pin::pin!(test_app(&pool).oneshot(request));
+        tokio::select! {
+            _ = &mut deletion => panic!("deletion completed while the account row was locked"),
+            () = wait_for_database_lock(&pool, blocker_pid, true) => {}
+        }
+
+        let issuer_app = test_app(&issuer);
+        let mut issuance = std::pin::pin!(post_json(
+            &issuer_app,
+            "/auth/request",
+            json!({"email": email})
+        ));
+        let issued_before_delete = tokio::select! {
+            response = &mut issuance => {
+                assert_eq!(response.status(), StatusCode::OK);
+                true
+            }
+            () = wait_for_database_lock(&pool, issuer_pid, false) => false,
+        };
+
+        blocker.commit().await.expect("release account row lock");
+        let deleted = deletion.await.expect("delete account");
+        assert_eq!(deleted.status(), StatusCode::OK);
+        if !issued_before_delete {
+            assert_eq!(issuance.await.status(), StatusCode::OK);
+        }
+        let remaining: i64 =
+            sqlx::query_scalar("SELECT count(*) FROM login_tokens WHERE email = $1")
+                .bind(email)
+                .fetch_one(&pool)
+                .await
+                .expect("count links after account deletion");
+        assert_eq!(remaining, i64::from(!issued_before_delete));
     }
 
     #[test]

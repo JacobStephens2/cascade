@@ -44,3 +44,6 @@ anyhow = "1"
 thiserror = "1"
 metrics = "0.24"
 metrics-exporter-prometheus = { version = "0.16", default-features = false }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
