@@ -27,7 +27,7 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::postgres::PgPoolOptions;
-use sqlx::{PgConnection, PgPool};
+use sqlx::{PgPool, Postgres, Transaction};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 use uuid::Uuid;
@@ -231,10 +231,10 @@ fn normalize_email(raw: &str) -> Option<String> {
 }
 
 /// Serialize link issuance and account deletion for the same email address.
-async fn lock_login_email(conn: &mut PgConnection, email: &str) -> AppResult<()> {
+async fn lock_login_email(tx: &mut Transaction<'_, Postgres>, email: &str) -> AppResult<()> {
     sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
         .bind(email)
-        .execute(conn)
+        .execute(&mut **tx)
         .await?;
     Ok(())
 }
