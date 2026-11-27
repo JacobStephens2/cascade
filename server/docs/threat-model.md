@@ -38,8 +38,8 @@ one. This bounds the blast radius of every other threat below.
 |---|---|---|
 | T1 | **Account enumeration** via the sign-in endpoint | `POST /auth/request` always returns 200 — it never reveals whether an address has an account. |
 | T2 | **DB leak yields working tokens** | Magic-link and session tokens are stored only as SHA-256 hashes; the plaintext exists only in the email / the client. |
-| T3 | **Magic-link replay / interception** | 256-bit random token, single-use (atomic `UPDATE ... WHERE used=false RETURNING`), 15-min expiry, HTTPS-only delivery. |
-| T4 | **Session theft → can't revoke** | Opaque server-side sessions; logout / delete-account is a single `DELETE`, taking effect immediately (no wait for a signed token to expire). |
+| T3 | **Magic-link replay / interception** | 256-bit random token, single-use (atomic `UPDATE ... WHERE used=false RETURNING`), 15-min expiry, HTTPS-only delivery. Account deletion removes existing links. |
+| T4 | **Session theft → can't revoke** | Opaque server-side sessions. Logout removes the current session and account deletion cascades to all sessions for the account. |
 | T5 | **CSRF** | API authenticates with a `Bearer` header, not cookies, so cross-site requests can't ride ambient credentials. |
 | T6 | **SQL injection** | All queries are parameterized (`sqlx` bind); no string interpolation into SQL. |
 | T7 | **Cross-origin abuse** | CORS allow-list is exactly the web origin; other origins get no `Access-Control-Allow-Origin`. |

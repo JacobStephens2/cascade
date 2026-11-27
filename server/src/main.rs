@@ -335,6 +335,15 @@ async fn auth_request(
     let Some(email) = normalize_email(&body.email) else {
         return Ok(ok());
     };
+    // Leave rows locked by another request for the next issuance to prune.
+    sqlx::query(
+        "DELETE FROM login_tokens WHERE token_hash IN (\
+             SELECT token_hash FROM login_tokens WHERE expires_at <= now() FOR UPDATE SKIP LOCKED\
+         )",
+    )
+    .execute(&state.pool)
+    .await?;
+
     let token = generate_token();
     let expires_at = Utc::now() + Duration::minutes(LOGIN_TOKEN_TTL_MINUTES);
     sqlx::query("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES ($1, $2, $3)")
@@ -358,15 +367,16 @@ async fn auth_verify(
     State(state): State<AppState>,
     Json(body): Json<VerifyRequest>,
 ) -> AppResult<Json<VerifyResponse>> {
-    // Atomically consume the token: single-use is enforced by `used = FALSE` in
-    // the UPDATE, so two concurrent verifies can't both succeed.
+    // Hold the token row lock until the account and session are saved, so
+    // account deletion can't finish between consuming the link and signing in.
+    let mut tx = state.pool.begin().await?;
     let email: Option<String> = sqlx::query_scalar(
         "UPDATE login_tokens SET used = TRUE \
-         WHERE token_hash = $1 AND used = FALSE AND expires_at > now() \
+         WHERE token_hash = $1 AND used = FALSE AND expires_at > statement_timestamp() \
          RETURNING email",
     )
     .bind(hash_token(&body.token))
-    .fetch_optional(&state.pool)
+    .fetch_optional(&mut *tx)
     .await?;
     let Some(email) = email else {
         return Err(AppError::BadRequest("invalid or expired link".into()));
@@ -379,7 +389,7 @@ async fn auth_verify(
     )
     .bind(Uuid::new_v4())
     .bind(&email)
-    .fetch_one(&state.pool)
+    .fetch_one(&mut *tx)
     .await?;
 
     let session_token = generate_token();
@@ -388,8 +398,9 @@ async fn auth_verify(
         .bind(hash_token(&session_token))
         .bind(user_id)
         .bind(expires_at)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
 
     Ok(Json(VerifyResponse {
         session_token,
@@ -478,19 +489,141 @@ async fn listening_delete(
     Ok(ok())
 }
 
-/// Delete the account entirely: the cascade removes sessions and counters too.
+/// Delete the account and its magic links. Sessions and counters cascade.
 async fn account_delete(State(state): State<AppState>, headers: HeaderMap) -> AppResult<Json<Ok>> {
     let user_id = authenticate(&state.pool, &headers).await?;
+    let mut tx = state.pool.begin().await?;
+    // Take the token locks before the user lock, in the same order as auth_verify.
+    sqlx::query("DELETE FROM login_tokens WHERE email = (SELECT email FROM users WHERE id = $1)")
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await?;
     sqlx::query("DELETE FROM users WHERE id = $1")
         .bind(user_id)
-        .execute(&state.pool)
+        .execute(&mut *tx)
         .await?;
+    tx.commit().await?;
     Ok(ok())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::http::{header::AUTHORIZATION, StatusCode};
+    use axum::response::IntoResponse;
+    use chrono::DateTime;
+
+    fn test_state(pool: PgPool) -> AppState {
+        AppState {
+            pool,
+            mailer: Mailer::LogOnly,
+            frontend_origin: "https://cascade.example".into(),
+            metrics_handle: PrometheusBuilder::new().build_recorder().handle(),
+        }
+    }
+
+    async fn insert_login_token(
+        pool: &PgPool,
+        token: &str,
+        email: &str,
+        expires_at: DateTime<Utc>,
+    ) {
+        sqlx::query("INSERT INTO login_tokens (token_hash, email, expires_at) VALUES ($1, $2, $3)")
+            .bind(hash_token(token))
+            .bind(email)
+            .bind(expires_at)
+            .execute(pool)
+            .await
+            .expect("seed magic-link token");
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires PostgreSQL (see server/README.md)"]
+    async fn account_deletion_invalidates_unused_sign_in_link(pool: PgPool) {
+        let state = test_state(pool);
+        let email = "account@example.com";
+        let expires_at = Utc::now() + Duration::minutes(15);
+        insert_login_token(&state.pool, "first-link", email, expires_at).await;
+        let Json(account) = auth_verify(
+            State(state.clone()),
+            Json(VerifyRequest {
+                token: "first-link".into(),
+            }),
+        )
+        .await
+        .expect("sign in before deleting the account");
+        insert_login_token(&state.pool, "unused-link", email, expires_at).await;
+
+        let mut headers = HeaderMap::new();
+        headers.insert(
+            AUTHORIZATION,
+            format!("Bearer {}", account.session_token)
+                .parse()
+                .expect("session token fits in an authorization header"),
+        );
+        let Json(deleted) = account_delete(State(state.clone()), headers)
+            .await
+            .expect("delete the account");
+        assert!(deleted.ok);
+
+        let verification = auth_verify(
+            State(state.clone()),
+            Json(VerifyRequest {
+                token: "unused-link".into(),
+            }),
+        )
+        .await;
+        let status = match verification {
+            Ok(_) => StatusCode::OK,
+            Err(error) => error.into_response().status(),
+        };
+        let account_exists: bool =
+            sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM users WHERE email = $1)")
+                .bind(email)
+                .fetch_one(&state.pool)
+                .await
+                .expect("check for a recreated account");
+        assert_eq!((status, account_exists), (StatusCode::BAD_REQUEST, false));
+    }
+
+    #[sqlx::test]
+    #[ignore = "requires PostgreSQL (see server/README.md)"]
+    async fn issuing_sign_in_link_prunes_expired_tokens(pool: PgPool) {
+        let state = test_state(pool);
+        let now = Utc::now();
+        insert_login_token(
+            &state.pool,
+            "expired-link",
+            "expired@example.com",
+            now - Duration::minutes(1),
+        )
+        .await;
+        insert_login_token(
+            &state.pool,
+            "active-link",
+            "active@example.com",
+            now + Duration::minutes(15),
+        )
+        .await;
+
+        let Json(requested) = auth_request(
+            State(state.clone()),
+            Json(AuthRequest {
+                email: "new@example.com".into(),
+                platform: None,
+            }),
+        )
+        .await
+        .expect("issue a new magic link");
+        assert!(requested.ok);
+
+        let remaining_emails: Vec<String> =
+            sqlx::query_scalar("SELECT email FROM login_tokens ORDER BY email")
+                .fetch_all(&state.pool)
+                .await
+                .expect("read remaining magic-link tokens");
+        assert_eq!(remaining_emails, ["active@example.com", "new@example.com"]);
+    }
 
     #[test]
     fn email_normalization() {
