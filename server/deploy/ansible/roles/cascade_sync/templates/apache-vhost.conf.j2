@@ -4,10 +4,12 @@
     ServerName {{ cascade_sync_host }}
 
     RewriteEngine On
+    # Let Apache check the server-wide OPTIONS * target alongside URL paths.
+    RewriteOptions AllowAnyURI
     RewriteCond %{HTTPS} off
     # Read the original path so escaped characters survive the redirect.
-    RewriteCond %{THE_REQUEST} "^\S+\s+(?:https?://[^/\s?]+)?(/[^?\s]*)?" [NC]
-    RewriteRule ^ https://{{ cascade_sync_host }}%1 [R=301,L,NE]
+    RewriteCond %{THE_REQUEST} "^\S+\s+(?:https?://[^/\s?]+)?(?:/([^?\s]*))?" [NC]
+    RewriteRule ^(?:/|\*$) https://{{ cascade_sync_host }}/%1 [R=301,L,NE]
 
     ProxyPreserveHost On
 
