@@ -1,17 +1,13 @@
-#!/usr/bin/env bash
-# Run with bash on Ubuntu with apache2, curl, and Python 3 installed.
-set -eu
-
-python3 - "$(dirname "$0")/../roles/cascade_sync/templates/apache-vhost.conf.j2" <<'PY'
+# Run with Python 3 on Ubuntu with apache2 and curl installed.
 import socket
 import subprocess
-import sys
 import tempfile
 import time
 from pathlib import Path
 
 host = "sync.example.test"
-source = Path(sys.argv[1]).read_text()
+template = Path(__file__).resolve().parents[1] / "roles/cascade_sync/templates/apache-vhost.conf.j2"
+source = template.read_text()
 with tempfile.TemporaryDirectory(prefix="cascade-apache-redirect-") as tmp:
     with socket.socket() as listener:
         listener.bind(("127.0.0.1", 0))
@@ -60,4 +56,3 @@ with tempfile.TemporaryDirectory(prefix="cascade-apache-redirect-") as tmp:
     finally:
         server.terminate()
         server.wait(timeout=5)
-PY
