@@ -77,13 +77,14 @@
     state: started
     daemon_reload: true
 
-- name: Ensure Apache proxy modules are enabled (Ubuntu)
+- name: Ensure Apache proxy and rewrite modules are enabled (Ubuntu)
   community.general.apache2_module:
     name: "{{ item }}"
     state: present
   loop:
     - proxy
     - proxy_http
+    - rewrite
   when: cascade_sync_apache_use_a2ensite
   notify: Reload apache
 
@@ -112,6 +113,6 @@
       certbot --apache --non-interactive --agree-tos
       -m {{ cascade_sync_certbot_email }}
       -d {{ cascade_sync_host }}
-      --keep-until-expiring --redirect
+      --keep-until-expiring --no-redirect
     creates: "/etc/letsencrypt/live/{{ cascade_sync_host }}/fullchain.pem"
   notify: Reload apache

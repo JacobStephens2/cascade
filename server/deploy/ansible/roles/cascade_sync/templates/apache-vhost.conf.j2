@@ -1,8 +1,13 @@
 # {{ ansible_managed }}
-# Reverse proxy for the Cascade sync API. certbot --apache promotes this to a
-# TLS vhost and adds an HTTP->HTTPS redirect on first run.
+# Certbot uses this vhost as the basis for the TLS reverse proxy on first run.
 <VirtualHost *:80>
     ServerName {{ cascade_sync_host }}
+
+    RewriteEngine On
+    RewriteCond %{HTTPS} off
+    # Read the original path so escaped characters survive the redirect.
+    RewriteCond %{THE_REQUEST} "^\S+\s+(?:https?://[^/\s?]+)?(/[^?\s]*)?" [NC]
+    RewriteRule ^ https://{{ cascade_sync_host }}%1 [R=301,L,NE]
 
     ProxyPreserveHost On
 
